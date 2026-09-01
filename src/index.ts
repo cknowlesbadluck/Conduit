@@ -9,7 +9,7 @@ import {
 import { toNodeHandler } from "@modelcontextprotocol/node";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { init, isReady } from "./store.js";
-import { buildProtectedResourceMetadata, createTokenVerifier, loadAuthConfig } from "./auth.js";
+import { createTokenVerifier, loadAuthConfig } from "./auth.js";
 import { createConduitServer } from "./mcp.js";
 
 const app = express();
