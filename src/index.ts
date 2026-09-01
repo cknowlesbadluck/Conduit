@@ -26,7 +26,6 @@ app.use(originValidation([...allowedHostnames]));
 
 const port = Number(process.env.PORT || 3000);
 const allowAnonymous = process.env.CONDUIT_ALLOW_ANONYMOUS === "true" && process.env.NODE_ENV !== "production";
-let authConfig: Awaited<ReturnType<typeof loadAuthConfig>>;
 
 app.get("/", (_req, res) => res.json({ service: "Conduit", version: "0.2.0", status: "online", mcp: "/mcp", health: "/health", ready: "/ready" }));
 app.get("/health", (_req, res) => res.json({ status: "ok", service: "conduit" }));
@@ -34,7 +33,7 @@ app.get("/ready", (_req, res) => res.status(isReady() ? 200 : 503).json({ status
 
 async function boot() {
   await init();
-  authConfig = await loadAuthConfig();
+  const authConfig = await loadAuthConfig();
 
   if (authConfig) {
     const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(new URL(authConfig.resourceUrl)).toString();
@@ -47,7 +46,7 @@ async function boot() {
     app.all("/mcp", requireBearerAuth({
       verifier: createTokenVerifier(authConfig),
       resourceMetadataUrl,
-    }), toNodeHandler(handler, { maxRequestBodySize: 4 * 1024 * 1024, onerror: console.error }));
+    }), toNodeHandler(handler, { onerror: console.error }));
     console.log(`Conduit OAuth enabled for ${authConfig.resourceUrl}`);
   } else if (process.env.CONDUIT_TOKEN) {
     const token = process.env.CONDUIT_TOKEN;
@@ -58,11 +57,11 @@ async function boot() {
         return;
       }
       next();
-    }, toNodeHandler(handler, { maxRequestBodySize: 4 * 1024 * 1024, onerror: console.error }));
+    }, toNodeHandler(handler, { onerror: console.error }));
     console.log("Conduit private bearer-token mode enabled");
   } else if (allowAnonymous) {
     const handler = createMcpHandler(() => createConduitServer());
-    app.all("/mcp", toNodeHandler(handler, { maxRequestBodySize: 4 * 1024 * 1024, onerror: console.error }));
+    app.all("/mcp", toNodeHandler(handler, { onerror: console.error }));
     console.warn("Conduit anonymous MCP mode is enabled for development only");
   } else {
     app.all("/mcp", (_req, res) => res.status(503).json({ error: "auth_not_configured", message: "Configure DESCOPE_MCP_SERVER_WELL_KNOWN_URL or CONDUIT_TOKEN" }));
