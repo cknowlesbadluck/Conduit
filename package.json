@@ -7,10 +7,11 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc",
+    "compile": "tsc",
+    "build": "npm run compile && node --test dist/*.test.js",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --test dist/*.test.js"
+    "test": "npm run compile && node --test dist/*.test.js"
   },
   "dependencies": {
     "@modelcontextprotocol/express": "^2.0.0",
