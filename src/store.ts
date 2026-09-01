@@ -24,60 +24,19 @@ export function isReady() { return ready; }
 
 async function log(type: string, data: Record<string, string>) {
   const event = { id: id("evt"), type, at: now(), ...data };
-  if (pool) {
-    await pool.query("INSERT INTO activity(id,type,at,data) VALUES($1,$2,$3,$4)", [event.id, type, event.at, JSON.stringify(data)]);
-  } else {
-    activity.unshift(event);
-  }
+  if (pool) await pool.query("INSERT INTO activity(id,type,at,data) VALUES($1,$2,$3,$4)", [event.id, type, event.at, JSON.stringify(data)]);
+  else activity.unshift(event);
 }
 
 export async function init() {
   if (pool) {
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS agents (
-        id text PRIMARY KEY,
-        name text NOT NULL,
-        description text,
-        created_at timestamptz NOT NULL DEFAULT now()
-      );
-      CREATE TABLE IF NOT EXISTS tasks (
-        id text PRIMARY KEY,
-        title text NOT NULL,
-        description text NOT NULL,
-        status text NOT NULL CHECK (status IN ('open','claimed','blocked','completed')),
-        created_by text NOT NULL,
-        claimed_by text,
-        created_at timestamptz NOT NULL DEFAULT now(),
-        updated_at timestamptz NOT NULL DEFAULT now()
-      );
-      CREATE TABLE IF NOT EXISTS handoffs (
-        id text PRIMARY KEY,
-        task_id text NOT NULL,
-        from_agent text NOT NULL,
-        to_agent text NOT NULL,
-        note text,
-        created_at timestamptz NOT NULL DEFAULT now()
-      );
-      CREATE TABLE IF NOT EXISTS contacts (
-        id text PRIMARY KEY,
-        name text NOT NULL,
-        value text NOT NULL,
-        kind text NOT NULL,
-        created_at timestamptz NOT NULL DEFAULT now()
-      );
-      CREATE TABLE IF NOT EXISTS tools (
-        id text PRIMARY KEY,
-        name text NOT NULL,
-        description text NOT NULL,
-        endpoint text,
-        created_at timestamptz NOT NULL DEFAULT now()
-      );
-      CREATE TABLE IF NOT EXISTS activity (
-        id text PRIMARY KEY,
-        type text NOT NULL,
-        at timestamptz NOT NULL DEFAULT now(),
-        data jsonb NOT NULL DEFAULT '{}'::jsonb
-      );
+      CREATE TABLE IF NOT EXISTS agents (id text PRIMARY KEY, name text NOT NULL, description text, created_at timestamptz NOT NULL DEFAULT now());
+      CREATE TABLE IF NOT EXISTS tasks (id text PRIMARY KEY, title text NOT NULL, description text NOT NULL, status text NOT NULL CHECK (status IN ('open','claimed','blocked','completed')), created_by text NOT NULL, claimed_by text, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now());
+      CREATE TABLE IF NOT EXISTS handoffs (id text PRIMARY KEY, task_id text NOT NULL, from_agent text NOT NULL, to_agent text NOT NULL, note text, created_at timestamptz NOT NULL DEFAULT now());
+      CREATE TABLE IF NOT EXISTS contacts (id text PRIMARY KEY, name text NOT NULL, value text NOT NULL, kind text NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
+      CREATE TABLE IF NOT EXISTS tools (id text PRIMARY KEY, name text NOT NULL, description text NOT NULL, endpoint text, created_at timestamptz NOT NULL DEFAULT now());
+      CREATE TABLE IF NOT EXISTS activity (id text PRIMARY KEY, type text NOT NULL, at timestamptz NOT NULL DEFAULT now(), data jsonb NOT NULL DEFAULT '{}'::jsonb);
       CREATE INDEX IF NOT EXISTS tasks_status_created_idx ON tasks(status, created_at DESC);
       CREATE INDEX IF NOT EXISTS activity_at_idx ON activity(at DESC);
       CREATE INDEX IF NOT EXISTS handoffs_task_idx ON handoffs(task_id, created_at DESC);
@@ -87,13 +46,9 @@ export async function init() {
 }
 
 export async function registerAgent(input: { id: string; name: string; description?: string }) {
-  const createdAt = now();
-  const agent = { ...input, createdAt };
-  if (pool) {
-    await pool.query("INSERT INTO agents(id,name,description) VALUES($1,$2,$3) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,description=EXCLUDED.description", [input.id, input.name, input.description ?? null]);
-  } else {
-    agents.set(input.id, agent);
-  }
+  const agent = { ...input, createdAt: now() };
+  if (pool) await pool.query("INSERT INTO agents(id,name,description) VALUES($1,$2,$3) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,description=EXCLUDED.description", [input.id, input.name, input.description ?? null]);
+  else agents.set(input.id, agent);
   await log("agent.register", { agentId: input.id });
   return agent;
 }
@@ -113,10 +68,10 @@ export async function createTask(input: { title: string; description?: string; c
 
 export async function listTasks(status?: TaskStatus) {
   if (pool) {
-    const query = status
-      ? ["SELECT id,title,description,status,created_by AS \"createdBy\",claimed_by AS \"claimedBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM tasks WHERE status=$1 ORDER BY created_at DESC", [status] as const]
-      : ["SELECT id,title,description,status,created_by AS \"createdBy\",claimed_by AS \"claimedBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM tasks ORDER BY created_at DESC", [] as const];
-    return (await pool.query(query[0], query[1])).rows;
+    const sql = "SELECT id,title,description,status,created_by AS \"createdBy\",claimed_by AS \"claimedBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM tasks";
+    return status
+      ? (await pool.query(`${sql} WHERE status=$1 ORDER BY created_at DESC`, [status])).rows
+      : (await pool.query(`${sql} ORDER BY created_at DESC`)).rows;
   }
   return [...tasks.values()].filter((t) => !status || t.status === status).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
@@ -130,9 +85,7 @@ export async function claimTask(taskId: string, agentId: string) {
   }
   const t = tasks.get(taskId);
   if (!t || t.status !== "open") return null;
-  t.status = "claimed";
-  t.claimedBy = agentId;
-  t.updatedAt = now();
+  t.status = "claimed"; t.claimedBy = agentId; t.updatedAt = now();
   await log("task.claim", { taskId, agentId });
   return t;
 }
@@ -146,8 +99,7 @@ export async function completeTask(taskId: string, agentId: string) {
   }
   const t = tasks.get(taskId);
   if (!t || t.status !== "claimed" || t.claimedBy !== agentId) return null;
-  t.status = "completed";
-  t.updatedAt = now();
+  t.status = "completed"; t.updatedAt = now();
   await log("task.complete", { taskId, agentId });
   return t;
 }
@@ -159,61 +111,37 @@ export async function handoff(taskId: string, fromAgent: string, toAgent: string
     try {
       await client.query("BEGIN");
       const task = (await client.query("SELECT id,title,description,status,created_by AS \"createdBy\",claimed_by AS \"claimedBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM tasks WHERE id=$1 FOR UPDATE", [taskId])).rows[0] as Task | undefined;
-      if (!task || task.status !== "claimed" || task.claimedBy !== fromAgent) {
-        await client.query("ROLLBACK");
-        return null;
-      }
-      const target = (await client.query("SELECT id FROM agents WHERE id=$1", [toAgent])).rows[0];
-      if (!target) {
-        await client.query("ROLLBACK");
-        return null;
-      }
+      if (!task || task.status !== "claimed" || task.claimedBy !== fromAgent) { await client.query("ROLLBACK"); return null; }
+      if (!(await client.query("SELECT id FROM agents WHERE id=$1", [toAgent])).rows[0]) { await client.query("ROLLBACK"); return null; }
       const updated = (await client.query("UPDATE tasks SET claimed_by=$2,updated_at=now() WHERE id=$1 RETURNING id,title,description,status,created_by AS \"createdBy\",claimed_by AS \"claimedBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\"", [taskId, toAgent])).rows[0] as Task;
       await client.query("INSERT INTO handoffs(id,task_id,from_agent,to_agent,note) VALUES($1,$2,$3,$4,$5)", [id("handoff"), taskId, fromAgent, toAgent, note ?? null]);
       await client.query("COMMIT");
       await log("task.handoff", { taskId, agentId: fromAgent, toAgent, note: note ?? "" });
       return { ...updated, handoffNote: note ?? "" };
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-    } finally {
-      client.release();
-    }
+    } catch (error) { await client.query("ROLLBACK"); throw error; }
+    finally { client.release(); }
   }
   const t = tasks.get(taskId);
   if (!t || t.status !== "claimed" || t.claimedBy !== fromAgent || !agents.has(toAgent)) return null;
-  t.claimedBy = toAgent;
-  t.updatedAt = now();
+  t.claimedBy = toAgent; t.updatedAt = now();
   await log("task.handoff", { taskId, agentId: fromAgent, toAgent, note: note ?? "" });
   return { ...t, handoffNote: note ?? "" };
 }
 
 export async function addContact(name: string, value: string, kind: string) {
   const c = { id: id("contact"), name, value, kind, createdAt: now() };
-  if (pool) await pool.query("INSERT INTO contacts(id,name,value,kind) VALUES($1,$2,$3,$4)", [c.id, name, value, kind]);
-  else contacts.unshift(c);
+  if (pool) await pool.query("INSERT INTO contacts(id,name,value,kind) VALUES($1,$2,$3,$4)", [c.id, name, value, kind]); else contacts.unshift(c);
   await log("contact.add", { contactId: c.id });
   return c;
 }
-
-export async function listContacts() {
-  if (pool) return (await pool.query("SELECT id,name,value,kind,created_at AS \"createdAt\" FROM contacts ORDER BY created_at DESC")).rows;
-  return contacts;
-}
-
+export async function listContacts() { if (pool) return (await pool.query("SELECT id,name,value,kind,created_at AS \"createdAt\" FROM contacts ORDER BY created_at DESC")).rows; return contacts; }
 export async function registerTool(name: string, description: string, endpoint?: string) {
   const t = { id: id("tool"), name, description, endpoint: endpoint ?? "", createdAt: now() };
-  if (pool) await pool.query("INSERT INTO tools(id,name,description,endpoint) VALUES($1,$2,$3,$4)", [t.id, name, description, endpoint ?? null]);
-  else tools.unshift(t);
+  if (pool) await pool.query("INSERT INTO tools(id,name,description,endpoint) VALUES($1,$2,$3,$4)", [t.id, name, description, endpoint ?? null]); else tools.unshift(t);
   await log("tool.register", { toolId: t.id });
   return t;
 }
-
-export async function listTools() {
-  if (pool) return (await pool.query("SELECT id,name,description,endpoint,created_at AS \"createdAt\" FROM tools ORDER BY created_at DESC")).rows;
-  return tools;
-}
-
+export async function listTools() { if (pool) return (await pool.query("SELECT id,name,description,endpoint,created_at AS \"createdAt\" FROM tools ORDER BY created_at DESC")).rows; return tools; }
 export async function listActivity(limit = 50) {
   const safeLimit = Math.max(1, Math.min(limit, 200));
   if (pool) {
