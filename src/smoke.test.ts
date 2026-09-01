@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createTask, claimTask, completeTask, handoff } from './store.js';
+import { registerAgent, createTask, claimTask, completeTask, handoff } from './store.js';
 
 test('task lifecycle enforces completion ownership', async () => {
   const t = await createTask({ title: 'smoke', createdBy: 'agent-a' });
@@ -13,6 +13,8 @@ test('task lifecycle enforces completion ownership', async () => {
 });
 
 test('task handoff requires the current claimant', async () => {
+  await registerAgent({ id: 'agent-b', name: 'Agent B' });
+  await registerAgent({ id: 'agent-d', name: 'Agent D' });
   const t = await createTask({ title: 'handoff', createdBy: 'agent-a' });
   const claimed = await claimTask(t.id, 'agent-b');
   assert.ok(claimed);
