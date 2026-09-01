@@ -32,8 +32,8 @@ export async function init() {
   if (pool) {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS agents (id text PRIMARY KEY, name text NOT NULL, description text, created_at timestamptz NOT NULL DEFAULT now());
-      CREATE TABLE IF NOT EXISTS tasks (id text PRIMARY KEY, title text NOT NULL, description text NOT NULL, status text NOT NULL CHECK (status IN ('open','claimed','blocked','completed')), created_by text NOT NULL, claimed_by text, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now());
-      CREATE TABLE IF NOT EXISTS handoffs (id text PRIMARY KEY, task_id text NOT NULL, from_agent text NOT NULL, to_agent text NOT NULL, note text, created_at timestamptz NOT NULL DEFAULT now());
+      CREATE TABLE IF NOT EXISTS tasks (id text PRIMARY KEY, title text NOT NULL, description text NOT NULL, status text NOT NULL CHECK (status IN ('open','claimed','blocked','completed')), created_by text NOT NULL REFERENCES agents(id), claimed_by text REFERENCES agents(id), created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now());
+      CREATE TABLE IF NOT EXISTS handoffs (id text PRIMARY KEY, task_id text NOT NULL REFERENCES tasks(id), from_agent text NOT NULL REFERENCES agents(id), to_agent text NOT NULL REFERENCES agents(id), note text, created_at timestamptz NOT NULL DEFAULT now());
       CREATE TABLE IF NOT EXISTS contacts (id text PRIMARY KEY, name text NOT NULL, value text NOT NULL, kind text NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
       CREATE TABLE IF NOT EXISTS tools (id text PRIMARY KEY, name text NOT NULL, description text NOT NULL, endpoint text, created_at timestamptz NOT NULL DEFAULT now());
       CREATE TABLE IF NOT EXISTS activity (id text PRIMARY KEY, type text NOT NULL, at timestamptz NOT NULL DEFAULT now(), data jsonb NOT NULL DEFAULT '{}'::jsonb);
@@ -58,7 +58,13 @@ export async function listAgents() {
   return [...agents.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+async function agentExists(agentId: string) {
+  if (pool) return Boolean((await pool.query("SELECT 1 FROM agents WHERE id=$1", [agentId])).rowCount);
+  return agents.has(agentId);
+}
+
 export async function createTask(input: { title: string; description?: string; createdBy: string }) {
+  if (!(await agentExists(input.createdBy))) return null;
   const t: Task = { id: id("task"), title: input.title, description: input.description ?? "", status: "open", createdBy: input.createdBy, createdAt: now(), updatedAt: now() };
   if (pool) await pool.query("INSERT INTO tasks(id,title,description,status,created_by) VALUES($1,$2,$3,$4,$5)", [t.id, t.title, t.description, t.status, t.createdBy]);
   else tasks.set(t.id, t);
@@ -77,6 +83,7 @@ export async function listTasks(status?: TaskStatus) {
 }
 
 export async function claimTask(taskId: string, agentId: string) {
+  if (!(await agentExists(agentId))) return null;
   if (pool) {
     const r = await pool.query("UPDATE tasks SET status='claimed',claimed_by=$2,updated_at=now() WHERE id=$1 AND status='open' RETURNING id,title,description,status,created_by AS \"createdBy\",claimed_by AS \"claimedBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\"", [taskId, agentId]);
     if (!r.rowCount) return null;
@@ -106,13 +113,13 @@ export async function completeTask(taskId: string, agentId: string) {
 
 export async function handoff(taskId: string, fromAgent: string, toAgent: string, note?: string) {
   if (fromAgent === toAgent) return null;
+  if (!(await agentExists(fromAgent)) || !(await agentExists(toAgent))) return null;
   if (pool) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
       const task = (await client.query("SELECT id,title,description,status,created_by AS \"createdBy\",claimed_by AS \"claimedBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM tasks WHERE id=$1 FOR UPDATE", [taskId])).rows[0] as Task | undefined;
       if (!task || task.status !== "claimed" || task.claimedBy !== fromAgent) { await client.query("ROLLBACK"); return null; }
-      if (!(await client.query("SELECT id FROM agents WHERE id=$1", [toAgent])).rows[0]) { await client.query("ROLLBACK"); return null; }
       const updated = (await client.query("UPDATE tasks SET claimed_by=$2,updated_at=now() WHERE id=$1 RETURNING id,title,description,status,created_by AS \"createdBy\",claimed_by AS \"claimedBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\"", [taskId, toAgent])).rows[0] as Task;
       await client.query("INSERT INTO handoffs(id,task_id,from_agent,to_agent,note) VALUES($1,$2,$3,$4,$5)", [id("handoff"), taskId, fromAgent, toAgent, note ?? null]);
       await client.query("COMMIT");
@@ -122,7 +129,7 @@ export async function handoff(taskId: string, fromAgent: string, toAgent: string
     finally { client.release(); }
   }
   const t = tasks.get(taskId);
-  if (!t || t.status !== "claimed" || t.claimedBy !== fromAgent || !agents.has(toAgent)) return null;
+  if (!t || t.status !== "claimed" || t.claimedBy !== fromAgent) return null;
   t.claimedBy = toAgent; t.updatedAt = now();
   await log("task.handoff", { taskId, agentId: fromAgent, toAgent, note: note ?? "" });
   return { ...t, handoffNote: note ?? "" };
