@@ -12,7 +12,8 @@ const tasks = new Map<string, Task>();
 const contacts: Array<Record<string, string>> = [];
 const tools: Array<Record<string, string>> = [];
 const activity: ActivityEvent[] = [];
-const pool = process.env.DATABASE_URL
+const useDatabase = Boolean(process.env.DATABASE_URL) && process.env.CONDUIT_TEST_MEMORY !== "true";
+const pool = useDatabase
   ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_SSL === "false" ? false : { rejectUnauthorized: false }, max: 5 })
   : null;
 
