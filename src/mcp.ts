@@ -13,6 +13,7 @@ import {
   registerTool,
   listTools,
   listActivity,
+  getCoordinationContext,
 } from "./store.js";
 import { requireScope, type ConduitAuthConfig } from "./auth.js";
 
@@ -23,6 +24,32 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
   const server = new McpServer({ name: "Conduit", version: "0.2.0", description: "Agent coordination and integration bridge" });
   const readScope = authConfig?.readScope;
   const writeScope = authConfig?.writeScope;
+
+  server.registerTool("agent_identity", {
+    description: "Return the authenticated agent identity and granted Conduit scopes",
+    inputSchema: z.object({}),
+    annotations: { readOnlyHint: true },
+  }, async (_input, extra) => {
+    if (readScope) auth(extra, readScope);
+    const info = extra.http?.authInfo;
+    return json({
+      clientId: info?.clientId ?? "unknown",
+      scopes: info?.scopes ?? [],
+      subject: typeof info?.extra?.sub === "string" ? info.extra.sub : undefined,
+      name: typeof info?.extra?.name === "string" ? info.extra.name : undefined,
+      email: typeof info?.extra?.email === "string" ? info.extra.email : undefined,
+      expiresAt: info?.expiresAt,
+    });
+  });
+
+  server.registerTool("conduit_context", {
+    description: "Return a unified snapshot of agents, tasks, shared resources, tools, and recent activity",
+    inputSchema: z.object({}),
+    annotations: { readOnlyHint: true },
+  }, async (_input, extra) => {
+    if (readScope) auth(extra, readScope);
+    return json(await getCoordinationContext());
+  });
 
   server.registerTool("agent_register", {
     description: "Register an agent with Conduit",
