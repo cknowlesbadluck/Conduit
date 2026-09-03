@@ -46,12 +46,12 @@ jobs:
       - name: Verify MCP requires OAuth
         run: |
           set -euo pipefail
-          status=$(curl --silent --show-error --max-time 30 -o /tmp/mcp.json -w '%{http_code}' \
+          status=$(curl --silent --show-error --max-time 30 -D /tmp/mcp.headers -o /tmp/mcp.json -w '%{http_code}' \
             -X POST "$CONDUIT_URL/mcp" \
             -H 'content-type: application/json' \
             --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"live-smoke","version":"1.0.0"}}}')
           test "$status" = "401"
-          grep -qi 'Bearer' /tmp/mcp.json
+          grep -qi '^www-authenticate:.*Bearer' /tmp/mcp.headers
 
       - name: Verify Descope discovery
         run: |
@@ -69,9 +69,10 @@ jobs:
       - name: Verify service advertises OAuth on unauthorized MCP response
         run: |
           set -euo pipefail
-          headers=$(curl --silent --show-error --max-time 30 -D - -o /dev/null \
+          status=$(curl --silent --show-error --max-time 30 -D /tmp/mcp.headers -o /dev/null -w '%{http_code}' \
             -X POST "$CONDUIT_URL/mcp" \
             -H 'content-type: application/json' \
             --data '{"jsonrpc":"2.0","id":2,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"live-smoke","version":"1.0.0"}}}')
-          printf '%s\n' "$headers"
-          printf '%s\n' "$headers" | grep -qi 'www-authenticate:.*resource_metadata'
+          test "$status" = "401"
+          cat /tmp/mcp.headers
+          grep -qi '^www-authenticate:.*resource_metadata' /tmp/mcp.headers
