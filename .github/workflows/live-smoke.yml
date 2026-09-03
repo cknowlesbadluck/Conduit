@@ -1,0 +1,77 @@
+name: Live Smoke
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  live-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CONDUIT_URL: https://conduit-feco.onrender.com
+      MCP_RESOURCE: https://conduit-feco.onrender.com/mcp
+      DESCOPE_DISCOVERY: https://api.descope.com/v1/apps/agentic/P3HwLMKYYNbXzGbsRNPW9QRkXk27/RS3IpZREHtS4SMnlE9n9yeCROaBZ0/.well-known/openid-configuration
+    steps:
+      - name: Verify service health
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 30 "$CONDUIT_URL/health" | tee /tmp/health.json
+          grep -q '"status":"ok"' /tmp/health.json
+
+      - name: Verify readiness
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 30 "$CONDUIT_URL/ready" | tee /tmp/ready.json
+          grep -q '"status":"ready"' /tmp/ready.json
+
+      - name: Verify protected-resource metadata
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 30 \
+            "$CONDUIT_URL/.well-known/oauth-protected-resource" | tee /tmp/resource.json
+          python - <<'PY'
+          import json
+          with open('/tmp/resource.json', encoding='utf-8') as f:
+              data = json.load(f)
+          assert data['resource'] == 'https://conduit-feco.onrender.com/mcp', data
+          assert data['authorization_servers'], data
+          scopes = data.get('scopes_supported', [])
+          assert 'mcp:conduit.read' in scopes, data
+          assert 'mcp:conduit.write' in scopes, data
+          print('Protected-resource metadata:', json.dumps(data, indent=2))
+          PY
+
+      - name: Verify MCP requires OAuth
+        run: |
+          set -euo pipefail
+          status=$(curl --silent --show-error --max-time 30 -o /tmp/mcp.json -w '%{http_code}' \
+            -X POST "$CONDUIT_URL/mcp" \
+            -H 'content-type: application/json' \
+            --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"live-smoke","version":"1.0.0"}}}')
+          test "$status" = "401"
+          grep -qi 'Bearer' /tmp/mcp.json
+
+      - name: Verify Descope discovery
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 30 "$DESCOPE_DISCOVERY" | tee /tmp/descope.json
+          python - <<'PY'
+          import json
+          with open('/tmp/descope.json', encoding='utf-8') as f:
+              data = json.load(f)
+          for key in ('issuer', 'jwks_uri', 'authorization_endpoint', 'token_endpoint'):
+              assert data.get(key), (key, data)
+          print('Descope issuer:', data['issuer'])
+          PY
+
+      - name: Verify service advertises OAuth on unauthorized MCP response
+        run: |
+          set -euo pipefail
+          headers=$(curl --silent --show-error --max-time 30 -D - -o /dev/null \
+            -X POST "$CONDUIT_URL/mcp" \
+            -H 'content-type: application/json' \
+            --data '{"jsonrpc":"2.0","id":2,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"live-smoke","version":"1.0.0"}}}')
+          printf '%s\n' "$headers"
+          printf '%s\n' "$headers" | grep -qi 'www-authenticate:.*resource_metadata'
