@@ -9,7 +9,7 @@ import {
 import { toNodeHandler } from "@modelcontextprotocol/node";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { init, isReady } from "./store.js";
-import { createTokenVerifier, loadAuthConfig } from "./auth.js";
+import { buildProtectedResourceMetadata, createTokenVerifier, loadAuthConfig } from "./auth.js";
 import { createConduitServer } from "./mcp.js";
 
 const app = express();
@@ -37,6 +37,14 @@ async function boot() {
 
   if (authConfig) {
     const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(new URL(authConfig.resourceUrl)).toString();
+
+    // Serve the RFC 9728 root metadata location explicitly. The MCP SDK router
+    // also handles path-aware metadata locations, but clients commonly probe the
+    // root well-known endpoint first when the protected resource is /mcp.
+    app.get("/.well-known/oauth-protected-resource", (_req, res) => {
+      res.type("application/json").json(buildProtectedResourceMetadata(authConfig));
+    });
+
     app.use(mcpAuthMetadataRouter({
       oauthMetadata: authConfig.metadata,
       resourceServerUrl: new URL(authConfig.resourceUrl),
