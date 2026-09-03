@@ -158,3 +158,22 @@ export async function listActivity(limit = 50) {
   }
   return activity.slice(0, safeLimit);
 }
+
+export async function getCoordinationContext() {
+  const [agentList, taskList, contactList, toolList, activityList] = await Promise.all([
+    listAgents(),
+    listTasks(),
+    listContacts(),
+    listTools(),
+    listActivity(50),
+  ]);
+  return {
+    service: "Conduit",
+    generatedAt: now(),
+    agents: agentList,
+    tasks: taskList,
+    contacts: contactList,
+    tools: toolList,
+    activity: activityList,
+  };
+}
