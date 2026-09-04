@@ -1,14 +1,23 @@
 # Conduit
 
-Standalone remote MCP coordination bridge for agents and development tooling.
+Standalone remote MCP coordination bridge for the agents, tools, connectors, skills, and development resources used to build Resonance.
+
+## Current mission
+
+For now, Conduit exists **only to help develop Resonance**.
+
+Resonance remains the primary product. Conduit is a separate development bridge and is not part of the Resonance application, its native iOS client, or its administrative web layer.
 
 Conduit provides a shared coordination plane for:
 
+- canonical Resonance development context
 - agent registration and discovery
 - task creation, claiming, completion, and ownership-safe handoffs
 - shared contacts/resources
 - shared tool and MCP endpoint discovery
 - activity/audit history
+
+The `development_context` MCP tool is the canonical machine-readable statement of this boundary and current mission. `conduit_context` includes that development context alongside live coordination state.
 
 ## Runtime
 
@@ -66,4 +75,4 @@ GitHub Actions runs typecheck, tests, and build. Render deployments should only 
 
 ## Project boundary
 
-Conduit is independent of Resonance. Changes in this repository are not changes to Resonance.
+Conduit is independent of Resonance, while being purpose-built to support Resonance development for now. Changes in this repository are not changes to Resonance.
