@@ -27,7 +27,7 @@ app.use(originValidation([...allowedHostnames]));
 const port = Number(process.env.PORT || 3000);
 const allowAnonymous = process.env.CONDUIT_ALLOW_ANONYMOUS === "true" && process.env.NODE_ENV !== "production";
 
-app.get("/", (_req, res) => res.json({ service: "Conduit", version: "0.2.0", status: "online", mcp: "/mcp", health: "/health", ready: "/ready" }));
+app.get("/", (_req, res) => res.json({ service: "Conduit", version: "0.4.0", status: "online", mcp: "/mcp", health: "/health", ready: "/ready" }));
 app.get("/health", (_req, res) => res.json({ status: "ok", service: "conduit" }));
 app.get("/ready", (_req, res) => res.status(isReady() ? 200 : 503).json({ status: isReady() ? "ready" : "initializing", service: "conduit" }));
 
