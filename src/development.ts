@@ -1,37 +1,29 @@
 export type DevelopmentContext = {
   purpose: string;
   status: "active";
-  primaryProject: {
-    name: string;
-    repository: string;
-    role: string;
-  };
-  conduitBoundary: string;
-  currentObjectives: string[];
+  scope: string;
+  capabilities: string[];
   constraints: string[];
 };
 
 export function getDevelopmentContext(): DevelopmentContext {
   return {
-    purpose: "Help coordinate the agents, tools, connectors, skills, and development resources used to build Resonance.",
+    purpose: "Coordinate AI agents, tools, connectors, skills, MCP servers, development resources, and shared context so they can work together on software projects.",
     status: "active",
-    primaryProject: {
-      name: "Resonance",
-      repository: "cknowlesbadluck/Resonance",
-      role: "Primary product being developed; Conduit is a separate development bridge and is not part of the Resonance application.",
-    },
-    conduitBoundary: "Conduit is a separate development bridge whose current purpose is to support Resonance development. Do not treat Conduit as a Resonance runtime component, feature, or replacement for Resonance's native iOS app or administrative web layer.",
-    currentObjectives: [
+    scope: "Project-agnostic development coordination. Any project may use Conduit; no individual project defines Conduit's identity or architecture.",
+    capabilities: [
       "Provide shared development context to participating agents.",
-      "Coordinate work through registered agents and tasks.",
-      "Expose shared development resources and MCP endpoints.",
+      "Register and discover agents.",
+      "Create, claim, complete, and hand off work with ownership controls.",
+      "Register and discover shared contacts, resources, tools, and MCP endpoints.",
       "Maintain an auditable activity trail for coordinated work.",
-      "Keep development coordination independent from the Resonance codebase.",
+      "Expose a single authenticated MCP endpoint for participating agents.",
     ],
     constraints: [
       "Prefer free or already-connected development resources.",
       "Do not require a Mac or local developer machine for coordination workflows.",
-      "Do not silently modify Resonance from Conduit; agents must operate through their authorized development tools.",
+      "Conduit coordinates work; it does not become part of the application being developed.",
+      "Project-specific context belongs in project/resource records, not in Conduit's core identity.",
     ],
   };
 }
