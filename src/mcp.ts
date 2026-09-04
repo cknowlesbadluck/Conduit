@@ -22,17 +22,17 @@ const json = (value: unknown) => ({ content: [{ type: "text" as const, text: JSO
 const auth = (extra: { http?: { authInfo?: AuthInfo } }, scope: string) => requireScope(extra.http?.authInfo, scope);
 
 export function createConduitServer(authConfig?: ConduitAuthConfig) {
-  const server = new McpServer({ name: "Conduit", version: "0.3.0", description: "Resonance development coordination bridge" });
+  const server = new McpServer({ name: "Conduit", version: "0.4.0", description: "Project-agnostic agent coordination and integration bridge" });
   const readScope = authConfig?.readScope;
   const writeScope = authConfig?.writeScope;
 
-  server.registerTool("development_context", {
-    description: "Return the canonical purpose, boundary, objectives, and constraints for Conduit while it supports Resonance development",
+  server.registerTool("conduit_context", {
+    description: "Return the canonical Conduit purpose and a live snapshot of coordinated development state",
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true },
   }, async (_input, extra) => {
     if (readScope) auth(extra, readScope);
-    return json(getDevelopmentContext());
+    return json({ conduit: getDevelopmentContext(), coordination: await getCoordinationContext() });
   });
 
   server.registerTool("agent_identity", {
@@ -52,13 +52,13 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
     });
   });
 
-  server.registerTool("conduit_context", {
-    description: "Return a unified snapshot of Resonance development coordination state",
+  server.registerTool("development_context", {
+    description: "Return the canonical, project-agnostic purpose, scope, capabilities, and constraints of Conduit",
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true },
   }, async (_input, extra) => {
     if (readScope) auth(extra, readScope);
-    return json({ development: getDevelopmentContext(), coordination: await getCoordinationContext() });
+    return json(getDevelopmentContext());
   });
 
   server.registerTool("agent_register", {
