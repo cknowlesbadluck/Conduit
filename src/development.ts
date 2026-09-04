@@ -20,7 +20,7 @@ export function getDevelopmentContext(): DevelopmentContext {
       repository: "cknowlesbadluck/Resonance",
       role: "Primary product being developed; Conduit is a separate development bridge and is not part of the Resonance application.",
     },
-    conduitBoundary: "Conduit exists to support Resonance development for now. Do not treat Conduit as a Resonance runtime component, feature, or replacement for Resonance's native iOS app or administrative web layer.",
+    conduitBoundary: "Conduit is a separate development bridge whose current purpose is to support Resonance development. Do not treat Conduit as a Resonance runtime component, feature, or replacement for Resonance's native iOS app or administrative web layer.",
     currentObjectives: [
       "Provide shared development context to participating agents.",
       "Coordinate work through registered agents and tasks.",
