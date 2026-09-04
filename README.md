@@ -1,29 +1,31 @@
 # Conduit
 
-Standalone remote MCP coordination bridge for the agents, tools, connectors, skills, and development resources used to build Resonance.
+Standalone remote MCP coordination and integration bridge for AI agents, tools, connectors, skills, MCP servers, shared context, and development resources.
 
-## Current mission
+## Purpose
 
-For now, Conduit exists **only to help develop Resonance**.
+Conduit is a **project-agnostic development coordination layer**. It connects participating agents and development resources through one authenticated MCP endpoint and provides shared context, work coordination, resource discovery, and an auditable activity trail.
 
-Resonance remains the primary product. Conduit is a separate development bridge and is not part of the Resonance application, its native iOS client, or its administrative web layer.
+Resonance was the initial project Conduit was created to help develop. It does not define Conduit and is not a runtime component of Conduit.
 
-Conduit provides a shared coordination plane for:
+## Capabilities
 
-- canonical Resonance development context
+- authenticated MCP access
 - agent registration and discovery
-- task creation, claiming, completion, and ownership-safe handoffs
-- shared contacts/resources
+- task creation, atomic claiming, completion, and ownership-safe handoffs
+- shared contacts and resource references
 - shared tool and MCP endpoint discovery
+- unified coordination context
 - activity/audit history
-
-The `development_context` MCP tool is the canonical machine-readable statement of this boundary and current mission. `conduit_context` includes that development context alongside live coordination state.
+- health and readiness endpoints
+- PostgreSQL persistence when `DATABASE_URL` is configured
+- in-memory development mode when no database is configured
 
 ## Runtime
 
 - Node.js 20+
 - TypeScript
-- MCP TypeScript SDK v2 (`2026-07-28` protocol)
+- MCP TypeScript SDK v2
 - Express
 - PostgreSQL when `DATABASE_URL` is configured
 - Render-compatible HTTP deployment
@@ -45,9 +47,7 @@ CONDUIT_READ_SCOPE=mcp:conduit.read
 CONDUIT_WRITE_SCOPE=mcp:conduit.write
 ```
 
-The Descope MCP Server should expose the two Conduit scopes. The server validates the JWT signature using the discovered JWKS, verifies issuer, audience, algorithm, subject, and expiry, and enforces scopes before tool execution.
-
-Conduit exposes OAuth Protected Resource Metadata at the MCP well-known endpoint and advertises the Descope authorization server through `WWW-Authenticate` challenges.
+The server validates JWT signatures using discovered JWKS, verifies issuer, audience, algorithm, subject, and expiry, and enforces scopes before tool execution.
 
 For controlled development, `CONDUIT_TOKEN` enables a static bearer token. Anonymous MCP access is disabled by default and is only available when explicitly enabled outside production.
 
@@ -67,12 +67,10 @@ npm run build
 npm start
 ```
 
-`npm test` builds TypeScript first and then runs the compiled Node test suite.
-
 ## Verification
 
-GitHub Actions runs typecheck, tests, and build. Render deployments should only be promoted after those checks pass and the live `/health`, `/ready`, OAuth metadata, authentication challenge, MCP handshake, and end-to-end task lifecycle have been verified.
+GitHub Actions runs typecheck, tests, and build. Production verification covers `/health`, `/ready`, OAuth metadata, authentication challenges, MCP connectivity, and the task lifecycle.
 
-## Project boundary
+## Boundary
 
-Conduit is independent of Resonance, while being purpose-built to support Resonance development for now. Changes in this repository are not changes to Resonance.
+Conduit coordinates agents and resources; it does not become part of the application being developed. Project-specific information belongs in shared resource/context records rather than Conduit's core identity.
