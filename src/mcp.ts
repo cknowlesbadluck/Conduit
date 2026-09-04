@@ -15,15 +15,25 @@ import {
   listActivity,
   getCoordinationContext,
 } from "./store.js";
+import { getDevelopmentContext } from "./development.js";
 import { requireScope, type ConduitAuthConfig } from "./auth.js";
 
 const json = (value: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(value) }] });
 const auth = (extra: { http?: { authInfo?: AuthInfo } }, scope: string) => requireScope(extra.http?.authInfo, scope);
 
 export function createConduitServer(authConfig?: ConduitAuthConfig) {
-  const server = new McpServer({ name: "Conduit", version: "0.2.0", description: "Agent coordination and integration bridge" });
+  const server = new McpServer({ name: "Conduit", version: "0.3.0", description: "Resonance development coordination bridge" });
   const readScope = authConfig?.readScope;
   const writeScope = authConfig?.writeScope;
+
+  server.registerTool("development_context", {
+    description: "Return the canonical purpose, boundary, objectives, and constraints for Conduit while it supports Resonance development",
+    inputSchema: z.object({}),
+    annotations: { readOnlyHint: true },
+  }, async (_input, extra) => {
+    if (readScope) auth(extra, readScope);
+    return json(getDevelopmentContext());
+  });
 
   server.registerTool("agent_identity", {
     description: "Return the authenticated agent identity and granted Conduit scopes",
@@ -43,12 +53,12 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
   });
 
   server.registerTool("conduit_context", {
-    description: "Return a unified snapshot of agents, tasks, shared resources, tools, and recent activity",
+    description: "Return a unified snapshot of Resonance development coordination state",
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true },
   }, async (_input, extra) => {
     if (readScope) auth(extra, readScope);
-    return json(await getCoordinationContext());
+    return json({ development: getDevelopmentContext(), coordination: await getCoordinationContext() });
   });
 
   server.registerTool("agent_register", {
