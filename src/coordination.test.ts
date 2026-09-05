@@ -1,28 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  registerAgent,
-  getBoundAgentId,
-  createProject,
-  listProjects,
-  registerResource,
-  listResources,
-  createTask,
-  listTasks,
-  addContact,
-  listContacts,
-  registerTool,
-  listTools,
-  listActivity,
-  getCoordinationContext,
-} from "./store.js";
+import { registerAgent, getBoundAgentId, createProject, listProjects, registerResource, listResources, createTask, listTasks, addContact, listContacts, registerTool, listTools, listActivity, getCoordinationContext } from "./store.js";
 
 test("projects and resources are isolated by project", async () => {
   await registerAgent({ id: "coord-a", name: "Coordinator A", actorSubject: "subject-a" });
   const projectA = await createProject({ name: "Project A", createdBy: "coord-a" });
   const projectB = await createProject({ name: "Project B", createdBy: "coord-a" });
   assert.ok(projectA && projectB);
-
   await registerResource({ projectId: projectA!.id, name: "Repo A", description: "A repository", kind: "repository", endpoint: "https://github.com/example/a", createdBy: "coord-a" });
   await registerResource({ projectId: projectB!.id, name: "Repo B", description: "B repository", kind: "repository", endpoint: "https://github.com/example/b", createdBy: "coord-a" });
   const resourcesA = await listResources(projectA!.id);
@@ -41,19 +25,18 @@ test("project-scoped records filter consistently", async () => {
   await addContact("Contact B", "b@example.test", "email", projectB.id, "coord-a");
   await registerTool("Tool A", "A tool", "https://example.test/a", projectA.id, "coord-a");
   await registerTool("Tool B", "B tool", "https://example.test/b", projectB.id, "coord-a");
-
   assert.deepEqual((await listTasks(undefined, projectA.id)).map(t => t.title), ["Task A"]);
   assert.deepEqual((await listContacts(projectB.id)).map(c => c.name), ["Contact B"]);
   assert.deepEqual((await listTools(projectA.id)).map(t => t.name), ["Tool A"]);
   assert.ok((await listActivity(50, projectA.id)).every(e => e.projectId === projectA.id));
-
   const context = await getCoordinationContext(projectA.id);
   assert.ok(context);
-  assert.equal(context!.project.id, projectA.id);
-  assert.ok(context!.tasks.every(t => t.projectId === projectA.id));
-  assert.ok(context!.resources.every(r => r.projectId === projectA.id));
-  assert.ok(context!.contacts.every(c => c.projectId === projectA.id));
-  assert.ok(context!.tools.every(t => t.projectId === projectA.id));
+  const scoped = context!;
+  assert.equal(scoped.project!.id, projectA.id);
+  assert.ok(scoped.tasks.every(t => t.projectId === projectA.id));
+  assert.ok(scoped.resources.every(r => r.projectId === projectA.id));
+  assert.ok(scoped.contacts.every(c => c.projectId === projectA.id));
+  assert.ok(scoped.tools.every(t => t.projectId === projectA.id));
 });
 
 test("authenticated actor binding prevents identity switching", async () => {
