@@ -52,3 +52,5 @@ async function boot() {
 }
 
 boot().catch((error) => { console.error("Conduit startup failed", error); process.exit(1); });
+
+export default app;
