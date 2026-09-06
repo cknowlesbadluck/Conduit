@@ -6,6 +6,7 @@ import {
   listActivity, getCoordinationContext,
 } from "./store.js";
 import { getDevelopmentContext } from "./development.js";
+import { callIntegration, integrationMethods, integrationProviders, listIntegrations } from "./integrations.js";
 import { requireScope, type ConduitAuthConfig } from "./auth.js";
 
 const json = (value: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(value) }] });
@@ -29,7 +30,7 @@ const requireBoundAgent = async (extra: { http?: { authInfo?: AuthInfo } }, requ
 const rejected = (error: string) => ({ ...json({ error }), isError: true });
 
 export function createConduitServer(authConfig?: ConduitAuthConfig) {
-  const server = new McpServer({ name: "Conduit", version: "0.5.0", description: "Project-agnostic agent coordination and integration bridge" });
+  const server = new McpServer({ name: "Conduit", version: "0.6.0", description: "Project-agnostic agent coordination and integration bridge" });
   const readScope = authConfig?.readScope;
   const writeScope = authConfig?.writeScope;
 
@@ -73,6 +74,15 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
   });
 
   server.registerTool("resources_list", { description: "List shared development resources", inputSchema: z.object({ projectId: z.string().min(1).optional() }) }, async ({ projectId }, extra) => { if (readScope) auth(extra, readScope); return json(await listResources(projectId)); });
+
+  server.registerTool("integrations_list", { description: "List supported runtime integrations and whether their server-side credentials are configured", inputSchema: z.object({}), annotations: { readOnlyHint: true } }, async (_input, extra) => { if (readScope) auth(extra, readScope); return json(listIntegrations()); });
+
+  server.registerTool("integration_call", { description: "Call a configured GitHub, Render, or Supabase API through its authenticated Conduit adapter. GET/HEAD require read scope; mutations require write scope.", inputSchema: z.object({ provider: z.enum(integrationProviders), method: z.enum(integrationMethods), path: z.string().min(1).max(2000), body: z.unknown().optional() }), annotations: { destructiveHint: true, readOnlyHint: false } }, async ({ provider, method, path, body }, extra) => {
+    const isRead = method === "GET" || method === "HEAD";
+    if (isRead) { if (readScope) auth(extra, readScope); } else { if (writeScope) auth(extra, writeScope); }
+    try { return json(await callIntegration({ provider, method, path, body })); }
+    catch (error) { const message = error instanceof Error ? error.message : "integration_call_failed"; return rejected(message); }
+  });
 
   server.registerTool("task_create", { description: "Create a coordination task", inputSchema: z.object({ title: z.string().min(1).max(500), description: z.string().max(5000).optional(), createdBy: z.string().min(1).max(200).optional(), projectId: z.string().min(1).max(200).optional() }), annotations: { destructiveHint: false, readOnlyHint: false } }, async (input, extra) => {
     if (writeScope) auth(extra, writeScope); const actor = await requireBoundAgent(extra, input.createdBy); if (!actor) return rejected("agent_identity_not_bound");
