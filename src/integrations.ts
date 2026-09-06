@@ -22,30 +22,9 @@ export type IntegrationResult = {
 };
 
 const definitions: Record<IntegrationProvider, Omit<IntegrationDefinition, "configured">> = {
-  github: {
-    provider: "github",
-    description: "GitHub REST API through a Conduit-managed bearer credential.",
-    baseUrl: "https://api.github.com",
-    credentialEnv: "GITHUB_TOKEN",
-    readMethods: ["GET", "HEAD"],
-    writeMethods: ["POST", "PUT", "PATCH", "DELETE"],
-  },
-  render: {
-    provider: "render",
-    description: "Render API through a Conduit-managed API key.",
-    baseUrl: "https://api.render.com",
-    credentialEnv: "RENDER_API_KEY",
-    readMethods: ["GET", "HEAD"],
-    writeMethods: ["POST", "PUT", "PATCH", "DELETE"],
-  },
-  supabase: {
-    provider: "supabase",
-    description: "Supabase Management API through a Conduit-managed access token.",
-    baseUrl: "https://api.supabase.com",
-    credentialEnv: "SUPABASE_ACCESS_TOKEN",
-    readMethods: ["GET", "HEAD"],
-    writeMethods: ["POST", "PUT", "PATCH", "DELETE"],
-  },
+  github: { provider: "github", description: "GitHub REST API through a Conduit-managed bearer credential.", baseUrl: "https://api.github.com", credentialEnv: "GITHUB_TOKEN", readMethods: ["GET", "HEAD"], writeMethods: ["POST", "PUT", "PATCH", "DELETE"] },
+  render: { provider: "render", description: "Render API through a Conduit-managed API key.", baseUrl: "https://api.render.com", credentialEnv: "RENDER_API_KEY", readMethods: ["GET", "HEAD"], writeMethods: ["POST", "PUT", "PATCH", "DELETE"] },
+  supabase: { provider: "supabase", description: "Supabase Management API through a Conduit-managed access token.", baseUrl: "https://api.supabase.com", credentialEnv: "SUPABASE_ACCESS_TOKEN", readMethods: ["GET", "HEAD"], writeMethods: ["POST", "PUT", "PATCH", "DELETE"] },
 };
 
 export function listIntegrations(): IntegrationDefinition[] {
@@ -61,7 +40,7 @@ function normalizePath(path: string) {
   return `${url.pathname}${url.search}`;
 }
 
-function authHeaders(provider: IntegrationProvider, token: string) {
+function authHeaders(provider: IntegrationProvider, token: string): Record<string, string> {
   if (provider === "github") return { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
   return { Authorization: `Bearer ${token}` };
 }
