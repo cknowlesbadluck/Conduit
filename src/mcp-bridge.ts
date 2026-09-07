@@ -40,9 +40,7 @@ export async function callMcpBridge(input: { endpoint: string; request: McpBridg
   const endpoint = validateEndpoint(input.endpoint);
   let body: string;
   try { body = JSON.stringify(input.request); } catch { throw new Error("mcp_request_invalid_json"); }
-  // Performance optimization: Buffer.byteLength calculates UTF-8 byte size without
-  // allocating a Uint8Array buffer on the heap (approx 5x faster, zero allocation overhead).
-  if (Buffer.byteLength(body, "utf8") > MAX_REQUEST_BYTES) throw new Error("mcp_request_too_large");
+  if (new TextEncoder().encode(body).byteLength > MAX_REQUEST_BYTES) throw new Error("mcp_request_too_large");
   let response: Response;
   try {
     response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", "User-Agent": "Conduit/0.6.0" }, body, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
