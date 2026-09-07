@@ -23,7 +23,7 @@ const boundAgent = async (extra: { http?: { authInfo?: AuthInfo } }) => {
 };
 const requireBoundAgent = async (extra: { http?: { authInfo?: AuthInfo } }, requested?: string) => {
   const subject = actorSubject(extra);
-  if (!subject) return requested;
+  if (!subject) return null;
   const bound = await getBoundAgentId(subject);
   if (!bound || (requested && requested !== bound)) return null;
   return bound;
