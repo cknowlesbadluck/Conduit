@@ -222,11 +222,21 @@ export async function registerTool(name:string,description:string,endpoint?:stri
 export async function listTools(projectId?:string){if(pool)return(await pool.query("SELECT id,project_id AS \"projectId\",name,description,endpoint,created_by AS \"createdBy\",created_at AS \"createdAt\" FROM tools"+(projectId?" WHERE project_id=$1":"")+" ORDER BY created_at DESC",projectId?[projectId]:[])).rows;return tools.filter(t=>!projectId||t.projectId===projectId);}
 export async function listActivity(limit=50,projectId?:string){const safeLimit=Math.max(1,Math.min(limit,200));if(pool){const rows=await pool.query("SELECT id,type,at,data,project_id AS \"projectId\" FROM activity"+(projectId?" WHERE project_id=$2":"")+" ORDER BY at DESC LIMIT $1",projectId?[safeLimit,projectId]:[safeLimit]);return rows.rows.map(row=>({id:row.id,type:row.type,at:new Date(row.at).toISOString(),...(row.data??{}),...(row.projectId?{projectId:row.projectId}:{})}));}return activity.filter(e=>!projectId||e.projectId===projectId).slice(0,safeLimit);}
 
-export async function getCoordinationContext(projectId?:string):Promise<CoordinationContext|null>{
-  let project:Project|null=null;
-  if(projectId){project=pool?(await pool.query("SELECT id,name,description,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM projects WHERE id=$1",[projectId])).rows[0] as Project|undefined ?? null:projects.get(projectId)??null;if(!project)return null;}
-  const [agentList,taskList,contactList,toolList,resourceList,activityList,projectList]=await Promise.all([listAgents(),listTasks(undefined,projectId),listContacts(projectId),listTools(projectId),listResources(projectId),listActivity(50,projectId),projectId?Promise.resolve([]):listProjects()]);
-  return {service:"Conduit",generatedAt:now(),project,projects:projectList,agents:agentList,tasks:taskList,contacts:contactList,tools:toolList,resources:resourceList,activity:activityList};
+export async function getCoordinationContext(projectId?: string): Promise<CoordinationContext | null> {
+  // Performance optimization: Execute project fetch in parallel with other data queries
+  // inside Promise.all to eliminate serial database round-trips when fetching coordination context.
+  const [project, agentList, taskList, contactList, toolList, resourceList, activityList, projectList] = await Promise.all([
+    projectId ? getProject(projectId) : Promise.resolve(null),
+    listAgents(),
+    listTasks(undefined, projectId),
+    listContacts(projectId),
+    listTools(projectId),
+    listResources(projectId),
+    listActivity(50, projectId),
+    projectId ? Promise.resolve([]) : listProjects(),
+  ]);
+  if (projectId && !project) return null;
+  return { service: "Conduit", generatedAt: now(), project, projects: projectList, agents: agentList, tasks: taskList, contacts: contactList, tools: toolList, resources: resourceList, activity: activityList };
 }
 
 export async function getProject(projectId: string) {
