@@ -2,7 +2,7 @@ import { McpServer, type AuthInfo } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
   registerAgent, getBoundAgentId, listAgents, createProject, listProjects, registerResource, listResources,
-  createTask, listTasks, claimTask, completeTask, handoff, addContact, listContacts, registerTool, listTools,
+  getProject, createTask, getTask, listTasks, claimTask, blockTask, releaseTask, completeTask, handoff, addContact, listContacts, registerTool, listTools,
   listActivity, getCoordinationContext,
 } from "./store.js";
 import { getDevelopmentContext } from "./development.js";
@@ -23,7 +23,7 @@ const boundAgent = async (extra: { http?: { authInfo?: AuthInfo } }) => {
 };
 const requireBoundAgent = async (extra: { http?: { authInfo?: AuthInfo } }, requested?: string) => {
   const subject = actorSubject(extra);
-  if (!subject) return requested;
+  if (!subject) return null;
   const bound = await getBoundAgentId(subject);
   if (!bound || (requested && requested !== bound)) return null;
   return bound;
@@ -61,6 +61,12 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
     const result = await createProject({ name, description, createdBy: actor }); return result ? json(result) : rejected("project_creator_not_registered");
   });
   server.registerTool("projects_list", { description: "List Conduit projects", inputSchema: z.object({}) }, async (_input, extra) => { if (readScope) auth(extra, readScope); return json(await listProjects()); });
+  server.registerTool("project_get", { description: "Retrieve details of a single project by ID", inputSchema: z.object({ projectId: z.string().min(1) }), annotations: { readOnlyHint: true } }, async ({ projectId }, extra) => {
+    if (readScope) auth(extra, readScope);
+    const result = await getProject(projectId);
+    return result ? json(result) : rejected("project_not_found");
+  });
+
   server.registerTool("resource_register", { description: "Register a shared development resource or integration reference", inputSchema: z.object({ projectId: z.string().min(1).max(200).optional(), name: z.string().min(1).max(200), description: z.string().min(1).max(2000), kind: z.string().min(1).max(100), endpoint: z.string().url().optional(), createdBy: z.string().min(1).max(200).optional() }), annotations: { destructiveHint: false, readOnlyHint: false } }, async ({ projectId, name, description, kind, endpoint, createdBy }, extra) => {
     if (writeScope) auth(extra, writeScope); const actor = await requireBoundAgent(extra, createdBy); if (!actor) return rejected("agent_identity_not_bound");
     const result = await registerResource({ projectId, name, description, kind, endpoint, createdBy: actor }); return result ? json(result) : rejected(projectId ? "project_not_found_or_agent_unregistered" : "agent_unregistered");
@@ -91,7 +97,23 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
     if (writeScope) auth(extra, writeScope); const actor = await requireBoundAgent(extra, input.createdBy); if (!actor) return rejected("agent_identity_not_bound");
     const result = await createTask({ ...input, createdBy: actor }); return result ? json(result) : rejected(input.projectId ? "project_not_found_or_agent_unregistered" : "creator_not_registered");
   });
-  server.registerTool("task_list", { description: "List tasks, optionally filtered by status and project", inputSchema: z.object({ status: z.enum(["open", "claimed", "blocked", "completed"]).optional(), projectId: z.string().min(1).optional() }) }, async ({ status, projectId }, extra) => { if (readScope) auth(extra, readScope); return json(await listTasks(status, projectId)); });
+  server.registerTool("task_list", { description: "List tasks, optionally filtered by status, project, claimant, or creator", inputSchema: z.object({ status: z.enum(["open", "claimed", "blocked", "completed"]).optional(), projectId: z.string().min(1).optional(), claimedBy: z.string().min(1).optional(), createdBy: z.string().min(1).optional() }) }, async ({ status, projectId, claimedBy, createdBy }, extra) => { if (readScope) auth(extra, readScope); return json(await listTasks({ status, projectId, claimedBy, createdBy })); });
+
+  server.registerTool("task_get", { description: "Retrieve details of a single task by ID", inputSchema: z.object({ taskId: z.string().min(1) }), annotations: { readOnlyHint: true } }, async ({ taskId }, extra) => {
+    if (readScope) auth(extra, readScope);
+    const result = await getTask(taskId);
+    return result ? json(result) : rejected("task_not_found");
+  });
+
+  server.registerTool("task_block", { description: "Mark a claimed task as blocked with an optional reason", inputSchema: z.object({ taskId: z.string().min(1), agentId: z.string().min(1).optional(), reason: z.string().max(2000).optional() }), annotations: { destructiveHint: false, readOnlyHint: false } }, async ({ taskId, agentId, reason }, extra) => {
+    if (writeScope) auth(extra, writeScope); const actor = await requireBoundAgent(extra, agentId); if (!actor) return rejected("agent_identity_not_bound_or_impersonation");
+    const result = await blockTask(taskId, actor, reason); return result ? json(result) : rejected("task_not_claimed_by_agent");
+  });
+
+  server.registerTool("task_release", { description: "Release a claimed or blocked task back to open status", inputSchema: z.object({ taskId: z.string().min(1), agentId: z.string().min(1).optional() }), annotations: { destructiveHint: false, readOnlyHint: false } }, async ({ taskId, agentId }, extra) => {
+    if (writeScope) auth(extra, writeScope); const actor = await requireBoundAgent(extra, agentId); if (!actor) return rejected("agent_identity_not_bound_or_impersonation");
+    const result = await releaseTask(taskId, actor); return result ? json(result) : rejected("task_not_owned_or_not_releasable");
+  });
   server.registerTool("task_claim", { description: "Atomically claim an open task as the authenticated agent", inputSchema: z.object({ taskId: z.string().min(1), agentId: z.string().min(1).optional() }), annotations: { destructiveHint: false, readOnlyHint: false } }, async ({ taskId, agentId }, extra) => {
     if (writeScope) auth(extra, writeScope); const actor = await requireBoundAgent(extra, agentId); if (!actor) return rejected("agent_identity_not_bound_or_impersonation");
     const result = await claimTask(taskId, actor); return result ? json(result) : rejected("task_unavailable_or_agent_unregistered");

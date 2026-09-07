@@ -37,6 +37,40 @@ async function log(type: string, data: Record<string, string>) {
   else activity.unshift(event);
 }
 
+async function logWithClient(client: pg.PoolClient, type: string, data: Record<string, string>) {
+  const event = { id: id("evt"), type, at: now(), ...data };
+  await client.query("INSERT INTO activity(id,type,at,data,project_id) VALUES($1,$2,$3,$4,$5)", [event.id, type, event.at, JSON.stringify(data), data.projectId ?? null]);
+}
+
+async function withTransaction<T>(work: (client: pg.PoolClient) => Promise<T>): Promise<T> {
+  if (!pool) throw new Error("database_not_configured");
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await work(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    try { await client.query("ROLLBACK"); } catch { /* preserve original error */ }
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+const taskSelect = `id,project_id AS "projectId",title,description,status,created_by AS "createdBy",claimed_by AS "claimedBy",created_at AS "createdAt",updated_at AS "updatedAt"`;
+const normalizeTask = (row: Record<string, unknown>): Task => ({
+  id: row.id as string,
+  projectId: (row.projectId as string | null) ?? undefined,
+  title: row.title as string,
+  description: row.description as string,
+  status: row.status as TaskStatus,
+  createdBy: row.createdBy as string,
+  claimedBy: (row.claimedBy as string | null) ?? undefined,
+  createdAt: new Date(row.createdAt as string | Date).toISOString(),
+  updatedAt: new Date(row.updatedAt as string | Date).toISOString(),
+});
+
 export async function init() {
   if (pool) {
     await pool.query(`
@@ -120,11 +154,67 @@ export async function registerResource(input:{projectId?:string;name:string;desc
 export async function listResources(projectId?:string){if(pool)return(await pool.query("SELECT id,project_id AS \"projectId\",name,description,kind,endpoint,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM resources"+(projectId?" WHERE project_id=$1":"")+" ORDER BY created_at DESC",projectId?[projectId]:[])).rows;return[...resources.values()].filter(r=>!projectId||r.projectId===projectId).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
 
 export async function createTask(input:{title:string;description?:string;createdBy:string;projectId?:string}){if(!(await agentExists(input.createdBy))||(input.projectId&&!(await projectExists(input.projectId))))return null;const t:Task={id:id("task"),projectId:input.projectId,title:input.title,description:input.description??"",status:"open",createdBy:input.createdBy,createdAt:now(),updatedAt:now()};if(pool)await pool.query("INSERT INTO tasks(id,project_id,title,description,status,created_by) VALUES($1,$2,$3,$4,$5,$6)",[t.id,t.projectId??null,t.title,t.description,t.status,t.createdBy]);else tasks.set(t.id,t);await log("task.create",{taskId:t.id,agentId:t.createdBy,...(t.projectId?{projectId:t.projectId}:{})});return t;}
-export async function listTasks(status?:TaskStatus,projectId?:string){if(pool){const conditions:string[]=[];const params:string[]=[];if(status){conditions.push(`status=$${params.length+1}`);params.push(status);}if(projectId){conditions.push(`project_id=$${params.length+1}`);params.push(projectId);}const sql="SELECT id,project_id AS \"projectId\",title,description,status,created_by AS \"createdBy\",claimed_by AS \"claimedBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM tasks"+(conditions.length?` WHERE ${conditions.join(" AND ")}`:"")+" ORDER BY created_at DESC";return(await pool.query(sql,params)).rows;}return[...tasks.values()].filter(t=>(!status||t.status===status)&&(!projectId||t.projectId===projectId)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
 
-export async function claimTask(taskId:string,agentId:string){if(!(await agentExists(agentId)))return null;if(pool){const r=await pool.query("UPDATE tasks SET status='claimed',claimed_by=$2,updated_at=now() WHERE id=$1 AND status='open' RETURNING id,project_id AS \"projectId\",title,description,status,created_by AS \"createdBy\",claimed_by AS \"claimedBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\"",[taskId,agentId]);if(!r.rowCount)return null;await log("task.claim",{taskId,agentId});return r.rows[0] as Task;}const t=tasks.get(taskId);if(!t||t.status!=="open")return null;t.status="claimed";t.claimedBy=agentId;t.updatedAt=now();await log("task.claim",{taskId,agentId});return t;}
-export async function completeTask(taskId:string,agentId:string){if(pool){const r=await pool.query("UPDATE tasks SET status='completed',updated_at=now() WHERE id=$1 AND claimed_by=$2 AND status='claimed' RETURNING id,project_id AS \"projectId\",title,description,status,created_by AS \"createdBy\",claimed_by AS \"claimedBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\"",[taskId,agentId]);if(!r.rowCount)return null;await log("task.complete",{taskId,agentId});return r.rows[0] as Task;}const t=tasks.get(taskId);if(!t||t.status!=="claimed"||t.claimedBy!==agentId)return null;t.status="completed";t.updatedAt=now();await log("task.complete",{taskId,agentId});return t;}
-export async function handoff(taskId:string,fromAgent:string,toAgent:string,note?:string){if(fromAgent===toAgent)return null;if(!(await agentExists(fromAgent))||!(await agentExists(toAgent)))return null;if(pool){const client=await pool.connect();try{await client.query("BEGIN");const task=(await client.query("SELECT id,project_id AS \"projectId\",title,description,status,created_by AS \"createdBy\",claimed_by AS \"claimedBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM tasks WHERE id=$1 FOR UPDATE",[taskId])).rows[0] as Task|undefined;if(!task||task.status!=="claimed"||task.claimedBy!==fromAgent){await client.query("ROLLBACK");return null;}const updated=(await client.query("UPDATE tasks SET claimed_by=$2,updated_at=now() WHERE id=$1 RETURNING id,project_id AS \"projectId\",title,description,status,created_by AS \"createdBy\",claimed_by AS \"claimedBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\"",[taskId,toAgent])).rows[0] as Task;await client.query("INSERT INTO handoffs(id,task_id,from_agent,to_agent,note) VALUES($1,$2,$3,$4,$5)",[id("handoff"),taskId,fromAgent,toAgent,note??null]);await client.query("COMMIT");await log("task.handoff",{taskId,agentId:fromAgent,toAgent,note:note??"",...(task.projectId?{projectId:task.projectId}:{})});return{...updated,handoffNote:note??""};}catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}}const t=tasks.get(taskId);if(!t||t.status!=="claimed"||t.claimedBy!==fromAgent)return null;t.claimedBy=toAgent;t.updatedAt=now();await log("task.handoff",{taskId,agentId:fromAgent,toAgent,note:note??"",...(t.projectId?{projectId:t.projectId}:{})});return{...t,handoffNote:note??""};}
+export async function listTasks(options?: { status?: TaskStatus; projectId?: string; claimedBy?: string; createdBy?: string } | TaskStatus, legacyProjectId?: string) {
+  const opts = typeof options === "string" || options === undefined ? { status: options, projectId: legacyProjectId } : options;
+  const { status, projectId, claimedBy, createdBy } = opts;
+  if (pool) {
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    if (status) { conditions.push(`status=$${params.length + 1}`); params.push(status); }
+    if (projectId) { conditions.push(`project_id=$${params.length + 1}`); params.push(projectId); }
+    if (claimedBy) { conditions.push(`claimed_by=$${params.length + 1}`); params.push(claimedBy); }
+    if (createdBy) { conditions.push(`created_by=$${params.length + 1}`); params.push(createdBy); }
+    const sql = `SELECT ${taskSelect} FROM tasks${conditions.length ? ` WHERE ${conditions.join(" AND ")}` : ""} ORDER BY created_at DESC`;
+    const rows = (await pool.query(sql, params)).rows;
+    return rows.map(normalizeTask);
+  }
+  return [...tasks.values()].filter(t => (!status || t.status === status) && (!projectId || t.projectId === projectId) && (!claimedBy || t.claimedBy === claimedBy) && (!createdBy || t.createdBy === createdBy)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export async function claimTask(taskId:string,agentId:string){
+  if(!(await agentExists(agentId)))return null;
+  if(pool){
+    return withTransaction(async client => {
+      const r=await client.query(`UPDATE tasks SET status='claimed',claimed_by=$2,updated_at=now() WHERE id=$1 AND status='open' RETURNING ${taskSelect}`,[taskId,agentId]);
+      if(!r.rowCount)return null;
+      const task=normalizeTask(r.rows[0]);
+      await logWithClient(client,"task.claim",{taskId,agentId,...(task.projectId?{projectId:task.projectId}:{})});
+      return task;
+    });
+  }
+  const t=tasks.get(taskId);if(!t||t.status!=="open")return null;t.status="claimed";t.claimedBy=agentId;t.updatedAt=now();await log("task.claim",{taskId,agentId,...(t.projectId?{projectId:t.projectId}:{})});return t;
+}
+
+export async function completeTask(taskId:string,agentId:string){
+  if(!(await agentExists(agentId)))return null;
+  if(pool){
+    return withTransaction(async client => {
+      const r=await client.query(`UPDATE tasks SET status='completed',updated_at=now() WHERE id=$1 AND claimed_by=$2 AND status='claimed' RETURNING ${taskSelect}`,[taskId,agentId]);
+      if(!r.rowCount)return null;
+      const task=normalizeTask(r.rows[0]);
+      await logWithClient(client,"task.complete",{taskId,agentId,...(task.projectId?{projectId:task.projectId}:{})});
+      return task;
+    });
+  }
+  const t=tasks.get(taskId);if(!t||t.status!=="claimed"||t.claimedBy!==agentId)return null;t.status="completed";t.updatedAt=now();await log("task.complete",{taskId,agentId,...(t.projectId?{projectId:t.projectId}:{})});return t;
+}
+
+export async function handoff(taskId:string,fromAgent:string,toAgent:string,note?:string){
+  if(fromAgent===toAgent)return null;if(!(await agentExists(fromAgent))||!(await agentExists(toAgent)))return null;
+  if(pool){
+    return withTransaction(async client=>{
+      const task=(await client.query(`SELECT ${taskSelect} FROM tasks WHERE id=$1 FOR UPDATE`,[taskId])).rows[0] as Record<string,unknown>|undefined;
+      if(!task||task.status!=="claimed"||task.claimedBy!==fromAgent)return null;
+      const updated=(await client.query(`UPDATE tasks SET claimed_by=$2,updated_at=now() WHERE id=$1 RETURNING ${taskSelect}`,[taskId,toAgent])).rows[0];
+      await client.query("INSERT INTO handoffs(id,task_id,from_agent,to_agent,note) VALUES($1,$2,$3,$4,$5)",[id("handoff"),taskId,fromAgent,toAgent,note??null]);
+      const normalized=normalizeTask(updated);
+      await logWithClient(client,"task.handoff",{taskId,agentId:fromAgent,toAgent,note:note??"",...(normalized.projectId?{projectId:normalized.projectId}:{})});
+      return {...normalized,handoffNote:note??""};
+    });
+  }
+  const t=tasks.get(taskId);if(!t||t.status!=="claimed"||t.claimedBy!==fromAgent)return null;t.claimedBy=toAgent;t.updatedAt=now();await log("task.handoff",{taskId,agentId:fromAgent,toAgent,note:note??"",...(t.projectId?{projectId:t.projectId}:{})});return{...t,handoffNote:note??""};
+}
 
 export async function addContact(name:string,value:string,kind:string,projectId?:string,createdBy?:string){if((projectId&&!(await projectExists(projectId)))||(createdBy&&!(await agentExists(createdBy))))return null;const c:Contact={id:id("contact"),projectId,name,value,kind,createdBy,createdAt:now()};if(pool)await pool.query("INSERT INTO contacts(id,project_id,name,value,kind,created_by) VALUES($1,$2,$3,$4,$5,$6)",[c.id,c.projectId??null,name,value,kind,createdBy??null]);else contacts.unshift(c);await log("contact.add",{contactId:c.id,...(projectId?{projectId}:{}),...(createdBy?{agentId:createdBy}:{})});return c;}
 export async function listContacts(projectId?:string){if(pool)return(await pool.query("SELECT id,project_id AS \"projectId\",name,value,kind,created_by AS \"createdBy\",created_at AS \"createdAt\" FROM contacts"+(projectId?" WHERE project_id=$1":"")+" ORDER BY created_at DESC",projectId?[projectId]:[])).rows;return contacts.filter(c=>!projectId||c.projectId===projectId);}
@@ -137,4 +227,57 @@ export async function getCoordinationContext(projectId?:string):Promise<Coordina
   if(projectId){project=pool?(await pool.query("SELECT id,name,description,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM projects WHERE id=$1",[projectId])).rows[0] as Project|undefined ?? null:projects.get(projectId)??null;if(!project)return null;}
   const [agentList,taskList,contactList,toolList,resourceList,activityList,projectList]=await Promise.all([listAgents(),listTasks(undefined,projectId),listContacts(projectId),listTools(projectId),listResources(projectId),listActivity(50,projectId),projectId?Promise.resolve([]):listProjects()]);
   return {service:"Conduit",generatedAt:now(),project,projects:projectList,agents:agentList,tasks:taskList,contacts:contactList,tools:toolList,resources:resourceList,activity:activityList};
+}
+
+export async function getProject(projectId: string) {
+  if (pool) { const row = (await pool.query("SELECT id,name,description,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM projects WHERE id=$1", [projectId])).rows[0]; return (row as Project) || null; }
+  return projects.get(projectId) || null;
+}
+
+export async function getTask(taskId: string) {
+  if (pool) { const row = (await pool.query(`SELECT ${taskSelect} FROM tasks WHERE id=$1`, [taskId])).rows[0]; return row ? normalizeTask(row) : null; }
+  return tasks.get(taskId) || null;
+}
+
+export async function blockTask(taskId: string, agentId: string, reason?: string) {
+  if (!(await agentExists(agentId))) return null;
+  if (pool) {
+    return withTransaction(async client => {
+      const r = await client.query(`UPDATE tasks SET status='blocked',updated_at=now() WHERE id=$1 AND claimed_by=$2 AND status='claimed' RETURNING ${taskSelect}`, [taskId, agentId]);
+      if (!r.rowCount) return null;
+      const task = normalizeTask(r.rows[0]);
+      await logWithClient(client, "task.block", { taskId, agentId, ...(reason ? { reason } : {}), ...(task.projectId ? { projectId: task.projectId } : {}) });
+      return task;
+    });
+  }
+  const t = tasks.get(taskId);
+  if (!t || t.status !== "claimed" || t.claimedBy !== agentId) return null;
+  const previous = { ...t };
+  t.status = "blocked";
+  t.updatedAt = now();
+  try { await log("task.block", { taskId, agentId, ...(reason ? { reason } : {}), ...(t.projectId ? { projectId: t.projectId } : {}) }); }
+  catch (error) { Object.assign(t, previous); throw error; }
+  return t;
+}
+
+export async function releaseTask(taskId: string, agentId: string) {
+  if (!(await agentExists(agentId))) return null;
+  if (pool) {
+    return withTransaction(async client => {
+      const r = await client.query(`UPDATE tasks SET status='open',claimed_by=NULL,updated_at=now() WHERE id=$1 AND claimed_by=$2 AND status IN ('claimed','blocked') RETURNING ${taskSelect}`, [taskId, agentId]);
+      if (!r.rowCount) return null;
+      const task = normalizeTask(r.rows[0]);
+      await logWithClient(client, "task.release", { taskId, agentId, ...(task.projectId ? { projectId: task.projectId } : {}) });
+      return task;
+    });
+  }
+  const t = tasks.get(taskId);
+  if (!t || (t.status !== "claimed" && t.status !== "blocked") || t.claimedBy !== agentId) return null;
+  const previous = { ...t };
+  t.status = "open";
+  delete t.claimedBy;
+  t.updatedAt = now();
+  try { await log("task.release", { taskId, agentId, ...(t.projectId ? { projectId: t.projectId } : {}) }); }
+  catch (error) { Object.assign(t, previous); throw error; }
+  return t;
 }
