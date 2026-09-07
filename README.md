@@ -1,4 +1,4 @@
-# Conduit
+# Conduit 0.6.1
 
 Standalone remote MCP coordination and integration bridge for AI agents, tools, connectors, skills, MCP servers, shared context, and development resources.
 
@@ -23,6 +23,24 @@ Resonance was the initial project Conduit was created to help develop. It does n
 - health and readiness endpoints
 - PostgreSQL persistence when `DATABASE_URL` is configured
 - in-memory development mode when no database is configured
+
+## MCP contract
+
+The public MCP surface includes identity and context tools (`agent_identity`, `development_context`, `conduit_context`), agent/project/resource coordination, integration and MCP bridge calls, task lifecycle operations, contacts, tool discovery, and activity history.
+
+Tool failures use a stable structured envelope rather than a raw error string:
+
+```json
+{
+  "error": {
+    "code": "task_not_found",
+    "message": "Task not found",
+    "details": { "taskId": "..." }
+  }
+}
+```
+
+`code` is stable for programmatic handling; `message` is human-readable; `details` is optional contextual data. MCP error results set `isError: true`.
 
 ## Runtime
 
