@@ -24,7 +24,6 @@ Resonance was the initial project Conduit was created to help develop. It does n
 - PostgreSQL persistence when `DATABASE_URL` is configured
 - in-memory development mode when no database is configured
 
-
 ## Tool surface
 
 Coordination tools exposed over MCP (`/mcp`):
@@ -41,6 +40,15 @@ Coordination tools exposed over MCP (`/mcp`):
 - `activity_list`
 
 Write tools require a bound agent identity. Errors return structured `{ error: { code, message, details? } }` with `isError: true`.
+
+## Design
+
+Ops console mockups (reference only — Conduit remains a headless MCP service):
+
+- **Figma:** [Conduit Ops Console](https://www.figma.com/design/BgOjpBRf0wIkiv1JNKLkP8/Conduit-Ops-Console)
+- **Dev Mode (Overview):** [node 14:2](https://www.figma.com/design/BgOjpBRf0wIkiv1JNKLkP8/Conduit-Ops-Console?node-id=14-2&m=dev)
+
+Screens: Overview · Tasks · Agents · Connect · Activity. Dark theme, actor→agent binding, structured errors, and the `/mcp` endpoint are reflected in the Connect screen.
 
 ## Runtime
 
@@ -102,4 +110,4 @@ GitHub Actions runs typecheck, tests, and build. Production verification covers 
 
 ## Boundary
 
-Conduit coordinates agents and resources; it does not become part of the application being developed. Project-specific information belongs in project/resource/context records rather than Conduit's core identity.
+Conduit coordinates agents and resources; it does not become part of the application being developed. Project-specific information belongs in project/resource/context records rather than Conduit's core identity. A future ops UI is optional and is not required for MCP operation.
