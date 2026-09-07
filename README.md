@@ -1,6 +1,6 @@
 # Conduit
 
-Standalone remote MCP coordination and integration bridge for AI agents, tools, connectors, skills, MCP servers, shared context, and development resources.
+**Version 0.6.1** — Standalone remote MCP coordination and integration bridge for AI agents, tools, connectors, skills, MCP servers, shared context, and development resources.
 
 ## Purpose
 
@@ -23,6 +23,24 @@ Resonance was the initial project Conduit was created to help develop. It does n
 - health and readiness endpoints
 - PostgreSQL persistence when `DATABASE_URL` is configured
 - in-memory development mode when no database is configured
+
+
+## Tool surface
+
+Coordination tools exposed over MCP (`/mcp`):
+
+- `conduit_context`, `development_context`, `agent_identity`
+- `agent_register`, `agents_list`
+- `project_create`, `projects_list`
+- `resource_register`, `resources_list`
+- `task_create`, `task_list`, `task_claim`, `task_complete`, `task_handoff`
+- `contact_add`, `contacts_list`
+- `tool_register`, `tools_list`
+- `integrations_list`, `integration_call`
+- `mcp_bridge_call`
+- `activity_list`
+
+Write tools require a bound agent identity. Errors return structured `{ error: { code, message, details? } }` with `isError: true`.
 
 ## Runtime
 
