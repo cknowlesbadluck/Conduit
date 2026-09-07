@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { errorEnvelope, errorResult } from "./mcp.js";
+import { errorEnvelope, errorResult } from "./errors.js";
 
 test("structured MCP errors expose stable code and message", () => {
   assert.deepEqual(errorEnvelope("task_not_found"), {
