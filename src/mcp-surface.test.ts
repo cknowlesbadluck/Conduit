@@ -11,7 +11,7 @@ const expectedTools = [
 ];
 
 test("public MCP tool surface remains explicit and complete", async () => {
-  const source = await readFile(new URL("./mcp.ts", import.meta.url), "utf8");
+  const source = await readFile(new URL("../src/mcp.ts", import.meta.url), "utf8");
   for (const name of expectedTools) assert.match(source, new RegExp(`registerTool\\(\\"${name}\\"`), name);
   assert.match(source, /new McpServer\(\{ name: SERVICE_NAME, version: VERSION/);
   assert.doesNotMatch(source, /version: [\"']0\.6\.0[\"']/);
