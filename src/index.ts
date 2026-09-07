@@ -5,6 +5,7 @@ import { createMcpHandler } from "@modelcontextprotocol/server";
 import { init, isReady } from "./store.js";
 import { buildProtectedResourceMetadata, createTokenVerifier, loadAuthConfig } from "./auth.js";
 import { createConduitServer } from "./mcp.js";
+import { VERSION, SERVICE_NAME } from "./version.js";
 
 const app = express();
 app.disable("x-powered-by");
@@ -19,7 +20,7 @@ app.use(originValidation([...allowedHostnames]));
 const port = Number(process.env.PORT || 3000);
 const allowAnonymous = process.env.CONDUIT_ALLOW_ANONYMOUS === "true" && process.env.NODE_ENV !== "production";
 
-app.get("/", (_req, res) => res.json({ service: "Conduit", version: "0.5.0", status: "online", mcp: "/mcp", health: "/health", ready: "/ready" }));
+app.get("/", (_req, res) => res.json({ service: SERVICE_NAME, version: VERSION, status: "online", mcp: "/mcp", health: "/health", ready: "/ready" }));
 app.get("/health", (_req, res) => res.json({ status: "ok", service: "conduit" }));
 app.get("/ready", (_req, res) => res.status(isReady() ? 200 : 503).json({ status: isReady() ? "ready" : "initializing", service: "conduit" }));
 
