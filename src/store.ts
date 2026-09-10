@@ -13,7 +13,8 @@ export type ActivityEvent = Record<string, string>;
 export type CoordinationContext = { service: string; generatedAt: string; project: Project | null; projects: Project[]; agents: Agent[]; tasks: Task[]; contacts: Contact[]; tools: Tool[]; resources: Resource[]; activity: ActivityEvent[] };
 
 const agents = new Map<string, Agent>();
-const agentBindings = new Map<string, string>();
+const agentBindings = new Map<string, string>(); // subject -> agentId
+const agentToSubject = new Map<string, string>(); // agentId -> subject (reverse index for O(1) duplicate binding lookup)
 const projects = new Map<string, Project>();
 const resources = new Map<string, Resource>();
 const tasks = new Map<string, Task>();
@@ -114,10 +115,16 @@ export async function registerAgent(input: { id: string; name: string; descripti
     if (input.actorSubject) await pool.query("INSERT INTO agent_bindings(subject,agent_id) VALUES($1,$2) ON CONFLICT(subject) DO UPDATE SET agent_id=EXCLUDED.agent_id", [input.actorSubject, input.id]);
   } else {
     const existingBinding = input.actorSubject ? agentBindings.get(input.actorSubject) : undefined;
-    const otherBinding = input.actorSubject ? [...agentBindings.entries()].find(([subject, agentId]) => subject !== input.actorSubject && agentId === input.id) : undefined;
+    // Bolt Optimization: Replace linear O(N) entry scan `[...agentBindings.entries()].find(...)`
+    // with O(1) reverse index lookup via `agentToSubject`.
+    const existingSubject = input.actorSubject ? agentToSubject.get(input.id) : undefined;
+    const otherBinding = existingSubject && existingSubject !== input.actorSubject;
     if ((existingBinding && existingBinding !== input.id) || otherBinding) return null;
     agents.set(input.id, { id: input.id, name: input.name, description: input.description, createdAt: agents.get(input.id)?.createdAt ?? now() });
-    if (input.actorSubject) agentBindings.set(input.actorSubject, input.id);
+    if (input.actorSubject) {
+      agentBindings.set(input.actorSubject, input.id);
+      agentToSubject.set(input.id, input.actorSubject);
+    }
   }
   const agent = pool ? (await pool.query("SELECT id,name,description,created_at AS \"createdAt\" FROM agents WHERE id=$1", [input.id])).rows[0] as Agent : agents.get(input.id)!;
   await log("agent.register", { agentId: input.id });
