@@ -15,7 +15,7 @@ Resonance was the initial project Conduit was created to help develop. It does n
 - agent registration and discovery
 - project creation and project-scoped coordination
 - generic resource registration and discovery
-- task creation, atomic claiming, completion, and ownership-safe handoffs
+- task creation, atomic claiming, updating, blocking/releasing, completion, cancellation, and ownership-safe handoffs
 - shared contacts and resource references
 - shared tool and MCP endpoint discovery
 - unified global or project-scoped coordination context
@@ -80,7 +80,7 @@ npm start
 
 ## Verification
 
-GitHub Actions runs typecheck, tests, and build. Production verification covers `/health`, `/ready`, OAuth metadata, authentication challenges, MCP connectivity, and the coordination surface.
+GitHub Actions runs typecheck, tests, and build. Automated integration tests cover end-to-end multi-agent workflows (Agent A -> Agent B -> Agent C), task lifecycle operations, actor binding, scope enforcement, and integration bridges. Production verification covers `/health`, `/ready`, OAuth metadata (`/.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/mcp`), authentication challenges (`WWW-Authenticate`), MCP connectivity, and tool execution.
 
 ## Boundary
 

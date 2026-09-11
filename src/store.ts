@@ -2,7 +2,7 @@ import pg from "pg";
 
 const { Pool } = pg;
 
-export type TaskStatus = "open" | "claimed" | "blocked" | "completed";
+export type TaskStatus = "open" | "claimed" | "blocked" | "completed" | "canceled";
 export type Agent = { id: string; name: string; description?: string; createdAt: string };
 export type Project = { id: string; name: string; description: string; createdBy: string; createdAt: string; updatedAt: string };
 export type Resource = { id: string; projectId?: string; name: string; description: string; kind: string; endpoint?: string; createdBy: string; createdAt: string; updatedAt: string };
@@ -279,5 +279,51 @@ export async function releaseTask(taskId: string, agentId: string) {
   t.updatedAt = now();
   try { await log("task.release", { taskId, agentId, ...(t.projectId ? { projectId: t.projectId } : {}) }); }
   catch (error) { Object.assign(t, previous); throw error; }
+  return t;
+}
+
+export async function updateTask(taskId: string, agentId: string, updates: { title?: string; description?: string }) {
+  if (!(await agentExists(agentId))) return null;
+  if (!updates.title && updates.description === undefined) return getTask(taskId);
+  if (pool) {
+    return withTransaction(async client => {
+      const r = await client.query(
+        `UPDATE tasks SET title=COALESCE($2, title), description=COALESCE($3, description), updated_at=now() WHERE id=$1 AND status IN (open,claimed,blocked) AND (created_by=$4 OR claimed_by=$4) RETURNING ${taskSelect}`,
+        [taskId, updates.title ?? null, updates.description ?? null, agentId]
+      );
+      if (!r.rowCount) return null;
+      const task = normalizeTask(r.rows[0]);
+      await logWithClient(client, "task.update", { taskId, agentId, ...(task.projectId ? { projectId: task.projectId } : {}) });
+      return task;
+    });
+  }
+  const t = tasks.get(taskId);
+  if (!t || (t.status !== "open" && t.status !== "claimed" && t.status !== "blocked") || (t.createdBy !== agentId && t.claimedBy !== agentId)) return null;
+  if (updates.title) t.title = updates.title;
+  if (updates.description !== undefined) t.description = updates.description;
+  t.updatedAt = now();
+  await log("task.update", { taskId, agentId, ...(t.projectId ? { projectId: t.projectId } : {}) });
+  return t;
+}
+
+export async function cancelTask(taskId: string, agentId: string, reason?: string) {
+  if (!(await agentExists(agentId))) return null;
+  if (pool) {
+    return withTransaction(async client => {
+      const r = await client.query(
+        `UPDATE tasks SET status=canceled, updated_at=now() WHERE id=$1 AND status IN (open,claimed,blocked) AND (created_by=$2 OR claimed_by=$2) RETURNING ${taskSelect}`,
+        [taskId, agentId]
+      );
+      if (!r.rowCount) return null;
+      const task = normalizeTask(r.rows[0]);
+      await logWithClient(client, "task.cancel", { taskId, agentId, ...(reason ? { reason } : {}), ...(task.projectId ? { projectId: task.projectId } : {}) });
+      return task;
+    });
+  }
+  const t = tasks.get(taskId);
+  if (!t || (t.status !== "open" && t.status !== "claimed" && t.status !== "blocked") || (t.createdBy !== agentId && t.claimedBy !== agentId)) return null;
+  t.status = "canceled";
+  t.updatedAt = now();
+  await log("task.cancel", { taskId, agentId, ...(reason ? { reason } : {}), ...(t.projectId ? { projectId: t.projectId } : {}) });
   return t;
 }
