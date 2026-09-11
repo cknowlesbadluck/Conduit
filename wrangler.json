@@ -1,9 +1,12 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "conduit",
-  "main": "src/index.ts",
+  "main": "dist/index.js",
   "compatibility_date": "2026-03-01",
   "compatibility_flags": [
     "nodejs_compat"
-  ]
+  ],
+  "build": {
+    "command": "npm run build"
+  }
 }
