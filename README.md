@@ -37,7 +37,7 @@ The MCP endpoint is `/mcp`. The service also exposes `/health` and `/ready`.
 
 ## Authentication
 
-Production Conduit is designed as an OAuth 2.1 resource server. Descope is the authorization server and issues access tokens for the Conduit MCP resource.
+Production Conduit is an OAuth 2.1 resource server. Descope is the authorization server and issues access tokens for the Conduit MCP resource.
 
 Configure:
 
@@ -51,6 +51,33 @@ CONDUIT_WRITE_SCOPE=mcp:conduit.write
 ```
 
 The server validates JWT signatures using discovered JWKS, verifies issuer, audience, algorithm, subject, and expiry, and enforces scopes before tool execution. After authentication, an actor binds to a logical Conduit agent identity; normal write operations cannot impersonate another bound agent.
+
+### Standards-compliant discovery (no manual client credentials)
+
+Conduit publishes identical RFC 9728 Protected Resource Metadata at:
+
+- `/.well-known/oauth-protected-resource`
+- `/.well-known/oauth-protected-resource/mcp` (the URL clients follow from the 401 `WWW-Authenticate` header)
+
+Authorization Server metadata (including `registration_endpoint` for Dynamic Client Registration) is available at `/.well-known/oauth-authorization-server`.
+
+In the Descope console for this MCP Server, enable **Client ID Metadata Documents (CIMD)** and keep **Dynamic Client Registration (DCR)** as fallback. That lets ChatGPT, Claude, Grok, Gemini, Jules, and other MCP hosts register themselves at connect time — paste the MCP URL, complete consent, done. Do not pre-manufacture per-client OAuth credentials.
+
+### Connecting hosts
+
+Paste this URL into the host's custom connector / remote MCP flow:
+
+```text
+https://conduit-feco.onrender.com/mcp
+```
+
+The host should:
+
+1. Receive `401` with `resource_metadata`
+2. Load protected-resource metadata
+3. Discover the authorization server
+4. Use DCR or CIMD + authorization code + PKCE
+5. Retry `/mcp` with a Bearer access token whose `aud` is the MCP resource URL
 
 For controlled development, `CONDUIT_TOKEN` enables a static bearer token. Anonymous MCP access is disabled by default and is only available when explicitly enabled outside production.
 
@@ -80,7 +107,7 @@ npm start
 
 ## Verification
 
-GitHub Actions runs typecheck, tests, and build. Production verification covers `/health`, `/ready`, OAuth metadata, authentication challenges, MCP connectivity, and the coordination surface.
+GitHub Actions runs typecheck, tests, and build. Production verification covers `/health`, `/ready`, OAuth metadata parity (root + path-specific PRM), authentication challenges, MCP connectivity, and the coordination surface.
 
 ## Boundary
 

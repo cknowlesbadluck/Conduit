@@ -28,7 +28,17 @@ async function boot() {
   const authConfig = await loadAuthConfig();
   if (authConfig) {
     const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(new URL(authConfig.resourceUrl)).toString();
-    app.get("/.well-known/oauth-protected-resource", (_req, res) => res.type("application/json").json(buildProtectedResourceMetadata(authConfig)));
+    const protectedResourceMetadata = buildProtectedResourceMetadata(authConfig);
+    // Serve identical full RFC 9728 documents at both the root and path-specific well-known
+    // locations. Clients follow the 401 WWW-Authenticate resource_metadata pointer to the
+    // path-specific URL; mcpAuthMetadataRouter alone serves a thinner document there.
+    app.get("/.well-known/oauth-protected-resource", (_req, res) =>
+      res.type("application/json").json(protectedResourceMetadata),
+    );
+    app.get("/.well-known/oauth-protected-resource/mcp", (_req, res) =>
+      res.type("application/json").json(protectedResourceMetadata),
+    );
+    // Still mount the SDK router for Authorization Server metadata mirroring.
     app.use(mcpAuthMetadataRouter({ oauthMetadata: authConfig.metadata, resourceServerUrl: new URL(authConfig.resourceUrl) }));
     const handler = createMcpHandler(() => createConduitServer(authConfig));
     app.all("/mcp", requireBearerAuth({ verifier: createTokenVerifier(authConfig), resourceMetadataUrl }), toNodeHandler(handler, { onerror: console.error }));
