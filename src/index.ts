@@ -46,11 +46,72 @@ async function boot() {
     app.all("/mcp", (_req, res) => res.status(503).json({ error: "auth_not_configured", message: "Configure DESCOPE_MCP_SERVER_WELL_KNOWN_URL or CONDUIT_TOKEN" }));
     console.error("No MCP authentication configured; /mcp is disabled");
   }
-  const server = app.listen(port, "0.0.0.0", () => console.log(`Conduit listening on ${port}`));
-  const shutdown = async () => { server.close(); process.exit(0); };
-  process.once("SIGTERM", shutdown); process.once("SIGINT", shutdown);
+
+  if (process.env.NODE_ENV !== "test" && !process.env.CF_PAGES && !process.env.WORKER) {
+    const server = app.listen(port, "0.0.0.0", () => console.log(`Conduit listening on ${port}`));
+    const shutdown = async () => { server.close(); process.exit(0); };
+    process.once("SIGTERM", shutdown); process.once("SIGINT", shutdown);
+  }
 }
 
-boot().catch((error) => { console.error("Conduit startup failed", error); process.exit(1); });
+let bootPromise: Promise<void> | null = null;
+function ensureBoot() {
+  if (!bootPromise) bootPromise = boot();
+  return bootPromise;
+}
+
+if (process.env.NODE_ENV !== "test") {
+  ensureBoot().catch((error) => { console.error("Conduit startup failed", error); process.exit(1); });
+}
+
+type ExpressWithFetch = express.Express & { fetch: (request: Request) => Promise<Response> };
+(app as ExpressWithFetch).fetch = async (request: Request) => {
+  await ensureBoot();
+  const { IncomingMessage, ServerResponse } = await import("node:http");
+  const { Socket } = await import("node:net");
+  return new Promise((resolve) => {
+    const url = new URL(request.url);
+    const socket = new Socket();
+    const req = new IncomingMessage(socket);
+    req.method = request.method;
+    req.url = url.pathname + url.search;
+    req.headers = Object.fromEntries(request.headers.entries());
+
+    const res = new ServerResponse(req);
+    const chunks: Buffer[] = [];
+    const origWrite = res.write.bind(res);
+    const origEnd = res.end.bind(res);
+
+    res.write = ((chunk: any, encoding?: any, cb?: any) => {
+      if (chunk) chunks.push(Buffer.from(chunk));
+      return origWrite(chunk, encoding, cb);
+    }) as any;
+
+    res.end = ((chunk?: any, encoding?: any, cb?: any) => {
+      if (chunk) chunks.push(Buffer.from(chunk));
+      const body = Buffer.concat(chunks);
+      const headers = new Headers();
+      for (const [k, v] of Object.entries(res.getHeaders())) {
+        if (v !== undefined) headers.set(k, Array.isArray(v) ? v.join(", ") : String(v));
+      }
+      resolve(new Response(body, { status: res.statusCode, headers }));
+      return origEnd(chunk, encoding, cb);
+    }) as any;
+
+    if (request.body) {
+      request.arrayBuffer().then((buf) => {
+        req.push(Buffer.from(buf));
+        req.push(null);
+        app(req, res);
+      }).catch(() => {
+        req.push(null);
+        app(req, res);
+      });
+    } else {
+      req.push(null);
+      app(req, res);
+    }
+  });
+};
 
 export default app;
