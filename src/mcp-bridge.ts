@@ -1,6 +1,8 @@
 const MAX_REQUEST_BYTES = 256 * 1024;
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 15_000;
+// Optimization: Reuse a static TextEncoder instance to avoid repeated object allocations on every bridge request.
+const textEncoder = new TextEncoder();
 
 export type McpBridgeRequest = { jsonrpc: "2.0"; id?: string | number | null; method: string; params?: unknown };
 export type McpBridgeResult = { ok: boolean; status: number; headers: Record<string, string>; data: unknown };
@@ -40,7 +42,7 @@ export async function callMcpBridge(input: { endpoint: string; request: McpBridg
   const endpoint = validateEndpoint(input.endpoint);
   let body: string;
   try { body = JSON.stringify(input.request); } catch { throw new Error("mcp_request_invalid_json"); }
-  if (new TextEncoder().encode(body).byteLength > MAX_REQUEST_BYTES) throw new Error("mcp_request_too_large");
+  if (textEncoder.encode(body).byteLength > MAX_REQUEST_BYTES) throw new Error("mcp_request_too_large");
   let response: Response;
   try {
     response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", "User-Agent": "Conduit/0.6.0" }, body, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });

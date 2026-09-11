@@ -14,6 +14,8 @@ export type CoordinationContext = { service: string; generatedAt: string; projec
 
 const agents = new Map<string, Agent>();
 const agentBindings = new Map<string, string>();
+// Optimization: Maintain a reverse lookup map for agent bindings (agentId -> subject) to avoid O(N) entries search in registerAgent.
+const boundSubjects = new Map<string, string>();
 const projects = new Map<string, Project>();
 const resources = new Map<string, Resource>();
 const tasks = new Map<string, Task>();
@@ -34,7 +36,8 @@ export function isReady() { return ready; }
 async function log(type: string, data: Record<string, string>) {
   const event = { id: id("evt"), type, at: now(), ...data };
   if (pool) await pool.query("INSERT INTO activity(id,type,at,data,project_id) VALUES($1,$2,$3,$4,$5)", [event.id, type, event.at, JSON.stringify(data), data.projectId ?? null]);
-  else activity.unshift(event);
+  // Optimization: Use array.push (O(1)) instead of array.unshift (O(N)) for appending new activity events.
+  else activity.push(event);
 }
 
 async function logWithClient(client: pg.PoolClient, type: string, data: Record<string, string>) {
@@ -114,10 +117,15 @@ export async function registerAgent(input: { id: string; name: string; descripti
     if (input.actorSubject) await pool.query("INSERT INTO agent_bindings(subject,agent_id) VALUES($1,$2) ON CONFLICT(subject) DO UPDATE SET agent_id=EXCLUDED.agent_id", [input.actorSubject, input.id]);
   } else {
     const existingBinding = input.actorSubject ? agentBindings.get(input.actorSubject) : undefined;
-    const otherBinding = input.actorSubject ? [...agentBindings.entries()].find(([subject, agentId]) => subject !== input.actorSubject && agentId === input.id) : undefined;
+    // Optimization: Use O(1) reverse lookup map boundSubjects to check if agent ID is bound to another subject.
+    const boundSubject = boundSubjects.get(input.id);
+    const otherBinding = input.actorSubject && boundSubject && boundSubject !== input.actorSubject;
     if ((existingBinding && existingBinding !== input.id) || otherBinding) return null;
     agents.set(input.id, { id: input.id, name: input.name, description: input.description, createdAt: agents.get(input.id)?.createdAt ?? now() });
-    if (input.actorSubject) agentBindings.set(input.actorSubject, input.id);
+    if (input.actorSubject) {
+      agentBindings.set(input.actorSubject, input.id);
+      boundSubjects.set(input.id, input.actorSubject);
+    }
   }
   const agent = pool ? (await pool.query("SELECT id,name,description,created_at AS \"createdAt\" FROM agents WHERE id=$1", [input.id])).rows[0] as Agent : agents.get(input.id)!;
   await log("agent.register", { agentId: input.id });
@@ -220,7 +228,23 @@ export async function addContact(name:string,value:string,kind:string,projectId?
 export async function listContacts(projectId?:string){if(pool)return(await pool.query("SELECT id,project_id AS \"projectId\",name,value,kind,created_by AS \"createdBy\",created_at AS \"createdAt\" FROM contacts"+(projectId?" WHERE project_id=$1":"")+" ORDER BY created_at DESC",projectId?[projectId]:[])).rows;return contacts.filter(c=>!projectId||c.projectId===projectId);}
 export async function registerTool(name:string,description:string,endpoint?:string,projectId?:string,createdBy?:string){if((projectId&&!(await projectExists(projectId)))||(createdBy&&!(await agentExists(createdBy))))return null;const t:Tool={id:id("tool"),projectId,name,description,endpoint,createdBy,createdAt:now()};if(pool)await pool.query("INSERT INTO tools(id,project_id,name,description,endpoint,created_by) VALUES($1,$2,$3,$4,$5,$6)",[t.id,t.projectId??null,name,description,endpoint??null,createdBy??null]);else tools.unshift(t);await log("tool.register",{toolId:t.id,...(projectId?{projectId}:{}),...(createdBy?{agentId:createdBy}:{})});return t;}
 export async function listTools(projectId?:string){if(pool)return(await pool.query("SELECT id,project_id AS \"projectId\",name,description,endpoint,created_by AS \"createdBy\",created_at AS \"createdAt\" FROM tools"+(projectId?" WHERE project_id=$1":"")+" ORDER BY created_at DESC",projectId?[projectId]:[])).rows;return tools.filter(t=>!projectId||t.projectId===projectId);}
-export async function listActivity(limit=50,projectId?:string){const safeLimit=Math.max(1,Math.min(limit,200));if(pool){const rows=await pool.query("SELECT id,type,at,data,project_id AS \"projectId\" FROM activity"+(projectId?" WHERE project_id=$2":"")+" ORDER BY at DESC LIMIT $1",projectId?[safeLimit,projectId]:[safeLimit]);return rows.rows.map(row=>({id:row.id,type:row.type,at:new Date(row.at).toISOString(),...(row.data??{}),...(row.projectId?{projectId:row.projectId}:{})}));}return activity.filter(e=>!projectId||e.projectId===projectId).slice(0,safeLimit);}
+export async function listActivity(limit=50,projectId?:string){
+  const safeLimit=Math.max(1,Math.min(limit,200));
+  if(pool){
+    const rows=await pool.query("SELECT id,type,at,data,project_id AS \"projectId\" FROM activity"+(projectId?" WHERE project_id=$2":"")+" ORDER BY at DESC LIMIT $1",projectId?[safeLimit,projectId]:[safeLimit]);
+    return rows.rows.map(row=>({id:row.id,type:row.type,at:new Date(row.at).toISOString(),...(row.data??{}),...(row.projectId?{projectId:row.projectId}:{})}));
+  }
+  // Optimization: Iterate backwards from newest events (pushed last) and stop early once safeLimit matching items are collected.
+  // This avoids O(N) full array filter and slicing.
+  const result: ActivityEvent[] = [];
+  for (let i = activity.length - 1; i >= 0 && result.length < safeLimit; i--) {
+    const e = activity[i];
+    if (!projectId || e.projectId === projectId) {
+      result.push(e);
+    }
+  }
+  return result;
+}
 
 export async function getCoordinationContext(projectId?:string):Promise<CoordinationContext|null>{
   let project:Project|null=null;

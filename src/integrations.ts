@@ -26,6 +26,8 @@ const MAX_REQUEST_BYTES = 256 * 1024;
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 15_000;
 const BASE_URL = "https://conduit.invalid";
+// Optimization: Reuse a static TextEncoder instance to avoid repeated object allocations on every request byte check.
+const textEncoder = new TextEncoder();
 
 const definitions: Record<IntegrationProvider, Omit<IntegrationDefinition, "configured">> = {
   github: { provider: "github", description: "GitHub REST API through a Conduit-managed bearer credential.", baseUrl: "https://api.github.com", credentialEnv: "GITHUB_TOKEN", readMethods: ["GET", "HEAD"], writeMethods: ["POST", "PUT", "PATCH", "DELETE"] },
@@ -96,7 +98,7 @@ export async function callIntegration(input: { provider: IntegrationProvider; me
   if (input.body !== undefined && input.method !== "GET" && input.method !== "HEAD") {
     let serialized: string;
     try { serialized = JSON.stringify(input.body); } catch { throw new Error("integration_request_invalid_json"); }
-    if (new TextEncoder().encode(serialized).byteLength > MAX_REQUEST_BYTES) throw new Error("integration_request_too_large");
+    if (textEncoder.encode(serialized).byteLength > MAX_REQUEST_BYTES) throw new Error("integration_request_too_large");
     headers["Content-Type"] = "application/json";
     init.body = serialized;
   }
