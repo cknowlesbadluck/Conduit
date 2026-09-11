@@ -153,7 +153,47 @@ export async function registerResource(input:{projectId?:string;name:string;desc
 }
 export async function listResources(projectId?:string){if(pool)return(await pool.query("SELECT id,project_id AS \"projectId\",name,description,kind,endpoint,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM resources"+(projectId?" WHERE project_id=$1":"")+" ORDER BY created_at DESC",projectId?[projectId]:[])).rows;return[...resources.values()].filter(r=>!projectId||r.projectId===projectId).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
 
-export async function createTask(input:{title:string;description?:string;createdBy:string;projectId?:string}){if(!(await agentExists(input.createdBy))||(input.projectId&&!(await projectExists(input.projectId))))return null;const t:Task={id:id("task"),projectId:input.projectId,title:input.title,description:input.description??"",status:"open",createdBy:input.createdBy,createdAt:now(),updatedAt:now()};if(pool)await pool.query("INSERT INTO tasks(id,project_id,title,description,status,created_by) VALUES($1,$2,$3,$4,$5,$6)",[t.id,t.projectId??null,t.title,t.description,t.status,t.createdBy]);else tasks.set(t.id,t);await log("task.create",{taskId:t.id,agentId:t.createdBy,...(t.projectId?{projectId:t.projectId}:{})});return t;}
+export async function createTask(input: {
+  title: string;
+  description?: string;
+  createdBy: string;
+  projectId?: string;
+}) {
+  if (
+    !(await agentExists(input.createdBy)) ||
+    (input.projectId && !(await projectExists(input.projectId)))
+  ) {
+    return null;
+  }
+
+  const t: Task = {
+    id: id("task"),
+    projectId: input.projectId,
+    title: input.title,
+    description: input.description ?? "",
+    status: "open",
+    createdBy: input.createdBy,
+    createdAt: now(),
+    updatedAt: now(),
+  };
+
+  if (pool) {
+    await pool.query(
+      "INSERT INTO tasks(id,project_id,title,description,status,created_by) VALUES($1,$2,$3,$4,$5,$6)",
+      [t.id, t.projectId ?? null, t.title, t.description, t.status, t.createdBy]
+    );
+  } else {
+    tasks.set(t.id, t);
+  }
+
+  await log("task.create", {
+    taskId: t.id,
+    agentId: t.createdBy,
+    ...(t.projectId ? { projectId: t.projectId } : {}),
+  });
+
+  return t;
+}
 
 export async function listTasks(options?: { status?: TaskStatus; projectId?: string; claimedBy?: string; createdBy?: string } | TaskStatus, legacyProjectId?: string) {
   const opts = typeof options === "string" || options === undefined ? { status: options, projectId: legacyProjectId } : options;
