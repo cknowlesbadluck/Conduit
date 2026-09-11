@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { registerAgent, getBoundAgentId, createProject, listProjects, registerResource, listResources, createTask, listTasks, addContact, listContacts, registerTool, listTools, listActivity, getCoordinationContext } from "./store.js";
+import { registerAgent, getBoundAgentId, createProject, getProject, listProjects, registerResource, listResources, createTask, listTasks, addContact, listContacts, registerTool, listTools, listActivity, getCoordinationContext } from "./store.js";
 
 test("projects and resources are isolated by project", async () => {
   await registerAgent({ id: "coord-a", name: "Coordinator A", actorSubject: "subject-a" });
@@ -54,4 +54,22 @@ test("unknown projects are rejected for project-scoped writes", async () => {
   assert.equal(await addContact("Bad", "bad", "reference", "project_missing", "coord-a"), null);
   assert.equal(await registerTool("Bad", "Bad", undefined, "project_missing", "coord-a"), null);
   assert.equal(await getCoordinationContext("project_missing"), null);
+});
+
+test("getProject retrieves project details by ID or returns null if not found", async () => {
+  await registerAgent({ id: "project-agent", name: "Project Agent" });
+  const created = await createProject({ name: "GetProject Test", description: "Test description", createdBy: "project-agent" });
+  assert.ok(created);
+
+  const fetched = await getProject(created!.id);
+  assert.ok(fetched);
+  assert.equal(fetched!.id, created!.id);
+  assert.equal(fetched!.name, "GetProject Test");
+  assert.equal(fetched!.description, "Test description");
+  assert.equal(fetched!.createdBy, "project-agent");
+  assert.ok(fetched!.createdAt);
+  assert.ok(fetched!.updatedAt);
+
+  const nonexistent = await getProject("nonexistent-project-id");
+  assert.equal(nonexistent, null);
 });
