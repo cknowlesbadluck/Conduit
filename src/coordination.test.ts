@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { registerAgent, getBoundAgentId, createProject, listProjects, registerResource, listResources, createTask, listTasks, addContact, listContacts, registerTool, listTools, listActivity, getCoordinationContext } from "./store.js";
+import { registerAgent, listAgents, getBoundAgentId, createProject, listProjects, registerResource, listResources, createTask, listTasks, addContact, listContacts, registerTool, listTools, listActivity, getCoordinationContext } from "./store.js";
 
 test("projects and resources are isolated by project", async () => {
   await registerAgent({ id: "coord-a", name: "Coordinator A", actorSubject: "subject-a" });
@@ -54,4 +54,38 @@ test("unknown projects are rejected for project-scoped writes", async () => {
   assert.equal(await addContact("Bad", "bad", "reference", "project_missing", "coord-a"), null);
   assert.equal(await registerTool("Bad", "Bad", undefined, "project_missing", "coord-a"), null);
   assert.equal(await getCoordinationContext("project_missing"), null);
+});
+
+
+test("listAgents lists registered agents ordered by createdAt descending and reflects updates", async () => {
+  await registerAgent({ id: "agent-list-1", name: "Agent 1", description: "First agent" });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  await registerAgent({ id: "agent-list-2", name: "Agent 2", description: "Second agent" });
+
+  const agents = await listAgents();
+  const agent1 = agents.find((a) => a.id === "agent-list-1");
+  const agent2 = agents.find((a) => a.id === "agent-list-2");
+
+  assert.ok(agent1);
+  assert.equal(agent1.name, "Agent 1");
+  assert.equal(agent1.description, "First agent");
+  assert.ok(agent1.createdAt);
+
+  assert.ok(agent2);
+  assert.equal(agent2.name, "Agent 2");
+  assert.equal(agent2.description, "Second agent");
+  assert.ok(agent2.createdAt);
+
+  // Check ordering (agent2 created after agent1, so agent2 should appear before agent1)
+  const index1 = agents.findIndex((a) => a.id === "agent-list-1");
+  const index2 = agents.findIndex((a) => a.id === "agent-list-2");
+  assert.ok(index2 < index1, "Latest created agent should be ordered before earlier created agent");
+
+  // Update existing agent and verify listAgents reflects update
+  await registerAgent({ id: "agent-list-1", name: "Agent 1 Updated", description: "Updated description" });
+  const updatedAgents = await listAgents();
+  const updatedAgent1 = updatedAgents.find((a) => a.id === "agent-list-1");
+  assert.ok(updatedAgent1);
+  assert.equal(updatedAgent1.name, "Agent 1 Updated");
+  assert.equal(updatedAgent1.description, "Updated description");
 });
