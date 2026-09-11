@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { registerAgent, getBoundAgentId, createProject, listProjects, registerResource, listResources, createTask, listTasks, addContact, listContacts, registerTool, listTools, listActivity, getCoordinationContext } from "./store.js";
+import { registerAgent, getBoundAgentId, createProject, listProjects, registerResource, listResources, createTask, getTask, claimTask, listTasks, addContact, listContacts, registerTool, listTools, listActivity, getCoordinationContext } from "./store.js";
 
 test("projects and resources are isolated by project", async () => {
   await registerAgent({ id: "coord-a", name: "Coordinator A", actorSubject: "subject-a" });
@@ -54,4 +54,34 @@ test("unknown projects are rejected for project-scoped writes", async () => {
   assert.equal(await addContact("Bad", "bad", "reference", "project_missing", "coord-a"), null);
   assert.equal(await registerTool("Bad", "Bad", undefined, "project_missing", "coord-a"), null);
   assert.equal(await getCoordinationContext("project_missing"), null);
+});
+
+test("getTask retrieves tasks by ID and reflects state changes", async () => {
+  await registerAgent({ id: "gettask-agent", name: "GetTask Agent" });
+  const created = await createTask({ title: "Task for getTask", description: "Testing getTask functionality", createdBy: "gettask-agent" });
+  assert.ok(created);
+
+  // Verify fetching existing task by ID
+  const fetched = await getTask(created!.id);
+  assert.ok(fetched);
+  assert.equal(fetched!.id, created!.id);
+  assert.equal(fetched!.title, "Task for getTask");
+  assert.equal(fetched!.description, "Testing getTask functionality");
+  assert.equal(fetched!.status, "open");
+  assert.equal(fetched!.createdBy, "gettask-agent");
+  assert.equal(fetched!.claimedBy, undefined);
+  assert.ok(fetched!.createdAt);
+  assert.ok(fetched!.updatedAt);
+
+  // Verify non-existent task returns null
+  const nonExistent = await getTask("non_existent_task_id");
+  assert.equal(nonExistent, null);
+
+  // Verify task state updates are reflected when re-fetched via getTask
+  const claimed = await claimTask(created!.id, "gettask-agent");
+  assert.ok(claimed);
+  const refetched = await getTask(created!.id);
+  assert.ok(refetched);
+  assert.equal(refetched!.status, "claimed");
+  assert.equal(refetched!.claimedBy, "gettask-agent");
 });
