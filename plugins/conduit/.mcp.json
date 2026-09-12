@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "conduit": {
+      "type": "http",
+      "url": "https://conduit-feco.onrender.com/mcp"
+    }
+  }
+}
