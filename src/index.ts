@@ -37,6 +37,15 @@ function applyCors(req: express.Request, res: express.Response) {
   });
 }
 
+const publicUrl = process.env.PUBLIC_URL?.trim();
+const allowedHostnames = new Set<string>(["localhost", "127.0.0.1", "[::1]"]);
+if (publicUrl) { try { allowedHostnames.add(new URL(publicUrl).hostname); } catch { throw new Error("PUBLIC_URL must be a valid absolute URL"); } }
+
+// Validate Host and Origin before handling CORS preflight. This keeps OPTIONS
+// from becoming a bypass around MCP's DNS-rebinding protections.
+app.use(hostHeaderValidation([...allowedHostnames]));
+if (allowedOriginHostnames.length) app.use(originValidation(allowedOriginHostnames));
+
 // Remote MCP hosts run in browsers as well as native clients. Bearer tokens
 // are supplied explicitly rather than by cookies, so cross-origin discovery
 // and authenticated requests must be permitted for OAuth/CIMD to complete.
@@ -45,12 +54,6 @@ app.use((req, res, next) => {
   if (req.method === "OPTIONS") { res.sendStatus(204); return; }
   next();
 });
-
-const publicUrl = process.env.PUBLIC_URL?.trim();
-const allowedHostnames = new Set<string>(["localhost", "127.0.0.1", "[::1]"]);
-if (publicUrl) { try { allowedHostnames.add(new URL(publicUrl).hostname); } catch { throw new Error("PUBLIC_URL must be a valid absolute URL"); } }
-app.use(hostHeaderValidation([...allowedHostnames]));
-if (allowedOriginHostnames.length) app.use(originValidation(allowedOriginHostnames));
 
 const port = Number(process.env.PORT || 3000);
 const allowAnonymous = process.env.CONDUIT_ALLOW_ANONYMOUS === "true" && process.env.NODE_ENV !== "production";
