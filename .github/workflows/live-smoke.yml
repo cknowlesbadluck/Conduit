@@ -71,11 +71,16 @@ jobs:
               data = json.load(f)
           for key in ('issuer', 'jwks_uri', 'authorization_endpoint', 'token_endpoint'):
               assert data.get(key), (key, data)
+          descope_scopes = data.get('scopes_supported', [])
+          assert 'mcp:conduit.read' in descope_scopes, ('Descope discovery is missing mcp:conduit.read', data)
+          assert 'mcp:conduit.write' in descope_scopes, ('Descope discovery is missing mcp:conduit.write', data)
           with open('/tmp/as.json', encoding='utf-8') as f:
               as_meta = json.load(f)
           assert as_meta.get('registration_endpoint'), as_meta
+          assert as_meta.get('client_id_metadata_document_supported') is True, as_meta
           assert 'S256' in as_meta.get('code_challenge_methods_supported', []), as_meta
           print('Descope issuer:', data['issuer'])
+          print('Descope scopes:', descope_scopes)
           print('registration_endpoint:', as_meta['registration_endpoint'])
           print('client_id_metadata_document_supported:', as_meta.get('client_id_metadata_document_supported'))
           PY
