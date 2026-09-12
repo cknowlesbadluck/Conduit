@@ -32,7 +32,7 @@ Projects are optional coordination domains. Keep project-specific context inside
 
 ## External integrations
 
-Conduit coordinates references to GitHub, Render, Linear, Supabase, MCP servers, and other systems. It does not automatically inherit permission to operate those systems. Use the corresponding authenticated integration when an external mutation is actually required.
+Conduit can forward GitHub, Render, and Supabase API calls through `integration_call`, and JSON-RPC to remote HTTPS MCP endpoints through `mcp_bridge_call`. Registering a resource or tool does not authorize those calls. Both adapters are high-risk and must stay least-privilege. Linear is not a built-in adapter.
 
 ## OAuth
 
