@@ -118,7 +118,7 @@ export async function registerAgent(input: { id: string; name: string; descripti
     const existingBinding = input.actorSubject ? agentBindings.get(input.actorSubject) : undefined;
     // Optimization: Replace O(n) Array.find scanning over Map entries with O(1) reverse lookup map.
     const boundSubject = boundAgentSubjects.get(input.id);
-    const otherBinding = input.actorSubject && boundSubject && boundSubject !== input.actorSubject;
+    const otherBinding = Boolean(input.actorSubject && boundSubject && boundSubject !== input.actorSubject);
     if ((existingBinding && existingBinding !== input.id) || otherBinding) return null;
     agents.set(input.id, { id: input.id, name: input.name, description: input.description, createdAt: agents.get(input.id)?.createdAt ?? now() });
     if (input.actorSubject) {
