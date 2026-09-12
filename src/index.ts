@@ -111,7 +111,7 @@ export async function setupApp() {
 }
 
 // In Cloudflare Workers environments (or bundlers targeting workers), skip standalone app.listen.
-const isCloudflareWorker = typeof globalThis !== "undefined" && "navigator" in globalThis && (globalThis.navigator as Record<string, unknown>)?.userAgent === "Cloudflare-Workers";
+const isCloudflareWorker = typeof globalThis !== "undefined" && "navigator" in globalThis && (globalThis.navigator as { userAgent?: string })?.userAgent === "Cloudflare-Workers";
 
 if (!isCloudflareWorker && process.env.NODE_ENV !== "test") {
   setupApp()
