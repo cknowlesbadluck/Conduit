@@ -11,8 +11,12 @@ function validateEndpoint(endpoint: string): URL {
   if (url.protocol !== "https:") throw new Error("mcp_endpoint_must_be_https");
   if (url.username || url.password) throw new Error("mcp_endpoint_invalid");
   const host = url.hostname.toLowerCase();
-  if (host === "localhost" || host === "localhost.localdomain" || host === "::1" || host === "127.0.0.1" || host === "0.0.0.0" || host === "169.254.169.254" || host.endsWith(".localhost") || host.endsWith(".local")) throw new Error("mcp_endpoint_local_target");
-  if (/^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host) || /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)) throw new Error("mcp_endpoint_local_target");
+  if (host === "localhost" || host === "localhost.localdomain" || host === "::1" || host === "127.0.0.1" || host === "0.0.0.0" || host === "169.254.169.254" || host === "metadata.google.internal" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) throw new Error("mcp_endpoint_local_target");
+  if (/^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host) || /^172\.(1[6-9]|2\d|3[0-1])\./.test(host) || /^169\.254\./.test(host) || /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(host)) throw new Error("mcp_endpoint_local_target");
+  if (host.includes(":")) {
+    const normalized = host.replace(/^\[|\]$/g, "").toLowerCase();
+    if (normalized === "::1" || normalized.startsWith("fe80:") || normalized.startsWith("fc") || normalized.startsWith("fd") || normalized.startsWith("::ffff:")) throw new Error("mcp_endpoint_local_target");
+  }
   return url;
 }
 

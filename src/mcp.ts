@@ -84,8 +84,9 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
     } catch (error) { const message = error instanceof Error ? error.message : "integration_call_failed"; console.warn(JSON.stringify({ type: "integration.call.failed", provider, method, path, projectId: projectId ?? null, actor: actorSubject(extra) ?? null, error: message })); return rejected(message); }
   });
 
-  server.registerTool("mcp_bridge_call", { description: "Forward one JSON-RPC request to a registered remote MCP endpoint through the Conduit bridge", inputSchema: z.object({ endpoint: z.string().url(), method: z.string().min(1).max(200), id: z.union([z.string(), z.number(), z.null()]).optional(), params: z.unknown().optional(), projectId: z.string().min(1).max(200).optional() }), annotations: { destructiveHint: true, readOnlyHint: false } }, async ({ endpoint, method, id, params, projectId }, extra) => {
-    if (readScope) auth(extra, readScope);
+  server.registerTool("mcp_bridge_call", { description: "Forward one JSON-RPC request to a remote MCP endpoint. Discovery/list methods require read scope; tools/call and other methods require write scope.", inputSchema: z.object({ endpoint: z.string().url(), method: z.string().min(1).max(200), id: z.union([z.string(), z.number(), z.null()]).optional(), params: z.unknown().optional(), projectId: z.string().min(1).max(200).optional() }), annotations: { destructiveHint: true, readOnlyHint: false } }, async ({ endpoint, method, id, params, projectId }, extra) => {
+    const readMethods = new Set(["initialize", "ping", "tools/list", "resources/list", "resources/templates/list", "prompts/list"]);
+    if (readMethods.has(method)) { if (readScope) auth(extra, readScope); } else { if (writeScope) auth(extra, writeScope); }
     try {
       const result = await callMcpBridge({ endpoint, request: { jsonrpc: "2.0", id, method, params } });
       console.info(JSON.stringify({ type: "mcp.bridge.call", endpoint: new URL(endpoint).origin, method, status: result.status, ok: result.ok, projectId: projectId ?? null, actor: actorSubject(extra) ?? null }));

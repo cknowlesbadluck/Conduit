@@ -6,6 +6,10 @@ test("MCP bridge rejects non-HTTPS endpoints and local targets", async () => {
   await assert.rejects(() => callMcpBridge({ endpoint: "http://example.com/mcp", request: { jsonrpc: "2.0", id: 1, method: "tools/list" } }), /mcp_endpoint_must_be_https/);
   await assert.rejects(() => callMcpBridge({ endpoint: "https://localhost/mcp", request: { jsonrpc: "2.0", id: 1, method: "tools/list" } }), /mcp_endpoint_local_target/);
   await assert.rejects(() => callMcpBridge({ endpoint: "https://127.0.0.1/mcp", request: { jsonrpc: "2.0", id: 1, method: "tools/list" } }), /mcp_endpoint_local_target/);
+  await assert.rejects(() => callMcpBridge({ endpoint: "https://169.254.169.254/latest/meta-data", request: { jsonrpc: "2.0", id: 1, method: "tools/list" } }), /mcp_endpoint_local_target/);
+  await assert.rejects(() => callMcpBridge({ endpoint: "https://[::1]/mcp", request: { jsonrpc: "2.0", id: 1, method: "tools/list" } }), /mcp_endpoint_local_target/);
+  await assert.rejects(() => callMcpBridge({ endpoint: "https://[fd00::1]/mcp", request: { jsonrpc: "2.0", id: 1, method: "tools/list" } }), /mcp_endpoint_local_target/);
+  await assert.rejects(() => callMcpBridge({ endpoint: "https://metadata.google.internal/mcp", request: { jsonrpc: "2.0", id: 1, method: "tools/list" } }), /mcp_endpoint_local_target/);
 });
 
 test("MCP bridge forwards JSON-RPC and returns parsed response", async () => {

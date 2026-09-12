@@ -91,7 +91,7 @@ Projects are optional coordination domains. Existing unscoped workflows remain v
 
 Resources are metadata/references to development assets such as repositories, services, environments, documentation sources, MCP endpoints, and external systems. Registering a resource does not grant Conduit permission to execute the referenced endpoint, and resource records must not contain credentials or secrets.
 
-Conduit does not directly execute GitHub, Render, Linear, Supabase, or arbitrary MCP operations. Those integrations can be added as separately authenticated adapters in future work.
+Conduit can forward authenticated GitHub, Render, and Supabase API calls through `integration_call`, and can forward JSON-RPC to remote HTTPS MCP endpoints through `mcp_bridge_call`. Both adapters are high-risk: they use server-side credentials or outbound network, they never store secrets in resource records, and mutating calls require write scope. Registering a resource or tool does not by itself authorize execution of that endpoint.
 
 ## Persistence
 
