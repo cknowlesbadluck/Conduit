@@ -16,28 +16,72 @@ export function setMcpBridgeLookupForTests(fn?: AddressLookup) {
   addressLookup = fn ?? ((hostname) => dnsLookup(hostname, { all: true }));
 }
 
+function parseIpv4Octets(value: string): number[] | null {
+  const parts = value.split(".");
+  if (parts.length !== 4) return null;
+  const octets = parts.map((part) => Number.parseInt(part, 10));
+  if (octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) return null;
+  return octets;
+}
+
 function isDisallowedIpv4(value: string): boolean {
-  return (
-    value === "0.0.0.0" ||
-    /^127\./.test(value) ||
-    /^10\./.test(value) ||
-    /^192\.168\./.test(value) ||
-    /^172\.(1[6-9]|2\d|3[0-1])\./.test(value) ||
-    /^169\.254\./.test(value) ||
-    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(value)
-  );
+  const octets = parseIpv4Octets(value);
+  if (!octets) return true;
+  const [a, b] = octets;
+  if (a === 0) return true; // 0.0.0.0/8
+  if (a === 10) return true; // 10.0.0.0/8
+  if (a === 127) return true; // 127.0.0.0/8
+  if (a === 169 && b === 254) return true; // link-local
+  if (a === 172 && b >= 16 && b <= 31) return true; // RFC1918
+  if (a === 192 && b === 168) return true; // RFC1918
+  if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+  if (a === 198 && (b === 18 || b === 19)) return true; // benchmarking
+  if (a >= 224) return true; // multicast + reserved
+  return false;
+}
+
+function expandIpv6(value: string): number[] | null {
+  const lower = value.toLowerCase();
+  if (lower.includes(".")) {
+    const lastColon = lower.lastIndexOf(":");
+    const ipv4 = parseIpv4Octets(lower.slice(lastColon + 1));
+    if (!ipv4) return null;
+    const head = lower.slice(0, lastColon);
+    const embedded = `${((ipv4[0] << 8) | ipv4[1]).toString(16)}:${((ipv4[2] << 8) | ipv4[3]).toString(16)}`;
+    return expandIpv6(`${head}:${embedded}`);
+  }
+  const halves = lower.split("::");
+  if (halves.length > 2) return null;
+  const parseHalf = (half: string) => (half ? half.split(":").map((hextet) => Number.parseInt(hextet, 16)) : []);
+  const left = parseHalf(halves[0]);
+  const right = halves.length === 2 ? parseHalf(halves[1]) : [];
+  if ([...left, ...right].some((hextet) => !Number.isInteger(hextet) || hextet < 0 || hextet > 0xffff)) return null;
+  const missing = 8 - left.length - right.length;
+  if (missing < 0 || (halves.length === 1 && missing !== 0)) return null;
+  return [...left, ...Array(missing).fill(0), ...right];
+}
+
+function hextetsToIpv4(high: number, low: number): string {
+  return `${(high >> 8) & 0xff}.${high & 0xff}.${(low >> 8) & 0xff}.${low & 0xff}`;
 }
 
 export function isDisallowedAddress(address: string): boolean {
   const value = address.replace(/^\[|\]$/g, "").toLowerCase();
   if (isIP(value) === 4) return isDisallowedIpv4(value);
   if (isIP(value) === 6) {
-    if (value === "::" || value === "::1" || value.startsWith("fe80:")) return true;
-    const mapped = value.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/);
-    if (mapped) return isDisallowedIpv4(mapped[1]);
-    if (value.startsWith("::ffff:")) return true;
-    const firstHextet = Number.parseInt(value.split(":", 1)[0] || "0", 16);
-    if (Number.isFinite(firstHextet) && (firstHextet & 0xfe00) === 0xfc00) return true;
+    const hextets = expandIpv6(value);
+    if (!hextets) return true;
+    if (hextets.every((hextet) => hextet === 0)) return true; // ::
+    if (hextets[0] === 0 && hextets[1] === 0 && hextets[2] === 0 && hextets[3] === 0 && hextets[4] === 0 && hextets[5] === 0 && hextets[6] === 0 && hextets[7] === 1) return true; // ::1
+    if ((hextets[0] & 0xffc0) === 0xfe80) return true; // fe80::/10
+    if ((hextets[0] & 0xfe00) === 0xfc00) return true; // fc00::/7 ULA
+    if (hextets[0] === 0 && hextets[1] === 0 && hextets[2] === 0 && hextets[3] === 0 && hextets[4] === 0 && hextets[5] === 0xffff) {
+      return isDisallowedIpv4(hextetsToIpv4(hextets[6], hextets[7]));
+    }
+    if (hextets[0] === 0x2002) return isDisallowedIpv4(hextetsToIpv4(hextets[1], hextets[2])); // 6to4
+    if (hextets[0] === 0x64 && hextets[1] === 0xff9b && hextets[2] === 0 && hextets[3] === 0 && hextets[4] === 0 && hextets[5] === 0) {
+      return isDisallowedIpv4(hextetsToIpv4(hextets[6], hextets[7])); // NAT64 well-known prefix
+    }
     return false;
   }
   return false;
