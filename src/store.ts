@@ -220,7 +220,27 @@ export async function addContact(name:string,value:string,kind:string,projectId?
 export async function listContacts(projectId?:string){if(pool)return(await pool.query("SELECT id,project_id AS \"projectId\",name,value,kind,created_by AS \"createdBy\",created_at AS \"createdAt\" FROM contacts"+(projectId?" WHERE project_id=$1":"")+" ORDER BY created_at DESC",projectId?[projectId]:[])).rows;return contacts.filter(c=>!projectId||c.projectId===projectId);}
 export async function registerTool(name:string,description:string,endpoint?:string,projectId?:string,createdBy?:string){if((projectId&&!(await projectExists(projectId)))||(createdBy&&!(await agentExists(createdBy))))return null;const t:Tool={id:id("tool"),projectId,name,description,endpoint,createdBy,createdAt:now()};if(pool)await pool.query("INSERT INTO tools(id,project_id,name,description,endpoint,created_by) VALUES($1,$2,$3,$4,$5,$6)",[t.id,t.projectId??null,name,description,endpoint??null,createdBy??null]);else tools.unshift(t);await log("tool.register",{toolId:t.id,...(projectId?{projectId}:{}),...(createdBy?{agentId:createdBy}:{})});return t;}
 export async function listTools(projectId?:string){if(pool)return(await pool.query("SELECT id,project_id AS \"projectId\",name,description,endpoint,created_by AS \"createdBy\",created_at AS \"createdAt\" FROM tools"+(projectId?" WHERE project_id=$1":"")+" ORDER BY created_at DESC",projectId?[projectId]:[])).rows;return tools.filter(t=>!projectId||t.projectId===projectId);}
-export async function listActivity(limit=50,projectId?:string){const safeLimit=Math.max(1,Math.min(limit,200));if(pool){const rows=await pool.query("SELECT id,type,at,data,project_id AS \"projectId\" FROM activity"+(projectId?" WHERE project_id=$2":"")+" ORDER BY at DESC LIMIT $1",projectId?[safeLimit,projectId]:[safeLimit]);return rows.rows.map(row=>({id:row.id,type:row.type,at:new Date(row.at).toISOString(),...(row.data??{}),...(row.projectId?{projectId:row.projectId}:{})}));}return activity.filter(e=>!projectId||e.projectId===projectId).slice(0,safeLimit);}
+export async function listActivity(limit = 50, projectId?: string) {
+  const safeLimit = Math.max(1, Math.min(limit, 200));
+  if (pool) {
+    const rows = await pool.query(
+      "SELECT id,type,at,data,project_id AS \"projectId\" FROM activity" +
+        (projectId ? " WHERE project_id=$2" : "") +
+        " ORDER BY at DESC LIMIT $1",
+      projectId ? [safeLimit, projectId] : [safeLimit]
+    );
+    return rows.rows.map(row => ({
+      id: row.id,
+      type: row.type,
+      at: new Date(row.at).toISOString(),
+      ...(row.data ?? {}),
+      ...(row.projectId ? { projectId: row.projectId } : {}),
+    }));
+  }
+  return activity
+    .filter(e => !projectId || e.projectId === projectId)
+    .slice(0, safeLimit);
+}
 
 export async function getCoordinationContext(projectId?:string):Promise<CoordinationContext|null>{
   let project:Project|null=null;
