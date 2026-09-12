@@ -1,0 +1,43 @@
+{
+  "name": "conduit",
+  "version": "0.6.0",
+  "description": "Coordinate AI agents and development resources through Conduit's authenticated remote MCP bridge.",
+  "author": {
+    "name": "Christopher Knowles",
+    "url": "https://github.com/cknowlesbadluck"
+  },
+  "homepage": "https://github.com/cknowlesbadluck/Conduit",
+  "repository": "https://github.com/cknowlesbadluck/Conduit",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "agents",
+    "coordination",
+    "shared-context",
+    "task-handoff",
+    "agent-collaboration",
+    "development"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Conduit",
+    "shortDescription": "Coordinate agents, tasks, tools, and shared development context",
+    "longDescription": "Connect ChatGPT, Codex, and other compatible agents to one authenticated Conduit MCP endpoint for shared agent identity, project context, resource discovery, task coordination, atomic claims, ownership-safe handoffs, and auditable activity history.",
+    "developerName": "Christopher Knowles",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/cknowlesbadluck/Conduit",
+    "defaultPrompt": [
+      "Use Conduit to coordinate agents, tasks, resources, and shared development context.",
+      "Register this agent with Conduit and inspect the current coordination context.",
+      "Create, claim, complete, or hand off a Conduit task without impersonating another agent."
+    ],
+    "brandColor": "#5B5BD6",
+    "screenshots": []
+  }
+}

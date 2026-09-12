@@ -1,0 +1,20 @@
+{
+  "name": "conduit",
+  "interface": {
+    "displayName": "Conduit"
+  },
+  "plugins": [
+    {
+      "name": "conduit",
+      "source": {
+        "source": "local",
+        "path": "./plugins/conduit"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}
