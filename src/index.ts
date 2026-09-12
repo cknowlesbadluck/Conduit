@@ -54,14 +54,9 @@ const publicUrl = process.env.PUBLIC_URL?.trim();
 const allowedHostnames = new Set<string>(["localhost", "127.0.0.1", "[::1]"]);
 if (publicUrl) { try { allowedHostnames.add(new URL(publicUrl).hostname); } catch { throw new Error("PUBLIC_URL must be a valid absolute URL"); } }
 
-// Validate Host and Origin before handling CORS preflight. This keeps OPTIONS
-// from becoming a bypass around MCP's DNS-rebinding protections.
 app.use(hostHeaderValidation([...allowedHostnames]));
 if (allowedOriginHostnames.length) app.use(originValidation(allowedOriginHostnames));
 
-// Remote MCP hosts run in browsers as well as native clients. Bearer tokens
-// are supplied explicitly rather than by cookies, so cross-origin discovery
-// and authenticated requests must be permitted for OAuth/CIMD to complete.
 app.use((req, res, next) => {
   applyCors(req, res);
   if (req.method === "OPTIONS") { res.sendStatus(204); return; }
@@ -71,11 +66,6 @@ app.use((req, res, next) => {
 const port = Number(process.env.PORT || 3000);
 const allowAnonymous = process.env.CONDUIT_ALLOW_ANONYMOUS === "true" && process.env.NODE_ENV !== "production";
 
-/**
- * OAuth discovery is commonly fetched by browser-based MCP hosts. Keep the
- * hand-authored protected-resource documents as accessible as the SDK's
- * authorization-server metadata route.
- */
 function protectedResourceMetadataResponse(res: express.Response, metadata: ReturnType<typeof buildProtectedResourceMetadata>) {
   res.type("application/json").json(metadata);
 }
@@ -98,13 +88,9 @@ async function boot() {
   if (authConfig) {
     const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(new URL(authConfig.resourceUrl)).toString();
     const protectedResourceMetadata = buildProtectedResourceMetadata(authConfig);
-    // Serve identical full RFC 9728 documents at both the root and path-specific well-known
-    // locations. Clients follow the 401 WWW-Authenticate resource_metadata pointer to the
-    // path-specific URL; mcpAuthMetadataRouter alone serves a thinner document there.
     for (const path of ["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"]) {
       app.get(path, (_req, res) => protectedResourceMetadataResponse(res, protectedResourceMetadata));
     }
-    // Still mount the SDK router for Authorization Server metadata mirroring.
     app.use(mcpAuthMetadataRouter({ oauthMetadata: authConfig.metadata, resourceServerUrl: new URL(authConfig.resourceUrl) }));
     const handler = createMcpHandler(() => createConduitServer(authConfig));
     app.all("/mcp", requireBearerAuth({ verifier: createTokenVerifier(authConfig), resourceMetadataUrl }), toNodeHandler(handler, { onerror: console.error }));
