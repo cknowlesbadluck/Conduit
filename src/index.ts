@@ -20,6 +20,8 @@ const configuredOrigins = process.env.MCP_ALLOWED_ORIGINS?.split(",").map((origi
 const allowedOrigins = new Set(configuredOrigins || []);
 const allowedOriginHostnames = [...allowedOrigins].map((origin) => new URL(origin).hostname);
 
+const allowedCorsHeaders = "Authorization, Content-Type, MCP-Protocol-Version, MCP-Session-Id, Mcp-Method, Mcp-Name";
+
 function applyCors(req: express.Request, res: express.Response) {
   const requestOrigin = req.header("origin");
   if (allowedOrigins.size > 0) {
@@ -32,7 +34,7 @@ function applyCors(req: express.Request, res: express.Response) {
   }
   res.set({
     "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": requestOrigin ? (req.header("access-control-request-headers") || "Authorization, Content-Type, MCP-Protocol-Version, MCP-Session-Id") : "Authorization, Content-Type, MCP-Protocol-Version, MCP-Session-Id",
+    "Access-Control-Allow-Headers": allowedCorsHeaders,
     "Access-Control-Expose-Headers": "WWW-Authenticate, MCP-Session-Id",
   });
 }
@@ -61,10 +63,9 @@ const allowAnonymous = process.env.CONDUIT_ALLOW_ANONYMOUS === "true" && process
 /**
  * OAuth discovery is commonly fetched by browser-based MCP hosts. Keep the
  * hand-authored protected-resource documents as accessible as the SDK's
- * authorization-server metadata route, including for preflight requests.
+ * authorization-server metadata route.
  */
-function protectedResourceMetadataResponse(req: express.Request, res: express.Response, metadata: ReturnType<typeof buildProtectedResourceMetadata>) {
-  applyCors(req, res);
+function protectedResourceMetadataResponse(res: express.Response, metadata: ReturnType<typeof buildProtectedResourceMetadata>) {
   res.type("application/json").json(metadata);
 }
 
@@ -82,7 +83,7 @@ async function boot() {
     // locations. Clients follow the 401 WWW-Authenticate resource_metadata pointer to the
     // path-specific URL; mcpAuthMetadataRouter alone serves a thinner document there.
     for (const path of ["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"]) {
-      app.get(path, (req, res) => protectedResourceMetadataResponse(req, res, protectedResourceMetadata));
+      app.get(path, (_req, res) => protectedResourceMetadataResponse(res, protectedResourceMetadata));
     }
     // Still mount the SDK router for Authorization Server metadata mirroring.
     app.use(mcpAuthMetadataRouter({ oauthMetadata: authConfig.metadata, resourceServerUrl: new URL(authConfig.resourceUrl) }));
