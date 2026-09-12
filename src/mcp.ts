@@ -55,12 +55,12 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
     const result = await registerAgent({ id, name, description, actorSubject: actor }); return result ? json(result) : rejected("agent_identity_conflict");
   });
 
-  server.registerTool("agents_list", { description: "List registered agents", inputSchema: z.object({}) }, async (_input, extra) => { if (readScope) auth(extra, readScope); return json(await listAgents()); });
+  server.registerTool("agents_list", { description: "List registered agents", inputSchema: z.object({}), annotations: { readOnlyHint: true } }, async (_input, extra) => { if (readScope) auth(extra, readScope); return json(await listAgents()); });
   server.registerTool("project_create", { description: "Create a project coordination domain for shared development work", inputSchema: z.object({ name: z.string().min(1).max(200), description: z.string().max(2000).optional(), createdBy: z.string().min(1).max(200).optional() }), annotations: { destructiveHint: false, readOnlyHint: false } }, async ({ name, description, createdBy }, extra) => {
     if (writeScope) auth(extra, writeScope); const actor = await requireBoundAgent(extra, createdBy); if (!actor) return rejected("agent_identity_not_bound");
     const result = await createProject({ name, description, createdBy: actor }); return result ? json(result) : rejected("project_creator_not_registered");
   });
-  server.registerTool("projects_list", { description: "List Conduit projects", inputSchema: z.object({}) }, async (_input, extra) => { if (readScope) auth(extra, readScope); return json(await listProjects()); });
+  server.registerTool("projects_list", { description: "List Conduit projects", inputSchema: z.object({}), annotations: { readOnlyHint: true } }, async (_input, extra) => { if (readScope) auth(extra, readScope); return json(await listProjects()); });
   server.registerTool("project_get", { description: "Retrieve details of a single project by ID", inputSchema: z.object({ projectId: z.string().min(1) }), annotations: { readOnlyHint: true } }, async ({ projectId }, extra) => {
     if (readScope) auth(extra, readScope);
     const result = await getProject(projectId);
@@ -71,7 +71,7 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
     if (writeScope) auth(extra, writeScope); const actor = await requireBoundAgent(extra, createdBy); if (!actor) return rejected("agent_identity_not_bound");
     const result = await registerResource({ projectId, name, description, kind, endpoint, createdBy: actor }); return result ? json(result) : rejected(projectId ? "project_not_found_or_agent_unregistered" : "agent_unregistered");
   });
-  server.registerTool("resources_list", { description: "List shared development resources", inputSchema: z.object({ projectId: z.string().min(1).optional() }) }, async ({ projectId }, extra) => { if (readScope) auth(extra, readScope); return json(await listResources(projectId)); });
+  server.registerTool("resources_list", { description: "List shared development resources", inputSchema: z.object({ projectId: z.string().min(1).optional() }), annotations: { readOnlyHint: true } }, async ({ projectId }, extra) => { if (readScope) auth(extra, readScope); return json(await listResources(projectId)); });
 
   server.registerTool("integrations_list", { description: "List supported runtime integrations and whether their server-side credentials are configured", inputSchema: z.object({}), annotations: { readOnlyHint: true } }, async (_input, extra) => { if (readScope) auth(extra, readScope); return json(listIntegrations().map(({ credentialEnv: _credentialEnv, ...definition }) => definition)); });
   server.registerTool("integration_call", { description: "Call a configured GitHub, Render, or Supabase API through its authenticated Conduit adapter. GET/HEAD require read scope; mutations require write scope.", inputSchema: z.object({ provider: z.enum(integrationProviders), method: z.enum(integrationMethods), path: z.string().min(1).max(2000), body: z.unknown().optional(), projectId: z.string().min(1).max(200).optional() }), annotations: { destructiveHint: true, readOnlyHint: false } }, async ({ provider, method, path, body, projectId }, extra) => {
@@ -104,7 +104,7 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
     if (writeScope) auth(extra, writeScope); const actor = await requireBoundAgent(extra, input.createdBy); if (!actor) return rejected("agent_identity_not_bound");
     const result = await createTask({ ...input, createdBy: actor }); return result ? json(result) : rejected(input.projectId ? "project_not_found_or_agent_unregistered" : "creator_not_registered");
   });
-  server.registerTool("task_list", { description: "List tasks, optionally filtered by status, project, claimant, or creator", inputSchema: z.object({ status: z.enum(["open", "claimed", "blocked", "completed"]).optional(), projectId: z.string().min(1).optional(), claimedBy: z.string().min(1).optional(), createdBy: z.string().min(1).optional() }) }, async ({ status, projectId, claimedBy, createdBy }, extra) => { if (readScope) auth(extra, readScope); return json(await listTasks({ status, projectId, claimedBy, createdBy })); });
+  server.registerTool("task_list", { description: "List tasks, optionally filtered by status, project, claimant, or creator", inputSchema: z.object({ status: z.enum(["open", "claimed", "blocked", "completed"]).optional(), projectId: z.string().min(1).optional(), claimedBy: z.string().min(1).optional(), createdBy: z.string().min(1).optional() }), annotations: { readOnlyHint: true } }, async ({ status, projectId, claimedBy, createdBy }, extra) => { if (readScope) auth(extra, readScope); return json(await listTasks({ status, projectId, claimedBy, createdBy })); });
 
   server.registerTool("task_get", { description: "Retrieve details of a single task by ID", inputSchema: z.object({ taskId: z.string().min(1) }), annotations: { readOnlyHint: true } }, async ({ taskId }, extra) => {
     if (readScope) auth(extra, readScope);
@@ -137,13 +137,13 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
     if (writeScope) auth(extra, writeScope); const actor = await requireBoundAgent(extra, createdBy); if (!actor) return rejected("agent_identity_not_bound");
     const result = await addContact(name, value, kind, projectId, actor); return result ? json(result) : rejected("project_not_found_or_agent_unregistered");
   });
-  server.registerTool("contacts_list", { description: "List shared contacts and references", inputSchema: z.object({ projectId: z.string().min(1).optional() }) }, async ({ projectId }, extra) => { if (readScope) auth(extra, readScope); return json(await listContacts(projectId)); });
+  server.registerTool("contacts_list", { description: "List shared contacts and references", inputSchema: z.object({ projectId: z.string().min(1).optional() }), annotations: { readOnlyHint: true } }, async ({ projectId }, extra) => { if (readScope) auth(extra, readScope); return json(await listContacts(projectId)); });
   server.registerTool("tool_register", { description: "Register a shared tool or MCP endpoint", inputSchema: z.object({ name: z.string().min(1).max(200), description: z.string().min(1).max(2000), endpoint: z.string().url().optional(), projectId: z.string().min(1).max(200).optional(), createdBy: z.string().min(1).max(200).optional() }), annotations: { destructiveHint: false, readOnlyHint: false } }, async ({ name, description, endpoint, projectId, createdBy }, extra) => {
     if (writeScope) auth(extra, writeScope); const actor = await requireBoundAgent(extra, createdBy); if (!actor) return rejected("agent_identity_not_bound");
     const result = await registerTool(name, description, endpoint, projectId, actor); return result ? json(result) : rejected("project_not_found_or_agent_unregistered");
   });
-  server.registerTool("tools_list", { description: "List shared tools and endpoints", inputSchema: z.object({ projectId: z.string().min(1).optional() }) }, async ({ projectId }, extra) => { if (readScope) auth(extra, readScope); return json(await listTools(projectId)); });
-  server.registerTool("activity_list", { description: "List recent Conduit activity", inputSchema: z.object({ limit: z.number().int().min(1).max(200).optional(), projectId: z.string().min(1).optional() }) }, async ({ limit, projectId }, extra) => { if (readScope) auth(extra, readScope); return json(await listActivity(limit, projectId)); });
+  server.registerTool("tools_list", { description: "List shared tools and endpoints", inputSchema: z.object({ projectId: z.string().min(1).optional() }), annotations: { readOnlyHint: true } }, async ({ projectId }, extra) => { if (readScope) auth(extra, readScope); return json(await listTools(projectId)); });
+  server.registerTool("activity_list", { description: "List recent Conduit activity", inputSchema: z.object({ limit: z.number().int().min(1).max(200).optional(), projectId: z.string().min(1).optional() }), annotations: { readOnlyHint: true } }, async ({ limit, projectId }, extra) => { if (readScope) auth(extra, readScope); return json(await listActivity(limit, projectId)); });
 
   return server;
 }
