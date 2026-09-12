@@ -2,7 +2,6 @@ name: CI
 
 on:
   push:
-    branches: [main, 'conduit-hardening-*', 'conduit-release-*', 'fix/**']
   pull_request:
     branches: [main]
 
@@ -16,7 +15,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: npm install
+      - run: npm ci
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
