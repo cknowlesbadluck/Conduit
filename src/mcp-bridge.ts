@@ -82,6 +82,9 @@ export function isDisallowedAddress(address: string): boolean {
     if (hextets[0] === 0x64 && hextets[1] === 0xff9b && hextets[2] === 0 && hextets[3] === 0 && hextets[4] === 0 && hextets[5] === 0) {
       return isDisallowedIpv4(hextetsToIpv4(hextets[6], hextets[7])); // NAT64 well-known prefix
     }
+    if ((hextets[0] & 0xff00) === 0xff00) return true; // multicast ff00::/8
+    if (hextets[0] === 0x2001 && hextets[1] === 0) return true; // Teredo 2001::/32
+    if (hextets[0] === 0x2001 && hextets[1] === 0xdb8) return true; // documentation 2001:db8::/32
     return false;
   }
   return false;
@@ -140,7 +143,8 @@ async function readLimited(response: Response): Promise<string> {
       text += decoder.decode(value, { stream: true });
     }
     return text + decoder.decode();
-  } finally { reader.releaseLock(); }
+  } finally { reader.releaseLock();
+  }
 }
 
 export async function callMcpBridge(input: { endpoint: string; request: McpBridgeRequest }): Promise<McpBridgeResult> {
