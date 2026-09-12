@@ -36,7 +36,18 @@ export async function loadAuthConfig(): Promise<ConduitAuthConfig | null> {
   const discoveryUrl = process.env.DESCOPE_MCP_SERVER_WELL_KNOWN_URL?.trim();
   if (!discoveryUrl) return null;
 
-  const resourceUrl = process.env.MCP_RESOURCE_URL?.trim() || `${requiredEnv("PUBLIC_URL").replace(/\/$/, "")}/mcp`;
+  const configuredResourceUrl = process.env.MCP_RESOURCE_URL?.trim();
+  const resourceUrl = configuredResourceUrl || `${requiredEnv("PUBLIC_URL").replace(/\/$/, "")}/mcp`;
+  let parsedResourceUrl: URL;
+  try {
+    parsedResourceUrl = new URL(resourceUrl);
+  } catch {
+    throw new Error("MCP_RESOURCE_URL must be a valid absolute URL");
+  }
+  if (parsedResourceUrl.protocol !== "https:" && process.env.NODE_ENV === "production") {
+    throw new Error("MCP_RESOURCE_URL must use HTTPS in production");
+  }
+
   const response = await fetch(discoveryUrl, { headers: { accept: "application/json" } });
   if (!response.ok) throw new Error(`Unable to load Descope discovery metadata: HTTP ${response.status}`);
 
@@ -69,7 +80,7 @@ export async function loadAuthConfig(): Promise<ConduitAuthConfig | null> {
     enabled: true,
     issuer,
     discoveryUrl,
-    resourceUrl,
+    resourceUrl: parsedResourceUrl.toString(),
     metadata,
     readScope: process.env.CONDUIT_READ_SCOPE?.trim() || "mcp:conduit.read",
     writeScope: process.env.CONDUIT_WRITE_SCOPE?.trim() || "mcp:conduit.write",
@@ -80,6 +91,17 @@ const scopesFromPayload = (payload: JWTPayload): string[] => {
   if (typeof payload.scope !== "string") return [];
   return payload.scope.split(/\s+/).filter(Boolean);
 };
+
+export function getAuthenticatedClientId(payload: JWTPayload): string | undefined {
+  if (typeof payload.client_id === "string" && payload.client_id.length > 0) return payload.client_id;
+  if (typeof payload.azp === "string" && payload.azp.length > 0) return payload.azp;
+  return undefined;
+}
+
+export function getAuthenticatedSubject(payload: JWTPayload): string | undefined {
+  if (typeof payload.sub === "string" && payload.sub.length > 0) return payload.sub;
+  return getAuthenticatedClientId(payload);
+}
 
 export function createTokenVerifier(config: ConduitAuthConfig): OAuthTokenVerifier {
   const jwks = createRemoteJWKSet(new URL(config.metadata.jwks_uri));
@@ -93,16 +115,18 @@ export function createTokenVerifier(config: ConduitAuthConfig): OAuthTokenVerifi
           algorithms: ["RS256"],
         });
 
-        if (!payload.sub || typeof payload.sub !== "string") throw new Error("missing sub claim");
+        const clientId = getAuthenticatedClientId(payload);
+        const subject = getAuthenticatedSubject(payload);
+        if (!subject) throw new Error("missing sub or client_id claim");
         if (!payload.exp || payload.exp <= Math.floor(Date.now() / 1000)) throw new Error("expired token");
 
         return {
           token,
-          clientId: typeof payload.azp === "string" ? payload.azp : typeof payload.client_id === "string" ? payload.client_id : "unknown",
+          clientId: clientId ?? subject,
           scopes: scopesFromPayload(payload),
           expiresAt: payload.exp,
           extra: {
-            sub: payload.sub,
+            sub: typeof payload.sub === "string" ? payload.sub : undefined,
             email: typeof payload.email === "string" ? payload.email : undefined,
             name: typeof payload.name === "string" ? payload.name : undefined,
           },
