@@ -71,9 +71,14 @@ jobs:
               data = json.load(f)
           for key in ('issuer', 'jwks_uri', 'authorization_endpoint', 'token_endpoint'):
               assert data.get(key), (key, data)
-          descope_scopes = data.get('scopes_supported', [])
-          assert 'mcp:conduit.read' in descope_scopes, ('Descope discovery is missing mcp:conduit.read', data)
-          assert 'mcp:conduit.write' in descope_scopes, ('Descope discovery is missing mcp:conduit.write', data)
+          # Descope OIDC discovery sometimes omits scopes_supported.
+          # MCP scopes are authoritative on Conduit protected-resource metadata.
+          descope_scopes = data.get('scopes_supported') or []
+          if descope_scopes:
+              assert 'mcp:conduit.read' in descope_scopes, ('Descope scopes present but missing mcp:conduit.read', data)
+              assert 'mcp:conduit.write' in descope_scopes, ('Descope scopes present but missing mcp:conduit.write', data)
+          else:
+              print('Descope discovery omitted scopes_supported; relying on Conduit PRM scopes')
           with open('/tmp/as.json', encoding='utf-8') as f:
               as_meta = json.load(f)
           assert as_meta.get('registration_endpoint'), as_meta
