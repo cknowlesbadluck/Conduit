@@ -14,6 +14,8 @@ export type CoordinationContext = { service: string; generatedAt: string; projec
 
 const agents = new Map<string, Agent>();
 const agentBindings = new Map<string, string>();
+// Reverse index mapping agentId -> subject for O(1) binding validation in memory mode
+const boundAgentSubjects = new Map<string, string>();
 const projects = new Map<string, Project>();
 const resources = new Map<string, Resource>();
 const tasks = new Map<string, Task>();
@@ -114,10 +116,15 @@ export async function registerAgent(input: { id: string; name: string; descripti
     if (input.actorSubject) await pool.query("INSERT INTO agent_bindings(subject,agent_id) VALUES($1,$2) ON CONFLICT(subject) DO UPDATE SET agent_id=EXCLUDED.agent_id", [input.actorSubject, input.id]);
   } else {
     const existingBinding = input.actorSubject ? agentBindings.get(input.actorSubject) : undefined;
-    const otherBinding = input.actorSubject ? [...agentBindings.entries()].find(([subject, agentId]) => subject !== input.actorSubject && agentId === input.id) : undefined;
+    // Optimization: Replace O(n) Array.find scanning over Map entries with O(1) reverse lookup map.
+    const boundSubject = boundAgentSubjects.get(input.id);
+    const otherBinding = input.actorSubject && boundSubject && boundSubject !== input.actorSubject;
     if ((existingBinding && existingBinding !== input.id) || otherBinding) return null;
     agents.set(input.id, { id: input.id, name: input.name, description: input.description, createdAt: agents.get(input.id)?.createdAt ?? now() });
-    if (input.actorSubject) agentBindings.set(input.actorSubject, input.id);
+    if (input.actorSubject) {
+      agentBindings.set(input.actorSubject, input.id);
+      boundAgentSubjects.set(input.id, input.actorSubject);
+    }
   }
   const agent = pool ? (await pool.query("SELECT id,name,description,created_at AS \"createdAt\" FROM agents WHERE id=$1", [input.id])).rows[0] as Agent : agents.get(input.id)!;
   await log("agent.register", { agentId: input.id });
