@@ -58,6 +58,7 @@ test("integration calls never return authorization response headers and use prov
   let receivedHeaders: Headers | undefined;
   try {
     globalThis.fetch = async (_url, init) => {
+      assert.equal(init?.redirect, "error");
       receivedHeaders = new Headers(init?.headers);
       return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "content-type": "application/json", authorization: "Bearer leaked" } });
     };
