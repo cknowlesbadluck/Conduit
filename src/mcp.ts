@@ -84,59 +84,12 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
     } catch (error) { const message = error instanceof Error ? error.message : "integration_call_failed"; console.warn(JSON.stringify({ type: "integration.call.failed", provider, method, path, projectId: projectId ?? null, actor: actorSubject(extra) ?? null, error: message })); return rejected(message); }
   });
 
-  server.registerTool("mcp_bridge_call", { description: "Forward one JSON-RPC request to a registered remote MCP endpoint through the Conduit bridge", inputSchema: z.object({ endpoint: z.string().url(), method: z.string().min(1).max(200), id: z.union([z.string(), z.number(), z.null()]).optional(), params: z.unknown().optional(), projectId: z.string().min(1).max(200).optional() }), annotations: { destructiveHint: true, readOnlyHint: false } }, async ({ endpoint, method, id, params, projectId }, extra) => {
-    if (readScope) auth(extra, readScope);
+  server.registerTool("mcp_bridge_call", { description: "Forward one JSON-RPC request to a remote MCP endpoint. Discovery/list methods require read scope; tools/call and other methods require write scope.", inputSchema: z.object({ endpoint: z.string().url(), method: z.string().min(1).max(200), id: z.union([z.string(), z.number(), z.null()]).optional(), params: z.unknown().optional(), projectId: z.string().min(1).max(200).optional() }), annotations: { destructiveHint: true, readOnlyHint: false } }, async ({ endpoint, method, id, params, projectId }, extra) => {
+    const readMethods = new Set(["initialize", "ping", "tools/list", "resources/list", "resources/templates/list", "prompts/list"]);
+    if (readMethods.has(method)) { if (readScope) auth(extra, readScope); } else { if (writeScope) auth(extra, writeScope); }
     try {
       const result = await callMcpBridge({ endpoint, request: { jsonrpc: "2.0", id, method, params } });
       console.info(JSON.stringify({ type: "mcp.bridge.call", endpoint: new URL(endpoint).origin, method, status: result.status, ok: result.ok, projectId: projectId ?? null, actor: actorSubject(extra) ?? null }));
       return json(result);
     } catch (error) { const message = error instanceof Error ? error.message : "mcp_bridge_call_failed"; console.warn(JSON.stringify({ type: "mcp.bridge.call.failed", endpoint, method, projectId: projectId ?? null, actor: actorSubject(extra) ?? null, error: message })); return rejected(message); }
   });
-
-  server.registerTool("task_create", { description: "Create a coordination task", inputSchema: z.object({ title: z.string().min(1).max(500), description: z.string().max(5000).optional(), createdBy: z.string().min(1).max(200).optional(), projectId: z.string().min(1).max(200).optional() }), annotations: { destructiveHint: false, readOnlyHint: false } }, async (input, extra) => {
-    if (writeScope) auth(extra, writeScope); const actor = await requireBoundAgent(extra, input.createdBy); if (!actor) return rejected("agent_identity_not_bound");
-    const result = await createTask({ ...input, createdBy: actor }); return result ? json(result) : rejected(input.projectId ? "project_not_found_or_agent_unregistered" : "creator_not_registered");
-  });
-  server.registerTool("task_list", { description: "List tasks, optionally filtered by status, project, claimant, or creator", inputSchema: z.object({ status: z.enum(["open", "claimed", "blocked", "completed"]).optional(), projectId: z.string().min(1).optional(), claimedBy: z.string().min(1).optional(), createdBy: z.string().min(1).optional() }) }, async ({ status, projectId, claimedBy, createdBy }, extra) => { if (readScope) auth(extra, readScope); return json(await listTasks({ status, projectId, claimedBy, createdBy })); });
-
-  server.registerTool("task_get", { description: "Retrieve details of a single task by ID", inputSchema: z.object({ taskId: z.string().min(1) }), annotations: { readOnlyHint: true } }, async ({ taskId }, extra) => {
-    if (readScope) auth(extra, readScope);
-    const result = await getTask(taskId);
-    return result ? json(result) : rejected("task_not_found");
-  });
-
-  server.registerTool("task_block", { description: "Mark a claimed task as blocked with an optional reason", inputSchema: z.object({ taskId: z.string().min(1), agentId: z.string().min(1).optional(), reason: z.string().max(2000).optional() }), annotations: { destructiveHint: false, readOnlyHint: false } }, async ({ taskId, agentId, reason }, extra) => {
-    if (writeScope) auth(extra, writeScope); const actor = await requireBoundAgent(extra, agentId); if (!actor) return rejected("agent_identity_not_bound_or_impersonation");
-    const result = await blockTask(taskId, actor, reason); return result ? json(result) : rejected("task_not_claimed_by_agent");
-  });
-
-  server.registerTool("task_release", { description: "Release a claimed or blocked task back to open status", inputSchema: z.object({ taskId: z.string().min(1), agentId: z.string().min(1).optional() }), annotations: { destructiveHint: false, readOnlyHint: false } }, async ({ taskId, agentId }, extra) => {
-    if (writeScope) auth(extra, writeScope); const actor = await requireBoundAgent(extra, agentId); if (!actor) return rejected("agent_identity_not_bound_or_impersonation");
-    const result = await releaseTask(taskId, actor); return result ? json(result) : rejected("task_not_owned_or_not_releasable");
-  });
-  server.registerTool("task_claim", { description: "Atomically claim an open task as the authenticated agent", inputSchema: z.object({ taskId: z.string().min(1), agentId: z.string().min(1).optional() }), annotations: { destructiveHint: false, readOnlyHint: false } }, async ({ taskId, agentId }, extra) => {
-    if (writeScope) auth(extra, writeScope); const actor = await requireBoundAgent(extra, agentId); if (!actor) return rejected("agent_identity_not_bound_or_impersonation");
-    const result = await claimTask(taskId, actor); return result ? json(result) : rejected("task_unavailable_or_agent_unregistered");
-  });
-  server.registerTool("task_complete", { description: "Complete a task claimed by the authenticated agent", inputSchema: z.object({ taskId: z.string().min(1), agentId: z.string().min(1).optional() }), annotations: { destructiveHint: true, readOnlyHint: false } }, async ({ taskId, agentId }, extra) => {
-    if (writeScope) auth(extra, writeScope); const actor = await requireBoundAgent(extra, agentId); if (!actor) return rejected("agent_identity_not_bound_or_impersonation");
-    const result = await completeTask(taskId, actor); return result ? json(result) : rejected("task_not_owned_or_not_claimed");
-  });
-  server.registerTool("task_handoff", { description: "Hand a task from the authenticated agent to another registered agent", inputSchema: z.object({ taskId: z.string().min(1), fromAgent: z.string().min(1).optional(), toAgent: z.string().min(1), note: z.string().max(5000).optional() }), annotations: { destructiveHint: true, readOnlyHint: false } }, async (input, extra) => {
-    if (writeScope) auth(extra, writeScope); const actor = await requireBoundAgent(extra, input.fromAgent); if (!actor) return rejected("agent_identity_not_bound_or_impersonation");
-    const result = await handoff(input.taskId, actor, input.toAgent, input.note); return result ? json(result) : rejected("handoff_rejected");
-  });
-  server.registerTool("contact_add", { description: "Store a shared contact or project-scoped reference", inputSchema: z.object({ name: z.string().min(1).max(200), value: z.string().min(1).max(2000), kind: z.string().min(1).max(100), projectId: z.string().min(1).max(200).optional(), createdBy: z.string().min(1).max(200).optional() }), annotations: { destructiveHint: false, readOnlyHint: false } }, async ({ name, value, kind, projectId, createdBy }, extra) => {
-    if (writeScope) auth(extra, writeScope); const actor = await requireBoundAgent(extra, createdBy); if (!actor) return rejected("agent_identity_not_bound");
-    const result = await addContact(name, value, kind, projectId, actor); return result ? json(result) : rejected("project_not_found_or_agent_unregistered");
-  });
-  server.registerTool("contacts_list", { description: "List shared contacts and references", inputSchema: z.object({ projectId: z.string().min(1).optional() }) }, async ({ projectId }, extra) => { if (readScope) auth(extra, readScope); return json(await listContacts(projectId)); });
-  server.registerTool("tool_register", { description: "Register a shared tool or MCP endpoint", inputSchema: z.object({ name: z.string().min(1).max(200), description: z.string().min(1).max(2000), endpoint: z.string().url().optional(), projectId: z.string().min(1).max(200).optional(), createdBy: z.string().min(1).max(200).optional() }), annotations: { destructiveHint: false, readOnlyHint: false } }, async ({ name, description, endpoint, projectId, createdBy }, extra) => {
-    if (writeScope) auth(extra, writeScope); const actor = await requireBoundAgent(extra, createdBy); if (!actor) return rejected("agent_identity_not_bound");
-    const result = await registerTool(name, description, endpoint, projectId, actor); return result ? json(result) : rejected("project_not_found_or_agent_unregistered");
-  });
-  server.registerTool("tools_list", { description: "List shared tools and endpoints", inputSchema: z.object({ projectId: z.string().min(1).optional() }) }, async ({ projectId }, extra) => { if (readScope) auth(extra, readScope); return json(await listTools(projectId)); });
-  server.registerTool("activity_list", { description: "List recent Conduit activity", inputSchema: z.object({ limit: z.number().int().min(1).max(200).optional(), projectId: z.string().min(1).optional() }) }, async ({ limit, projectId }, extra) => { if (readScope) auth(extra, readScope); return json(await listActivity(limit, projectId)); });
-
-  return server;
-}
