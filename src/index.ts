@@ -8,6 +8,16 @@ import { createConduitServer } from "./mcp.js";
 
 const app = express();
 app.disable("x-powered-by");
+app.use((_req, res, next) => {
+  res.set({
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Cache-Control": "no-store",
+    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+  });
+  next();
+});
 app.use(express.json({ limit: process.env.MAX_JSON_BODY || "1mb" }));
 
 const configuredOrigins = process.env.MCP_ALLOWED_ORIGINS?.split(",").map((origin) => origin.trim()).filter(Boolean).map((origin) => {

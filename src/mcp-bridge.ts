@@ -16,25 +16,28 @@ export function setMcpBridgeLookupForTests(fn?: AddressLookup) {
   addressLookup = fn ?? ((hostname) => dnsLookup(hostname, { all: true }));
 }
 
+function isDisallowedIpv4(value: string): boolean {
+  return (
+    value === "0.0.0.0" ||
+    /^127\./.test(value) ||
+    /^10\./.test(value) ||
+    /^192\.168\./.test(value) ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(value) ||
+    /^169\.254\./.test(value) ||
+    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(value)
+  );
+}
+
 export function isDisallowedAddress(address: string): boolean {
   const value = address.replace(/^\[|\]$/g, "").toLowerCase();
-  if (isIP(value) === 4) {
-    return (
-      value === "0.0.0.0" ||
-      /^127\./.test(value) ||
-      /^10\./.test(value) ||
-      /^192\.168\./.test(value) ||
-      /^172\.(1[6-9]|2\d|3[0-1])\./.test(value) ||
-      /^169\.254\./.test(value) ||
-      /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(value)
-    );
-  }
+  if (isIP(value) === 4) return isDisallowedIpv4(value);
   if (isIP(value) === 6) {
-    if (value === "::1" || value.startsWith("fe80:") || value.startsWith("::ffff:")) return true;
-    if (value.startsWith("fc") || value.startsWith("fd")) {
-      const firstHextet = value.split(":", 1)[0] ?? "";
-      return firstHextet.length >= 2 && (firstHextet.startsWith("fc") || firstHextet.startsWith("fd"));
-    }
+    if (value === "::" || value === "::1" || value.startsWith("fe80:")) return true;
+    const mapped = value.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/);
+    if (mapped) return isDisallowedIpv4(mapped[1]);
+    if (value.startsWith("::ffff:")) return true;
+    const firstHextet = Number.parseInt(value.split(":", 1)[0] || "0", 16);
+    if (Number.isFinite(firstHextet) && (firstHextet & 0xfe00) === 0xfc00) return true;
     return false;
   }
   return false;
