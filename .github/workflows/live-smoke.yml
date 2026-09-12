@@ -12,7 +12,7 @@ jobs:
     env:
       CONDUIT_URL: https://conduit-feco.onrender.com
       MCP_RESOURCE: https://conduit-feco.onrender.com/mcp
-      DESCOPE_DISCOVERY: https://api.descope.com/v1/apps/agentic/P3HwLMKYYNbXzGbsRNPW9QRkXk27/RS3IpZREHtS4SMnlE9n9yeCROaBZ0/.well-known/openid-configuration
+      DESCOPE_DISCOVERY: https://api.descope.com/v1/apps/agentic/P3HwLMKYYNbXzGbsRNPW9QRkXk27/MS3JD96awFEicI9nXypa53EaVmKKA/.well-known/openid-configuration
     steps:
       - name: Verify service health
         run: |
