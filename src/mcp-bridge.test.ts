@@ -61,6 +61,23 @@ test("MCP bridge forwards JSON-RPC and returns parsed response", async () => {
   }
 });
 
+test("MCP bridge does not follow redirects after endpoint validation", async () => {
+  setMcpBridgeLookupForTests(async () => [{ address: "203.0.113.10", family: 4 }]);
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async (_url, init) => {
+      assert.equal(init?.redirect, "error");
+      throw new TypeError("unsupported redirect");
+    };
+    await assert.rejects(
+      () => callMcpBridge({ endpoint: "https://mcp.example.test/mcp", request: { jsonrpc: "2.0", id: 1, method: "tools/list" } }),
+      /mcp_bridge_network_failed/,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("MCP bridge rejects oversized request bodies", async () => {
   setMcpBridgeLookupForTests(async () => [{ address: "203.0.113.10", family: 4 }]);
   const huge = "x".repeat(300 * 1024);
