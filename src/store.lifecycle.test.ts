@@ -12,7 +12,14 @@ import {
   completeTask,
   handoff,
   listAgents,
+  init,
+  checkReady,
 } from "./store.js";
+
+test("memory-mode readiness is true after init and does not require a database", async () => {
+  await init();
+  assert.equal(await checkReady(), true);
+});
 
 test("getProject and getTask return records or null", async () => {
   await registerAgent({ id: "life-a", name: "Life A", actorSubject: "life-a-sub" });
