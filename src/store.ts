@@ -107,14 +107,20 @@ export async function init() {
 
 export async function registerAgent(input: { id: string; name: string; description?: string; actorSubject?: string }) {
   if (pool) {
-    if (input.actorSubject) {
-      const binding = (await pool.query("SELECT agent_id AS \"agentId\" FROM agent_bindings WHERE subject=$1", [input.actorSubject])).rows[0] as { agentId: string } | undefined;
-      if (binding && binding.agentId !== input.id) return null;
-      const claimedByOther = (await pool.query("SELECT subject FROM agent_bindings WHERE agent_id=$1 AND subject<>$2", [input.id, input.actorSubject])).rows[0];
-      if (claimedByOther) return null;
-    }
-    await pool.query("INSERT INTO agents(id,name,description) VALUES($1,$2,$3) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,description=EXCLUDED.description", [input.id, input.name, input.description ?? null]);
-    if (input.actorSubject) await pool.query("INSERT INTO agent_bindings(subject,agent_id) VALUES($1,$2) ON CONFLICT(subject) DO UPDATE SET agent_id=EXCLUDED.agent_id", [input.actorSubject, input.id]);
+    const agent = await withTransaction(async (client) => {
+      if (input.actorSubject) {
+        const binding = (await client.query("SELECT agent_id AS \"agentId\" FROM agent_bindings WHERE subject=$1 FOR UPDATE", [input.actorSubject])).rows[0] as { agentId: string } | undefined;
+        if (binding && binding.agentId !== input.id) return null;
+        const claimedByOther = (await client.query("SELECT subject FROM agent_bindings WHERE agent_id=$1 AND subject<>$2 FOR UPDATE", [input.id, input.actorSubject])).rows[0];
+        if (claimedByOther) return null;
+      }
+      await client.query("INSERT INTO agents(id,name,description) VALUES($1,$2,$3) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,description=EXCLUDED.description", [input.id, input.name, input.description ?? null]);
+      if (input.actorSubject) await client.query("INSERT INTO agent_bindings(subject,agent_id) VALUES($1,$2) ON CONFLICT(subject) DO UPDATE SET agent_id=EXCLUDED.agent_id", [input.actorSubject, input.id]);
+      const row = (await client.query("SELECT id,name,description,created_at AS \"createdAt\" FROM agents WHERE id=$1", [input.id])).rows[0] as Agent;
+      await logWithClient(client, "agent.register", { agentId: input.id });
+      return row;
+    });
+    return agent;
   } else {
     const existingBinding = input.actorSubject ? agentBindings.get(input.actorSubject) : undefined;
     const boundSubject = input.actorSubject ? boundAgentSubjects.get(input.id) : undefined;
@@ -124,10 +130,10 @@ export async function registerAgent(input: { id: string; name: string; descripti
       agentBindings.set(input.actorSubject, input.id);
       boundAgentSubjects.set(input.id, input.actorSubject);
     }
+    const agent = agents.get(input.id)!;
+    await log("agent.register", { agentId: input.id });
+    return agent;
   }
-  const agent = pool ? (await pool.query("SELECT id,name,description,created_at AS \"createdAt\" FROM agents WHERE id=$1", [input.id])).rows[0] as Agent : agents.get(input.id)!;
-  await log("agent.register", { agentId: input.id });
-  return agent;
 }
 
 export async function getBoundAgentId(actorSubject: string) {
@@ -246,7 +252,7 @@ export async function listActivity(limit=50,projectId?:string){const safeLimit=M
 export async function getCoordinationContext(projectId?:string):Promise<CoordinationContext|null>{
   let project:Project|null=null;
   if(projectId){project=pool?(await pool.query("SELECT id,name,description,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM projects WHERE id=$1",[projectId])).rows[0] as Project|undefined ?? null:projects.get(projectId)??null;if(!project)return null;}
-  const [agentList,taskList,contactList,toolList,resourceList,activityList,projectList]=await Promise.all([listAgents(),listTasks(undefined,projectId),listContacts(projectId),listTools(projectId),listResources(projectId),listActivity(50,projectId),projectId?Promise.resolve([]):listProjects()]);
+  const [agentList,taskList,contactList,toolList,resourceList,activityList,projectList]=await Promise.all([listAgents(),listTasks({ projectId }),listContacts(projectId),listTools(projectId),listResources(projectId),listActivity(50,projectId),projectId?Promise.resolve([]):listProjects()]);
   return {service:"Conduit",generatedAt:now(),project,projects:projectList,agents:agentList,tasks:taskList,contacts:contactList,tools:toolList,resources:resourceList,activity:activityList};
 }
 
