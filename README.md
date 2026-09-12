@@ -1,4 +1,4 @@
-# Conduit
+# Conduit 0.6.1
 
 Standalone remote MCP coordination and integration bridge for AI agents, tools, connectors, skills, MCP servers, shared context, and development resources.
 
@@ -23,6 +23,26 @@ Resonance was the initial project Conduit was created to help develop. It does n
 - health and readiness endpoints
 - PostgreSQL persistence when `DATABASE_URL` is configured
 - in-memory development mode when no database is configured
+
+## MCP contract
+
+The public MCP surface includes identity and context tools (`agent_identity`, `development_context`, `conduit_context`), agent/project/resource coordination, integration and MCP bridge calls, task lifecycle operations, contacts, tool discovery, and activity history.
+
+Successful tool results include JSON text plus `structuredContent` so hosts can parse either representation. Tool failures use a stable structured envelope and set `isError: true`:
+
+```json
+{
+  "error": {
+    "code": "task_not_found",
+    "message": "Task not found",
+    "details": { "taskId": "..." }
+  }
+}
+```
+
+`code` is stable for programmatic handling; `message` is human-readable and suggests a next step where useful; `details` is optional contextual data.
+
+List/get tools advertise `readOnlyHint` and `idempotentHint`. Integration and MCP bridge tools advertise `openWorldHint`. Mutating task completion and handoff advertise `destructiveHint`.
 
 ## Runtime
 
@@ -83,7 +103,7 @@ The host should:
 4. Use DCR or CIMD + authorization code + PKCE
 5. Retry `/mcp` with a Bearer access token whose `aud` is the MCP resource URL
 
-For controlled development, `CONDUIT_TOKEN` enables a static bearer token. Anonymous MCP access is disabled by default and is only available when explicitly enabled outside production.
+For controlled development, `CONDUIT_TOKEN` enables a static bearer token. Unauthorized requests still receive a `WWW-Authenticate: Bearer` challenge so MCP hosts retry with the token. Token mode attaches a stable development actor (`conduit-token`) so `agent_register` binds that actor and later writes work without impersonation parameters. Anonymous MCP access is disabled by default and is only available when explicitly enabled outside production.
 
 ## Coordination model
 
@@ -92,6 +112,8 @@ Projects are optional coordination domains. Existing unscoped workflows remain v
 Resources are metadata/references to development assets such as repositories, services, environments, documentation sources, MCP endpoints, and external systems. Registering a resource does not grant Conduit permission to execute the referenced endpoint, and resource records must not contain credentials or secrets.
 
 Conduit can forward authenticated GitHub, Render, and Supabase API calls through `integration_call`, and can forward JSON-RPC to remote HTTPS MCP endpoints through `mcp_bridge_call`. Both adapters are high-risk: they use server-side credentials or outbound network, they never store secrets in resource records, and mutating calls require write scope. Registering a resource or tool does not by itself authorize execution of that endpoint.
+
+`mcp_bridge_call` resolves the target hostname, rejects private/loopback/link-local/ULA/multicast/embedded-IPv4 addresses, pins the subsequent HTTPS connection to those validated addresses (so DNS cannot rebind after the check), refuses HTTP redirects, and sends `MCP-Protocol-Version`. Linear is not a built-in adapter.
 
 ## Persistence
 

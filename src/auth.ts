@@ -153,3 +153,16 @@ export function buildProtectedResourceMetadata(config: ConduitAuthConfig) {
     scopes_supported: [config.readScope, config.writeScope],
   };
 }
+
+/** Synthetic actor used by CONDUIT_TOKEN and anonymous development modes so identity-bound writes work without OAuth. */
+export function createDevelopmentAuthInfo(subject: string, token: string): AuthInfo {
+  return {
+    token,
+    clientId: subject,
+    scopes: [],
+    extra: { sub: subject },
+  };
+}
+
+export const DEVELOPMENT_TOKEN_SUBJECT = "conduit-token";
+export const DEVELOPMENT_ANONYMOUS_SUBJECT = "anonymous";

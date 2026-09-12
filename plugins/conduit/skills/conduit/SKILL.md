@@ -25,6 +25,7 @@ Conduit is a project-agnostic coordination layer exposed through a remote MCP se
 - Use ownership-safe claim, completion, and handoff operations instead of mutating task ownership indirectly.
 - Do not store API keys, OAuth client secrets, bearer tokens, passwords, or other credentials in Conduit resources or context.
 - A registered resource is a reference/metadata record; it does not grant permission to execute that external resource.
+- Tool failures return `{ error: { code, message, details? } }` with `isError: true`. Handle `code`; do not scrape `message`.
 
 ## Project boundaries
 
@@ -32,7 +33,7 @@ Projects are optional coordination domains. Keep project-specific context inside
 
 ## External integrations
 
-Conduit can forward GitHub, Render, and Supabase API calls through `integration_call`, and JSON-RPC to remote HTTPS MCP endpoints through `mcp_bridge_call`. Registering a resource or tool does not authorize those calls. Both adapters are high-risk and must stay least-privilege. Linear is not a built-in adapter.
+Conduit can forward GitHub, Render, and Supabase API calls through `integration_call`, and JSON-RPC to remote HTTPS MCP endpoints through `mcp_bridge_call`. Registering a resource or tool does not authorize those calls. Both adapters are high-risk and must stay least-privilege. Linear is not a built-in adapter. Private, loopback, and DNS-rebinding targets are rejected by the bridge.
 
 ## OAuth
 

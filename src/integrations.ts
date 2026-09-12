@@ -1,3 +1,5 @@
+import { SERVICE_NAME, VERSION } from "./version.js";
+
 export type IntegrationProvider = "github" | "render" | "supabase";
 export type IntegrationMethod = "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -91,7 +93,7 @@ export async function callIntegration(input: { provider: IntegrationProvider; me
   const token = process.env[definition.credentialEnv];
   if (!token) throw new Error(`integration_not_configured:${input.provider}`);
   const path = normalizePath(input.path);
-  const headers: Record<string, string> = { ...authHeaders(input.provider, token), "User-Agent": "Conduit/0.6.0" };
+  const headers: Record<string, string> = { ...authHeaders(input.provider, token), "User-Agent": `${SERVICE_NAME}/${VERSION}` };
   const init: RequestInit = { method: input.method, headers, redirect: "error", signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) };
   if (input.body !== undefined && input.method !== "GET" && input.method !== "HEAD") {
     let serialized: string;
