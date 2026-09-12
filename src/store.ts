@@ -14,6 +14,7 @@ export type CoordinationContext = { service: string; generatedAt: string; projec
 
 const agents = new Map<string, Agent>();
 const agentBindings = new Map<string, string>();
+const boundAgentSubjects = new Map<string, string>();
 const projects = new Map<string, Project>();
 const resources = new Map<string, Resource>();
 const tasks = new Map<string, Task>();
@@ -34,7 +35,7 @@ export function isReady() { return ready; }
 async function log(type: string, data: Record<string, string>) {
   const event = { id: id("evt"), type, at: now(), ...data };
   if (pool) await pool.query("INSERT INTO activity(id,type,at,data,project_id) VALUES($1,$2,$3,$4,$5)", [event.id, type, event.at, JSON.stringify(data), data.projectId ?? null]);
-  else activity.unshift(event);
+  else activity.push(event);
 }
 
 async function logWithClient(client: pg.PoolClient, type: string, data: Record<string, string>) {
@@ -95,6 +96,8 @@ export async function init() {
       CREATE INDEX IF NOT EXISTS tools_project_created_idx ON tools(project_id,created_at DESC);
       CREATE INDEX IF NOT EXISTS activity_project_at_idx ON activity(project_id,at DESC);
       CREATE INDEX IF NOT EXISTS tasks_status_created_idx ON tasks(status, created_at DESC);
+      CREATE INDEX IF NOT EXISTS tasks_claimed_by_created_idx ON tasks(claimed_by, created_at DESC);
+      CREATE INDEX IF NOT EXISTS tasks_created_by_created_idx ON tasks(created_by, created_at DESC);
       CREATE INDEX IF NOT EXISTS activity_at_idx ON activity(at DESC);
       CREATE INDEX IF NOT EXISTS handoffs_task_idx ON handoffs(task_id, created_at DESC);
     `);
@@ -114,10 +117,13 @@ export async function registerAgent(input: { id: string; name: string; descripti
     if (input.actorSubject) await pool.query("INSERT INTO agent_bindings(subject,agent_id) VALUES($1,$2) ON CONFLICT(subject) DO UPDATE SET agent_id=EXCLUDED.agent_id", [input.actorSubject, input.id]);
   } else {
     const existingBinding = input.actorSubject ? agentBindings.get(input.actorSubject) : undefined;
-    const otherBinding = input.actorSubject ? [...agentBindings.entries()].find(([subject, agentId]) => subject !== input.actorSubject && agentId === input.id) : undefined;
-    if ((existingBinding && existingBinding !== input.id) || otherBinding) return null;
+    const boundSubject = input.actorSubject ? boundAgentSubjects.get(input.id) : undefined;
+    if ((existingBinding && existingBinding !== input.id) || (boundSubject && boundSubject !== input.actorSubject)) return null;
     agents.set(input.id, { id: input.id, name: input.name, description: input.description, createdAt: agents.get(input.id)?.createdAt ?? now() });
-    if (input.actorSubject) agentBindings.set(input.actorSubject, input.id);
+    if (input.actorSubject) {
+      agentBindings.set(input.actorSubject, input.id);
+      boundAgentSubjects.set(input.id, input.actorSubject);
+    }
   }
   const agent = pool ? (await pool.query("SELECT id,name,description,created_at AS \"createdAt\" FROM agents WHERE id=$1", [input.id])).rows[0] as Agent : agents.get(input.id)!;
   await log("agent.register", { agentId: input.id });
@@ -183,7 +189,12 @@ export async function claimTask(taskId:string,agentId:string){
       return task;
     });
   }
-  const t=tasks.get(taskId);if(!t||t.status!=="open")return null;t.status="claimed";t.claimedBy=agentId;t.updatedAt=now();await log("task.claim",{taskId,agentId,...(t.projectId?{projectId:t.projectId}:{})});return t;
+  const t=tasks.get(taskId);if(!t||t.status!=="open")return null;
+  const previous={...t};
+  t.status="claimed";t.claimedBy=agentId;t.updatedAt=now();
+  try { await log("task.claim",{taskId,agentId,...(t.projectId?{projectId:t.projectId}:{})}); }
+  catch (error) { Object.assign(t, previous); throw error; }
+  return t;
 }
 
 export async function completeTask(taskId:string,agentId:string){
@@ -197,7 +208,12 @@ export async function completeTask(taskId:string,agentId:string){
       return task;
     });
   }
-  const t=tasks.get(taskId);if(!t||t.status!=="claimed"||t.claimedBy!==agentId)return null;t.status="completed";t.updatedAt=now();await log("task.complete",{taskId,agentId,...(t.projectId?{projectId:t.projectId}:{})});return t;
+  const t=tasks.get(taskId);if(!t||t.status!=="claimed"||t.claimedBy!==agentId)return null;
+  const previous={...t};
+  t.status="completed";t.updatedAt=now();
+  try { await log("task.complete",{taskId,agentId,...(t.projectId?{projectId:t.projectId}:{})}); }
+  catch (error) { Object.assign(t, previous); throw error; }
+  return t;
 }
 
 export async function handoff(taskId:string,fromAgent:string,toAgent:string,note?:string){
@@ -213,14 +229,19 @@ export async function handoff(taskId:string,fromAgent:string,toAgent:string,note
       return {...normalized,handoffNote:note??""};
     });
   }
-  const t=tasks.get(taskId);if(!t||t.status!=="claimed"||t.claimedBy!==fromAgent)return null;t.claimedBy=toAgent;t.updatedAt=now();await log("task.handoff",{taskId,agentId:fromAgent,toAgent,note:note??"",...(t.projectId?{projectId:t.projectId}:{})});return{...t,handoffNote:note??""};
+  const t=tasks.get(taskId);if(!t||t.status!=="claimed"||t.claimedBy!==fromAgent)return null;
+  const previous={...t};
+  t.claimedBy=toAgent;t.updatedAt=now();
+  try { await log("task.handoff",{taskId,agentId:fromAgent,toAgent,note:note??"",...(t.projectId?{projectId:t.projectId}:{})}); }
+  catch (error) { Object.assign(t, previous); throw error; }
+  return{...t,handoffNote:note??""};
 }
 
-export async function addContact(name:string,value:string,kind:string,projectId?:string,createdBy?:string){if((projectId&&!(await projectExists(projectId)))||(createdBy&&!(await agentExists(createdBy))))return null;const c:Contact={id:id("contact"),projectId,name,value,kind,createdBy,createdAt:now()};if(pool)await pool.query("INSERT INTO contacts(id,project_id,name,value,kind,created_by) VALUES($1,$2,$3,$4,$5,$6)",[c.id,c.projectId??null,name,value,kind,createdBy??null]);else contacts.unshift(c);await log("contact.add",{contactId:c.id,...(projectId?{projectId}:{}),...(createdBy?{agentId:createdBy}:{})});return c;}
-export async function listContacts(projectId?:string){if(pool)return(await pool.query("SELECT id,project_id AS \"projectId\",name,value,kind,created_by AS \"createdBy\",created_at AS \"createdAt\" FROM contacts"+(projectId?" WHERE project_id=$1":"")+" ORDER BY created_at DESC",projectId?[projectId]:[])).rows;return contacts.filter(c=>!projectId||c.projectId===projectId);}
-export async function registerTool(name:string,description:string,endpoint?:string,projectId?:string,createdBy?:string){if((projectId&&!(await projectExists(projectId)))||(createdBy&&!(await agentExists(createdBy))))return null;const t:Tool={id:id("tool"),projectId,name,description,endpoint,createdBy,createdAt:now()};if(pool)await pool.query("INSERT INTO tools(id,project_id,name,description,endpoint,created_by) VALUES($1,$2,$3,$4,$5,$6)",[t.id,t.projectId??null,name,description,endpoint??null,createdBy??null]);else tools.unshift(t);await log("tool.register",{toolId:t.id,...(projectId?{projectId}:{}),...(createdBy?{agentId:createdBy}:{})});return t;}
-export async function listTools(projectId?:string){if(pool)return(await pool.query("SELECT id,project_id AS \"projectId\",name,description,endpoint,created_by AS \"createdBy\",created_at AS \"createdAt\" FROM tools"+(projectId?" WHERE project_id=$1":"")+" ORDER BY created_at DESC",projectId?[projectId]:[])).rows;return tools.filter(t=>!projectId||t.projectId===projectId);}
-export async function listActivity(limit=50,projectId?:string){const safeLimit=Math.max(1,Math.min(limit,200));if(pool){const rows=await pool.query("SELECT id,type,at,data,project_id AS \"projectId\" FROM activity"+(projectId?" WHERE project_id=$2":"")+" ORDER BY at DESC LIMIT $1",projectId?[safeLimit,projectId]:[safeLimit]);return rows.rows.map(row=>({id:row.id,type:row.type,at:new Date(row.at).toISOString(),...(row.data??{}),...(row.projectId?{projectId:row.projectId}:{})}));}return activity.filter(e=>!projectId||e.projectId===projectId).slice(0,safeLimit);}
+export async function addContact(name:string,value:string,kind:string,projectId?:string,createdBy?:string){if((projectId&&!(await projectExists(projectId)))||(createdBy&&!(await agentExists(createdBy))))return null;const c:Contact={id:id("contact"),projectId,name,value,kind,createdBy,createdAt:now()};if(pool)await pool.query("INSERT INTO contacts(id,project_id,name,value,kind,created_by) VALUES($1,$2,$3,$4,$5,$6)",[c.id,c.projectId??null,name,value,kind,createdBy??null]);else contacts.push(c);await log("contact.add",{contactId:c.id,...(projectId?{projectId}:{}),...(createdBy?{agentId:createdBy}:{})});return c;}
+export async function listContacts(projectId?:string){if(pool)return(await pool.query("SELECT id,project_id AS \"projectId\",name,value,kind,created_by AS \"createdBy\",created_at AS \"createdAt\" FROM contacts"+(projectId?" WHERE project_id=$1":"")+" ORDER BY created_at DESC",projectId?[projectId]:[])).rows;return contacts.filter(c=>!projectId||c.projectId===projectId).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
+export async function registerTool(name:string,description:string,endpoint?:string,projectId?:string,createdBy?:string){if((projectId&&!(await projectExists(projectId)))||(createdBy&&!(await agentExists(createdBy))))return null;const t:Tool={id:id("tool"),projectId,name,description,endpoint,createdBy,createdAt:now()};if(pool)await pool.query("INSERT INTO tools(id,project_id,name,description,endpoint,created_by) VALUES($1,$2,$3,$4,$5,$6)",[t.id,t.projectId??null,name,description,endpoint??null,createdBy??null]);else tools.push(t);await log("tool.register",{toolId:t.id,...(projectId?{projectId}:{}),...(createdBy?{agentId:createdBy}:{})});return t;}
+export async function listTools(projectId?:string){if(pool)return(await pool.query("SELECT id,project_id AS \"projectId\",name,description,endpoint,created_by AS \"createdBy\",created_at AS \"createdAt\" FROM tools"+(projectId?" WHERE project_id=$1":"")+" ORDER BY created_at DESC",projectId?[projectId]:[])).rows;return tools.filter(t=>!projectId||t.projectId===projectId).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
+export async function listActivity(limit=50,projectId?:string){const safeLimit=Math.max(1,Math.min(limit,200));if(pool){const rows=await pool.query("SELECT id,type,at,data,project_id AS \"projectId\" FROM activity"+(projectId?" WHERE project_id=$2":"")+" ORDER BY at DESC LIMIT $1",projectId?[safeLimit,projectId]:[safeLimit]);return rows.rows.map(row=>({id:row.id,type:row.type,at:new Date(row.at).toISOString(),...(row.data??{}),...(row.projectId?{projectId:row.projectId}:{})}));}const matches:ActivityEvent[]=[];for(let i=activity.length-1;i>=0&&matches.length<safeLimit;i--){const event=activity[i];if(!projectId||event.projectId===projectId)matches.push(event);}return matches;}
 
 export async function getCoordinationContext(projectId?:string):Promise<CoordinationContext|null>{
   let project:Project|null=null;
