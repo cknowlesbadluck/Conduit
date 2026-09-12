@@ -26,21 +26,27 @@ jobs:
           curl --fail --silent --show-error --max-time 30 "$CONDUIT_URL/ready" | tee /tmp/ready.json
           grep -q '"status":"ready"' /tmp/ready.json
 
-      - name: Verify protected-resource metadata
+      - name: Verify protected-resource metadata parity
         run: |
           set -euo pipefail
           curl --fail --silent --show-error --max-time 30 \
-            "$CONDUIT_URL/.well-known/oauth-protected-resource" | tee /tmp/resource.json
+            "$CONDUIT_URL/.well-known/oauth-protected-resource" | tee /tmp/resource-root.json
+          curl --fail --silent --show-error --max-time 30 \
+            "$CONDUIT_URL/.well-known/oauth-protected-resource/mcp" | tee /tmp/resource-path.json
           python - <<'PY'
           import json
-          with open('/tmp/resource.json', encoding='utf-8') as f:
-              data = json.load(f)
-          assert data['resource'] == 'https://conduit-feco.onrender.com/mcp', data
-          assert data['authorization_servers'], data
-          scopes = data.get('scopes_supported', [])
-          assert 'mcp:conduit.read' in scopes, data
-          assert 'mcp:conduit.write' in scopes, data
-          print('Protected-resource metadata:', json.dumps(data, indent=2))
+          with open('/tmp/resource-root.json', encoding='utf-8') as f:
+              root = json.load(f)
+          with open('/tmp/resource-path.json', encoding='utf-8') as f:
+              path = json.load(f)
+          assert root == path, (root, path)
+          assert root['resource'] == 'https://conduit-feco.onrender.com/mcp', root
+          assert root['authorization_servers'], root
+          scopes = root.get('scopes_supported', [])
+          assert 'mcp:conduit.read' in scopes, root
+          assert 'mcp:conduit.write' in scopes, root
+          assert 'header' in root.get('bearer_methods_supported', []), root
+          print('Protected-resource metadata (identical root + path):', json.dumps(root, indent=2))
           PY
 
       - name: Verify MCP requires OAuth
@@ -53,17 +59,25 @@ jobs:
           test "$status" = "401"
           grep -qi '^www-authenticate:.*Bearer' /tmp/mcp.headers
 
-      - name: Verify Descope discovery
+      - name: Verify Descope discovery and registration surface
         run: |
           set -euo pipefail
           curl --fail --silent --show-error --max-time 30 "$DESCOPE_DISCOVERY" | tee /tmp/descope.json
+          curl --fail --silent --show-error --max-time 30 \
+            "$CONDUIT_URL/.well-known/oauth-authorization-server" | tee /tmp/as.json
           python - <<'PY'
           import json
           with open('/tmp/descope.json', encoding='utf-8') as f:
               data = json.load(f)
           for key in ('issuer', 'jwks_uri', 'authorization_endpoint', 'token_endpoint'):
               assert data.get(key), (key, data)
+          with open('/tmp/as.json', encoding='utf-8') as f:
+              as_meta = json.load(f)
+          assert as_meta.get('registration_endpoint'), as_meta
+          assert 'S256' in as_meta.get('code_challenge_methods_supported', []), as_meta
           print('Descope issuer:', data['issuer'])
+          print('registration_endpoint:', as_meta['registration_endpoint'])
+          print('client_id_metadata_document_supported:', as_meta.get('client_id_metadata_document_supported'))
           PY
 
       - name: Verify service advertises OAuth on unauthorized MCP response
