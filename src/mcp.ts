@@ -91,7 +91,13 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
       const result = await callMcpBridge({ endpoint, request: { jsonrpc: "2.0", id, method, params } });
       console.info(JSON.stringify({ type: "mcp.bridge.call", endpoint: new URL(endpoint).origin, method, status: result.status, ok: result.ok, projectId: projectId ?? null, actor: actorSubject(extra) ?? null }));
       return json(result);
-    } catch (error) { const message = error instanceof Error ? error.message : "mcp_bridge_call_failed"; console.warn(JSON.stringify({ type: "mcp.bridge.call.failed", endpoint, method, projectId: projectId ?? null, actor: actorSubject(extra) ?? null, error: message })); return rejected(message); }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "mcp_bridge_call_failed";
+      let origin: string | null = null;
+      try { origin = new URL(endpoint).origin; } catch { origin = null; }
+      console.warn(JSON.stringify({ type: "mcp.bridge.call.failed", endpoint: origin, method, projectId: projectId ?? null, actor: actorSubject(extra) ?? null, error: message }));
+      return rejected(message);
+    }
   });
 
   server.registerTool("task_create", { description: "Create a coordination task", inputSchema: z.object({ title: z.string().min(1).max(500), description: z.string().max(5000).optional(), createdBy: z.string().min(1).max(200).optional(), projectId: z.string().min(1).max(200).optional() }), annotations: { destructiveHint: false, readOnlyHint: false } }, async (input, extra) => {
