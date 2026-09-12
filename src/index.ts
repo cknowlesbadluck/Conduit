@@ -10,14 +10,64 @@ const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: process.env.MAX_JSON_BODY || "1mb" }));
 
+const configuredOrigins = process.env.MCP_ALLOWED_ORIGINS?.split(",").map((origin) => origin.trim()).filter(Boolean).map((origin) => {
+  try {
+    return new URL(origin).origin;
+  } catch {
+    throw new Error(`MCP_ALLOWED_ORIGINS contains an invalid absolute URL: ${origin}`);
+  }
+});
+const allowedOrigins = new Set(configuredOrigins || []);
+const allowedOriginHostnames = [...allowedOrigins].map((origin) => new URL(origin).hostname);
+
+const allowedCorsHeaders = "Authorization, Content-Type, MCP-Protocol-Version, MCP-Session-Id, Mcp-Method, Mcp-Name";
+
+function applyCors(req: express.Request, res: express.Response) {
+  const requestOrigin = req.header("origin");
+  if (allowedOrigins.size > 0) {
+    if (requestOrigin && allowedOrigins.has(requestOrigin)) {
+      res.set("Access-Control-Allow-Origin", requestOrigin);
+      res.set("Vary", "Origin");
+    }
+  } else {
+    res.set("Access-Control-Allow-Origin", "*");
+  }
+  res.set({
+    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": allowedCorsHeaders,
+    "Access-Control-Expose-Headers": "WWW-Authenticate, MCP-Session-Id",
+  });
+}
+
 const publicUrl = process.env.PUBLIC_URL?.trim();
 const allowedHostnames = new Set<string>(["localhost", "127.0.0.1", "[::1]"]);
 if (publicUrl) { try { allowedHostnames.add(new URL(publicUrl).hostname); } catch { throw new Error("PUBLIC_URL must be a valid absolute URL"); } }
+
+// Validate Host and Origin before handling CORS preflight. This keeps OPTIONS
+// from becoming a bypass around MCP's DNS-rebinding protections.
 app.use(hostHeaderValidation([...allowedHostnames]));
-app.use(originValidation([...allowedHostnames]));
+if (allowedOriginHostnames.length) app.use(originValidation(allowedOriginHostnames));
+
+// Remote MCP hosts run in browsers as well as native clients. Bearer tokens
+// are supplied explicitly rather than by cookies, so cross-origin discovery
+// and authenticated requests must be permitted for OAuth/CIMD to complete.
+app.use((req, res, next) => {
+  applyCors(req, res);
+  if (req.method === "OPTIONS") { res.sendStatus(204); return; }
+  next();
+});
 
 const port = Number(process.env.PORT || 3000);
 const allowAnonymous = process.env.CONDUIT_ALLOW_ANONYMOUS === "true" && process.env.NODE_ENV !== "production";
+
+/**
+ * OAuth discovery is commonly fetched by browser-based MCP hosts. Keep the
+ * hand-authored protected-resource documents as accessible as the SDK's
+ * authorization-server metadata route.
+ */
+function protectedResourceMetadataResponse(res: express.Response, metadata: ReturnType<typeof buildProtectedResourceMetadata>) {
+  res.type("application/json").json(metadata);
+}
 
 app.get("/", (_req, res) => res.json({ service: "Conduit", version: "0.6.0", status: "online", mcp: "/mcp", health: "/health", ready: "/ready" }));
 app.get("/health", (_req, res) => res.json({ status: "ok", service: "conduit" }));
@@ -32,12 +82,9 @@ async function boot() {
     // Serve identical full RFC 9728 documents at both the root and path-specific well-known
     // locations. Clients follow the 401 WWW-Authenticate resource_metadata pointer to the
     // path-specific URL; mcpAuthMetadataRouter alone serves a thinner document there.
-    app.get("/.well-known/oauth-protected-resource", (_req, res) =>
-      res.type("application/json").json(protectedResourceMetadata),
-    );
-    app.get("/.well-known/oauth-protected-resource/mcp", (_req, res) =>
-      res.type("application/json").json(protectedResourceMetadata),
-    );
+    for (const path of ["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"]) {
+      app.get(path, (_req, res) => protectedResourceMetadataResponse(res, protectedResourceMetadata));
+    }
     // Still mount the SDK router for Authorization Server metadata mirroring.
     app.use(mcpAuthMetadataRouter({ oauthMetadata: authConfig.metadata, resourceServerUrl: new URL(authConfig.resourceUrl) }));
     const handler = createMcpHandler(() => createConduitServer(authConfig));

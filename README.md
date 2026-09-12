@@ -48,9 +48,13 @@ DESCOPE_MCP_SERVER_WELL_KNOWN_URL=<Descope MCP Server .well-known URL>
 DESCOPE_MCP_SERVER_ISSUER=<Descope MCP Server issuer>
 CONDUIT_READ_SCOPE=mcp:conduit.read
 CONDUIT_WRITE_SCOPE=mcp:conduit.write
+# Optional: comma-separated browser origins to restrict (for example, https://chatgpt.com)
+MCP_ALLOWED_ORIGINS=
 ```
 
 The server validates JWT signatures using discovered JWKS, verifies issuer, audience, algorithm, subject, and expiry, and enforces scopes before tool execution. After authentication, an actor binds to a logical Conduit agent identity; normal write operations cannot impersonate another bound agent.
+
+OAuth discovery and MCP requests send the CORS headers required by browser-based hosts. By default, any origin may initiate the bearer-token OAuth flow; this is safe because Conduit does not use cookie authentication. Set `MCP_ALLOWED_ORIGINS` to a comma-separated list of allowed HTTPS origins when a stricter browser-origin policy is required.
 
 ### Standards-compliant discovery (no manual client credentials)
 
