@@ -92,7 +92,7 @@ export async function callIntegration(input: { provider: IntegrationProvider; me
   if (!token) throw new Error(`integration_not_configured:${input.provider}`);
   const path = normalizePath(input.path);
   const headers: Record<string, string> = { ...authHeaders(input.provider, token), "User-Agent": "Conduit/0.6.0" };
-  const init: RequestInit = { method: input.method, headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) };
+  const init: RequestInit = { method: input.method, headers, redirect: "error", signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) };
   if (input.body !== undefined && input.method !== "GET" && input.method !== "HEAD") {
     let serialized: string;
     try { serialized = JSON.stringify(input.body); } catch { throw new Error("integration_request_invalid_json"); }
