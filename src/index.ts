@@ -2,7 +2,7 @@ import express from "express";
 import { getOAuthProtectedResourceMetadataUrl, hostHeaderValidation, mcpAuthMetadataRouter, originValidation, requireBearerAuth } from "@modelcontextprotocol/express";
 import { toNodeHandler } from "@modelcontextprotocol/node";
 import { createMcpHandler } from "@modelcontextprotocol/server";
-import { init, isReady } from "./store.js";
+import { init, checkReady, closeStore } from "./store.js";
 import { buildProtectedResourceMetadata, createDevelopmentAuthInfo, createTokenVerifier, DEVELOPMENT_ANONYMOUS_SUBJECT, DEVELOPMENT_TOKEN_SUBJECT, loadAuthConfig } from "./auth.js";
 import { createConduitServer } from "./mcp.js";
 import { VERSION, SERVICE_NAME } from "./version.js";
@@ -87,7 +87,10 @@ function unauthorizedBearer(res: express.Response) {
 
 app.get("/", (_req, res) => res.json({ service: SERVICE_NAME, version: VERSION, status: "online", mcp: "/mcp", health: "/health", ready: "/ready" }));
 app.get("/health", (_req, res) => res.json({ status: "ok", service: "conduit" }));
-app.get("/ready", (_req, res) => res.status(isReady() ? 200 : 503).json({ status: isReady() ? "ready" : "initializing", service: "conduit" }));
+app.get("/ready", async (_req, res) => {
+  const ready = await checkReady();
+  res.status(ready ? 200 : 503).json({ status: ready ? "ready" : "unavailable", service: "conduit" });
+});
 
 async function boot() {
   await init();
@@ -130,7 +133,11 @@ async function boot() {
     console.error("No MCP authentication configured; /mcp is disabled");
   }
   const server = app.listen(port, "0.0.0.0", () => console.log(`Conduit listening on ${port}`));
-  const shutdown = async () => { server.close(); process.exit(0); };
+  const shutdown = async () => {
+    server.close();
+    try { await closeStore(); } catch (error) { console.error("Conduit shutdown store close failed", error); }
+    process.exit(0);
+  };
   process.once("SIGTERM", shutdown); process.once("SIGINT", shutdown);
 }
 
