@@ -73,7 +73,10 @@ app.get("/", (_req, res) => res.json({ service: "Conduit", version: "0.6.0", sta
 app.get("/health", (_req, res) => res.json({ status: "ok", service: "conduit" }));
 app.get("/ready", (_req, res) => res.status(isReady() ? 200 : 503).json({ status: isReady() ? "ready" : "initializing", service: "conduit" }));
 
-async function boot() {
+let appInitialized = false;
+
+export async function setupApp() {
+  if (appInitialized) return app;
   await init();
   const authConfig = await loadAuthConfig();
   if (authConfig) {
@@ -103,11 +106,25 @@ async function boot() {
     app.all("/mcp", (_req, res) => res.status(503).json({ error: "auth_not_configured", message: "Configure DESCOPE_MCP_SERVER_WELL_KNOWN_URL or CONDUIT_TOKEN" }));
     console.error("No MCP authentication configured; /mcp is disabled");
   }
-  const server = app.listen(port, "0.0.0.0", () => console.log(`Conduit listening on ${port}`));
-  const shutdown = async () => { server.close(); process.exit(0); };
-  process.once("SIGTERM", shutdown); process.once("SIGINT", shutdown);
+  appInitialized = true;
+  return app;
 }
 
-boot().catch((error) => { console.error("Conduit startup failed", error); process.exit(1); });
+// In Cloudflare Workers environments (or bundlers targeting workers), skip standalone app.listen.
+const isCloudflareWorker = typeof globalThis !== "undefined" && "navigator" in globalThis && (globalThis.navigator as Record<string, unknown>)?.userAgent === "Cloudflare-Workers";
+
+if (!isCloudflareWorker && process.env.NODE_ENV !== "test") {
+  setupApp()
+    .then((configuredApp) => {
+      const server = configuredApp.listen(port, "0.0.0.0", () => console.log(`Conduit listening on ${port}`));
+      const shutdown = async () => { server.close(); process.exit(0); };
+      process.once("SIGTERM", shutdown);
+      process.once("SIGINT", shutdown);
+    })
+    .catch((error) => {
+      console.error("Conduit startup failed", error);
+      process.exit(1);
+    });
+}
 
 export default app;
