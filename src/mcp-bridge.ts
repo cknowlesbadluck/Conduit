@@ -1,5 +1,7 @@
 import { lookup as dnsLookup } from "node:dns/promises";
+import https from "node:https";
 import { isIP } from "node:net";
+import { MCP_PROTOCOL_VERSION, SERVICE_NAME, VERSION } from "./version.js";
 
 const MAX_REQUEST_BYTES = 256 * 1024;
 const MAX_RESPONSE_BYTES = 1024 * 1024;
@@ -7,13 +9,21 @@ const REQUEST_TIMEOUT_MS = 15_000;
 
 export type McpBridgeRequest = { jsonrpc: "2.0"; id?: string | number | null; method: string; params?: unknown };
 export type McpBridgeResult = { ok: boolean; status: number; headers: Record<string, string>; data: unknown };
-export type AddressLookup = (hostname: string) => Promise<Array<{ address: string; family: number }>>;
+export type AddressRecord = { address: string; family: number };
+export type AddressLookup = (hostname: string) => Promise<AddressRecord[]>;
+export type BridgeTransport = (url: URL, init: { body: string; headers: Record<string, string>; addresses: AddressRecord[] }) => Promise<Response>;
 
 let addressLookup: AddressLookup = (hostname) => dnsLookup(hostname, { all: true });
+let bridgeTransport: BridgeTransport = pinnedHttpsTransport;
 
 /** Test hook. Do not use in production paths. */
 export function setMcpBridgeLookupForTests(fn?: AddressLookup) {
   addressLookup = fn ?? ((hostname) => dnsLookup(hostname, { all: true }));
+}
+
+/** Test hook. Do not use in production paths. */
+export function setMcpBridgeTransportForTests(fn?: BridgeTransport) {
+  bridgeTransport = fn ?? pinnedHttpsTransport;
 }
 
 function parseIpv4Octets(value: string): number[] | null {
@@ -72,10 +82,14 @@ export function isDisallowedAddress(address: string): boolean {
     const hextets = expandIpv6(value);
     if (!hextets) return true;
     if (hextets.every((hextet) => hextet === 0)) return true; // ::
-    if (hextets[0] === 0 && hextets[1] === 0 && hextets[2] === 0 && hextets[3] === 0 && hextets[4] === 0 && hextets[5] === 0 && hextets[6] === 0 && hextets[7] === 1) return true; // ::1
     if ((hextets[0] & 0xffc0) === 0xfe80) return true; // fe80::/10
     if ((hextets[0] & 0xfe00) === 0xfc00) return true; // fc00::/7 ULA
+    // IPv4-mapped ::ffff:x.x.x.x
     if (hextets[0] === 0 && hextets[1] === 0 && hextets[2] === 0 && hextets[3] === 0 && hextets[4] === 0 && hextets[5] === 0xffff) {
+      return isDisallowedIpv4(hextetsToIpv4(hextets[6], hextets[7]));
+    }
+    // Deprecated IPv4-compatible ::x.x.x.x (includes ::1 / ::127.0.0.1)
+    if (hextets[0] === 0 && hextets[1] === 0 && hextets[2] === 0 && hextets[3] === 0 && hextets[4] === 0 && hextets[5] === 0) {
       return isDisallowedIpv4(hextetsToIpv4(hextets[6], hextets[7]));
     }
     if (hextets[0] === 0x2002) return isDisallowedIpv4(hextetsToIpv4(hextets[1], hextets[2])); // 6to4
@@ -90,7 +104,14 @@ export function isDisallowedAddress(address: string): boolean {
   return false;
 }
 
-async function validateEndpoint(endpoint: string): Promise<URL> {
+export function pinnedLookup(hostname: string, addresses: AddressRecord[]): AddressLookup {
+  return async (requested) => {
+    if (requested !== hostname) throw new Error("mcp_endpoint_host_mismatch");
+    return addresses;
+  };
+}
+
+async function validateEndpoint(endpoint: string): Promise<{ url: URL; addresses: AddressRecord[] }> {
   let url: URL;
   try { url = new URL(endpoint); } catch { throw new Error("mcp_endpoint_invalid"); }
   if (url.protocol !== "https:") throw new Error("mcp_endpoint_must_be_https");
@@ -110,10 +131,10 @@ async function validateEndpoint(endpoint: string): Promise<URL> {
   const literal = host.replace(/^\[|\]$/g, "");
   if (isIP(literal)) {
     if (isDisallowedAddress(literal)) throw new Error("mcp_endpoint_local_target");
-    return url;
+    return { url, addresses: [{ address: literal, family: isIP(literal) }] };
   }
 
-  let records: Array<{ address: string; family: number }>;
+  let records: AddressRecord[];
   try {
     records = await addressLookup(host);
   } catch {
@@ -123,7 +144,67 @@ async function validateEndpoint(endpoint: string): Promise<URL> {
   for (const record of records) {
     if (isDisallowedAddress(record.address)) throw new Error("mcp_endpoint_local_target");
   }
-  return url;
+  return { url, addresses: records };
+}
+
+function pinnedHttpsTransport(url: URL, init: { body: string; headers: Record<string, string>; addresses: AddressRecord[] }): Promise<Response> {
+  const { addresses, body, headers } = init;
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      protocol: "https:",
+      hostname: url.hostname,
+      port: url.port || 443,
+      path: `${url.pathname}${url.search}`,
+      method: "POST",
+      headers,
+      servername: url.hostname,
+      timeout: REQUEST_TIMEOUT_MS,
+      lookup(hostname, options, callback) {
+        if (hostname !== url.hostname) {
+          const error = Object.assign(new Error("mcp_endpoint_host_mismatch"), { code: "ENOTFOUND" }) as NodeJS.ErrnoException;
+          callback(error, "");
+          return;
+        }
+        if (options.all) {
+          callback(null, addresses.map((record) => ({ address: record.address, family: record.family === 6 ? 6 : 4 })));
+          return;
+        }
+        const first = addresses[0];
+        callback(null, first.address, first.family === 6 ? 6 : 4);
+      },
+    }, (incoming) => {
+      const chunks: Buffer[] = [];
+      let total = 0;
+      let overflow = false;
+      incoming.on("data", (chunk: Buffer | string) => {
+        const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        total += buf.byteLength;
+        if (total > MAX_RESPONSE_BYTES) {
+          overflow = true;
+          incoming.destroy();
+          reject(new Error("mcp_response_too_large"));
+          return;
+        }
+        chunks.push(buf);
+      });
+      incoming.on("end", () => {
+        if (overflow) return;
+        const responseHeaders = new Headers();
+        for (const [key, value] of Object.entries(incoming.headers)) {
+          if (typeof value === "string") responseHeaders.set(key, value);
+          else if (Array.isArray(value)) responseHeaders.set(key, value.join(", "));
+        }
+        resolve(new Response(Buffer.concat(chunks), { status: incoming.statusCode ?? 0, headers: responseHeaders }));
+      });
+      incoming.on("error", reject);
+    });
+    req.on("timeout", () => {
+      req.destroy();
+      reject(Object.assign(new Error("TimeoutError"), { name: "TimeoutError" }));
+    });
+    req.on("error", reject);
+    req.end(body);
+  });
 }
 
 async function readLimited(response: Response): Promise<string> {
@@ -143,27 +224,27 @@ async function readLimited(response: Response): Promise<string> {
       text += decoder.decode(value, { stream: true });
     }
     return text + decoder.decode();
-  } finally { reader.releaseLock();
-  }
+  } finally { reader.releaseLock(); }
 }
 
 export async function callMcpBridge(input: { endpoint: string; request: McpBridgeRequest }): Promise<McpBridgeResult> {
-  const endpoint = await validateEndpoint(input.endpoint);
+  const { url, addresses } = await validateEndpoint(input.endpoint);
   let body: string;
   try { body = JSON.stringify(input.request); } catch { throw new Error("mcp_request_invalid_json"); }
   if (Buffer.byteLength(body, "utf8") > MAX_REQUEST_BYTES) throw new Error("mcp_request_too_large");
+  const headers = {
+    "Content-Type": "application/json",
+    Accept: "application/json, text/event-stream",
+    "User-Agent": `${SERVICE_NAME}/${VERSION}`,
+    "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
+  };
   let response: Response;
   try {
-    response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", "User-Agent": "Conduit/0.6.0" },
-      body,
-      redirect: "error",
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
+    response = await bridgeTransport(url, { body, headers, addresses });
   } catch (error) {
     if (error instanceof DOMException && error.name === "TimeoutError") throw new Error("mcp_bridge_timeout");
     if (error instanceof Error && error.name === "TimeoutError") throw new Error("mcp_bridge_timeout");
+    if (error instanceof Error && error.message === "mcp_response_too_large") throw error;
     throw new Error("mcp_bridge_network_failed");
   }
   const text = await readLimited(response);
@@ -171,9 +252,9 @@ export async function callMcpBridge(input: { endpoint: string; request: McpBridg
   if (text) {
     try { data = JSON.parse(text); } catch { data = text; }
   }
-  const headers: Record<string, string> = {};
+  const responseHeaders: Record<string, string> = {};
   for (const [key, value] of response.headers.entries()) {
-    if (["content-type", "mcp-session-id", "www-authenticate", "retry-after"].includes(key.toLowerCase())) headers[key] = value;
+    if (["content-type", "mcp-session-id", "www-authenticate", "retry-after"].includes(key.toLowerCase())) responseHeaders[key] = value;
   }
-  return { ok: response.ok, status: response.status, headers, data };
+  return { ok: response.ok, status: response.status, headers: responseHeaders, data };
 }

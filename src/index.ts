@@ -3,8 +3,9 @@ import { getOAuthProtectedResourceMetadataUrl, hostHeaderValidation, mcpAuthMeta
 import { toNodeHandler } from "@modelcontextprotocol/node";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { init, isReady } from "./store.js";
-import { buildProtectedResourceMetadata, createTokenVerifier, loadAuthConfig } from "./auth.js";
+import { buildProtectedResourceMetadata, createDevelopmentAuthInfo, createTokenVerifier, DEVELOPMENT_ANONYMOUS_SUBJECT, DEVELOPMENT_TOKEN_SUBJECT, loadAuthConfig } from "./auth.js";
 import { createConduitServer } from "./mcp.js";
+import { VERSION, SERVICE_NAME } from "./version.js";
 
 const app = express();
 app.disable("x-powered-by");
@@ -79,7 +80,12 @@ function protectedResourceMetadataResponse(res: express.Response, metadata: Retu
   res.type("application/json").json(metadata);
 }
 
-app.get("/", (_req, res) => res.json({ service: "Conduit", version: "0.6.0", status: "online", mcp: "/mcp", health: "/health", ready: "/ready" }));
+function unauthorizedBearer(res: express.Response) {
+  res.set("WWW-Authenticate", `Bearer realm="${SERVICE_NAME}", error="invalid_token"`);
+  res.status(401).json({ error: "unauthorized" });
+}
+
+app.get("/", (_req, res) => res.json({ service: SERVICE_NAME, version: VERSION, status: "online", mcp: "/mcp", health: "/health", ready: "/ready" }));
 app.get("/health", (_req, res) => res.json({ status: "ok", service: "conduit" }));
 app.get("/ready", (_req, res) => res.status(isReady() ? 200 : 503).json({ status: isReady() ? "ready" : "initializing", service: "conduit" }));
 
@@ -103,11 +109,21 @@ async function boot() {
   } else if (process.env.CONDUIT_TOKEN) {
     const token = process.env.CONDUIT_TOKEN;
     const handler = createMcpHandler(() => createConduitServer());
-    app.all("/mcp", (req, res, next) => { if (req.header("authorization") !== `Bearer ${token}`) { res.status(401).json({ error: "unauthorized" }); return; } next(); }, toNodeHandler(handler, { onerror: console.error }));
+    app.all("/mcp", (req, res, next) => {
+      if (req.header("authorization") !== `Bearer ${token}`) {
+        unauthorizedBearer(res);
+        return;
+      }
+      req.auth = createDevelopmentAuthInfo(DEVELOPMENT_TOKEN_SUBJECT, token);
+      next();
+    }, toNodeHandler(handler, { onerror: console.error }));
     console.log("Conduit private bearer-token mode enabled");
   } else if (allowAnonymous) {
     const handler = createMcpHandler(() => createConduitServer());
-    app.all("/mcp", toNodeHandler(handler, { onerror: console.error }));
+    app.all("/mcp", (req, _res, next) => {
+      req.auth = createDevelopmentAuthInfo(DEVELOPMENT_ANONYMOUS_SUBJECT, "anonymous");
+      next();
+    }, toNodeHandler(handler, { onerror: console.error }));
     console.warn("Conduit anonymous MCP mode is enabled for development only");
   } else {
     app.all("/mcp", (_req, res) => res.status(503).json({ error: "auth_not_configured", message: "Configure DESCOPE_MCP_SERVER_WELL_KNOWN_URL or CONDUIT_TOKEN" }));
