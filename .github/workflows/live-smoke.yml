@@ -52,12 +52,12 @@ jobs:
           grep -qi '^www-authenticate:.*Bearer' /tmp/mcp.headers
           grep -qi '^www-authenticate:.*resource_metadata' /tmp/mcp.headers
 
-      - name: Verify authorization-server metadata and discovery advertisements
+      - name: Verify authorization-server metadata and registration interoperability
         run: |
           set -euo pipefail
           curl --fail --silent --show-error --max-time 30 "$CONDUIT_URL/.well-known/oauth-authorization-server" | tee /tmp/as.json
           python - <<'PY'
-          import json, os
+          import json
           data = json.load(open('/tmp/as.json', encoding='utf-8'))
           prm = json.load(open('/tmp/resource-root.json', encoding='utf-8'))
           for key in ('issuer', 'jwks_uri', 'authorization_endpoint', 'token_endpoint'):
@@ -67,13 +67,16 @@ jobs:
               assert data[key].startswith('https://'), (key, data[key])
           methods = data.get('code_challenge_methods_supported') or []
           assert 'S256' in methods, data
-          if not data.get('registration_endpoint'):
-              print('authorization-server metadata omitted registration_endpoint; CIMD may be the active registration path')
-          if data.get('client_id_metadata_document_supported') is not True:
-              print('authorization-server metadata omitted client_id_metadata_document_supported')
+          dcr = bool(data.get('registration_endpoint'))
+          cimd = data.get('client_id_metadata_document_supported') is True
+          assert dcr or cimd, {
+              'error': 'no_mcp_client_registration_method_advertised',
+              'registration_endpoint': data.get('registration_endpoint'),
+              'client_id_metadata_document_supported': data.get('client_id_metadata_document_supported'),
+          }
           print('AS issuer:', data['issuer'])
-          print('DCR:', bool(data.get('registration_endpoint')))
-          print('CIMD:', data.get('client_id_metadata_document_supported'))
+          print('DCR:', dcr)
+          print('CIMD:', cimd)
           PY
 
       - name: Verify authenticated event stream is protected
