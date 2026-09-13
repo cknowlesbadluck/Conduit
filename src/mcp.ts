@@ -11,6 +11,7 @@ import { requireScope, type ConduitAuthConfig } from "./auth.js";
 import { VERSION, SERVICE_NAME } from "./version.js";
 import { errorResult } from "./errors.js";
 import { registerGrantTools } from "./grant-tools.js";
+import { registerPaginationTools } from "./pagination-tools.js";
 import { enforceExternalCapability } from "./external-policy.js";
 
 export type ToolExtra = { http?: { authInfo?: AuthInfo } };
@@ -156,5 +157,6 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
   });
 
   registerGrantTools(server, authConfig);
+  registerPaginationTools(server, authConfig);
   return server;
 }
