@@ -11,6 +11,7 @@ import { callMcpBridge } from "./mcp-bridge.js";
 import { requireScope, type ConduitAuthConfig } from "./auth.js";
 import { VERSION, SERVICE_NAME } from "./version.js";
 import { errorResult } from "./errors.js";
+import { registerGrantTools } from "./grant-tools.js";
 
 export type ToolExtra = { http?: { authInfo?: AuthInfo } };
 
@@ -31,11 +32,6 @@ const boundAgent = async (extra: ToolExtra) => {
   return subject ? getBoundAgentId(subject) : undefined;
 };
 
-/**
- * Resolve the logical agent for an identity-bound write.
- * Authenticated actors must already be bound and cannot impersonate another agent.
- * Unauthenticated development/token mode (no subject) honors an explicit agent id.
- */
 export async function resolveBoundAgent(extra: ToolExtra, requested?: string) {
   const subject = actorSubject(extra);
   if (!subject) return requested ?? null;
@@ -167,5 +163,6 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
   server.registerTool("tools_list", { description: "List shared tools and endpoints", inputSchema: z.object({ projectId: z.string().min(1).optional() }), annotations: readOnly }, async ({ projectId }, extra) => { if (readScope) auth(extra, readScope); return json(await listTools(projectId)); });
   server.registerTool("activity_list", { description: "List recent Conduit activity", inputSchema: z.object({ limit: z.number().int().min(1).max(200).optional(), projectId: z.string().min(1).optional() }), annotations: readOnly }, async ({ limit, projectId }, extra) => { if (readScope) auth(extra, readScope); return json(await listActivity(limit, projectId)); });
 
+  registerGrantTools(server, authConfig);
   return server;
 }
