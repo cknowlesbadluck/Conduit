@@ -6,6 +6,7 @@ import { errorResult } from "./errors.js";
 import { requireScope, type ConduitAuthConfig } from "./auth.js";
 import type { CapabilityProvider } from "./capabilities.js";
 import { registerPaginationTools } from "./pagination-tools.js";
+import { runDiagnostics } from "./diagnostics.js";
 
 type ToolExtra = { http?: { authInfo?: AuthInfo } };
 const json = (value: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(value) }], structuredContent: value as Record<string, unknown> });
@@ -16,7 +17,6 @@ const actorSubject = (extra: ToolExtra) => {
   if (!info) return undefined;
   return typeof info.extra?.sub === "string" && info.extra.sub.length > 0 ? info.extra.sub : info.clientId;
 };
-
 async function governingAgent(subject: string | undefined) { return subject ? (await getBoundAgentId(subject)) ?? subject : undefined; }
 async function canGovern(subject: string | undefined, projectId?: string) {
   if (!subject) return false;
@@ -56,6 +56,12 @@ export function registerGrantTools(server: McpServer, authConfig?: ConduitAuthCo
     const effectiveAgentId = agentId ?? await governingAgent(subject);
     if (!effectiveAgentId && !projectId) return rejected("grant_scope_required");
     return json(await listCapabilityGrants({ agentId: effectiveAgentId, projectId, provider: provider as CapabilityProvider | undefined, includeRevoked }));
+  });
+
+  server.registerTool("conduit_diagnostics", { description: "Run safe self-diagnostics for Conduit MCP/OAuth discovery, protected-resource metadata, authorization-server reachability, JWKS, scope parity, and CIMD/DCR advertisement. Never returns tokens or credentials.", inputSchema: z.object({ baseUrl: z.string().url().optional() }), annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ baseUrl }, extra) => {
+    if (readScope) requireScope(extra.http?.authInfo, readScope);
+    try { return json(await runDiagnostics(authConfig, baseUrl)); }
+    catch (error) { return rejected("diagnostics_failed", { message: error instanceof Error ? error.message : "diagnostics_failed" }); }
   });
 
   registerPaginationTools(server, authConfig);
