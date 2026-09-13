@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const coreTools = [
-  "conduit_context", "agent_identity", "development_context", "agent_register", "agents_list",
-  "project_create", "projects_list", "project_get", "resource_register", "resources_list",
-  "integrations_list", "integration_call", "mcp_bridge_call", "task_create", "task_list", "task_get",
+  "agent_identity", "development_context", "agent_register",
+  "project_create", "project_get", "resource_register",
+  "integrations_list", "integration_call", "mcp_bridge_call", "task_create", "task_get",
   "task_block", "task_release", "task_claim", "task_complete", "task_handoff", "contact_add",
-  "contacts_list", "tool_register", "tools_list", "activity_list",
+  "tool_register",
 ];
 const policyTools = ["grant_create", "grant_revoke", "grants_list", "conduit_diagnostics"];
 const paginatedTools = ["agents_list", "projects_list", "resources_list", "task_list", "contacts_list", "tools_list", "activity_list", "conduit_context"];

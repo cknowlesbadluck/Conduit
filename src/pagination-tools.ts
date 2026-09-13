@@ -1,6 +1,8 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/server";
 import { getCoordinationContext, listActivity, listAgents, listContacts, listProjects, listResources, listTasks, listTools } from "./store.js";
+import { getDevelopmentContext } from "./development.js";
+import { errorResult } from "./errors.js";
 import { requireScope, type ConduitAuthConfig } from "./auth.js";
 import { paginate } from "./pagination.js";
 import type { ToolExtra } from "./mcp.js";
@@ -24,8 +26,20 @@ export function registerPaginationTools(server: McpServer, authConfig?: ConduitA
   server.registerTool("conduit_context", { description: "Return a bounded snapshot of Conduit coordination state with per-section cursors", inputSchema: schema.extend({ projectId: z.string().min(1).optional() }), annotations: readOnly }, async ({ projectId, limit, cursor }, extra) => {
     if (readScope) auth(extra, readScope);
     const coordination = await getCoordinationContext(projectId);
-    if (!coordination) return { content: [{ type: "text" as const, text: JSON.stringify({ error: "project_not_found", projectId }) }], structuredContent: { error: "project_not_found", projectId }, isError: true };
+    if (!coordination) return errorResult("project_not_found", { projectId });
     const page = { limit, cursor };
-    return json({ ...coordination, agents: paginate(coordination.agents, page), tasks: paginate(coordination.tasks, page), contacts: paginate(coordination.contacts, page), tools: paginate(coordination.tools, page), resources: paginate(coordination.resources, page), activity: paginate(coordination.activity, page), projects: paginate(coordination.projects, page) });
+    return json({
+      conduit: getDevelopmentContext(),
+      coordination: {
+        ...coordination,
+        agents: paginate(coordination.agents, page),
+        tasks: paginate(coordination.tasks, page),
+        contacts: paginate(coordination.contacts, page),
+        tools: paginate(coordination.tools, page),
+        resources: paginate(coordination.resources, page),
+        activity: paginate(coordination.activity, page),
+        projects: paginate(coordination.projects, page),
+      },
+    });
   });
 }
