@@ -1,22 +1,31 @@
 import { z } from "zod";
-import type { McpServer } from "@modelcontextprotocol/server";
-import { getProject } from "./store.js";
+import type { McpServer, AuthInfo } from "@modelcontextprotocol/server";
+import { getProject, getBoundAgentId } from "./store.js";
 import { createCapabilityGrant, listCapabilityGrants, revokeCapabilityGrant } from "./capability-store.js";
 import { errorResult } from "./errors.js";
 import { requireScope, type ConduitAuthConfig } from "./auth.js";
-import { actorSubject, type ToolExtra } from "./mcp.js";
 import type { CapabilityProvider } from "./capabilities.js";
 
+type ToolExtra = { http?: { authInfo?: AuthInfo } };
 const json = (value: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(value) }], structuredContent: value as Record<string, unknown> });
 const rejected = (error: string, details?: unknown) => errorResult(error, details);
 const admins = () => new Set((process.env.CONDUIT_GRANT_ADMIN_SUBJECTS ?? "").split(",").map((value) => value.trim()).filter(Boolean));
+const actorSubject = (extra: ToolExtra) => {
+  const info = extra.http?.authInfo;
+  if (!info) return undefined;
+  return typeof info.extra?.sub === "string" && info.extra.sub.length > 0 ? info.extra.sub : info.clientId;
+};
+
+async function governingAgent(subject: string | undefined) {
+  return subject ? (await getBoundAgentId(subject)) ?? subject : undefined;
+}
 
 async function canGovern(subject: string | undefined, projectId?: string) {
   if (!subject) return false;
   if (admins().has(subject)) return true;
   if (!projectId) return false;
   const project = await getProject(projectId);
-  return project?.createdBy === subject;
+  return project?.createdBy === (await governingAgent(subject));
 }
 
 export function registerGrantTools(server: McpServer, authConfig?: ConduitAuthConfig) {
@@ -39,7 +48,9 @@ export function registerGrantTools(server: McpServer, authConfig?: ConduitAuthCo
     const subject = actorSubject(extra as ToolExtra);
     if (!(await canGovern(subject, projectId))) return rejected("grant_admin_required", { projectId: projectId ?? null });
     try {
-      const grant = await createCapabilityGrant({ agentId, projectId, provider: provider as CapabilityProvider, method, pathPattern, expiresAt, createdBy: agentId === subject ? agentId : subject! });
+      const creator = await governingAgent(subject);
+      if (!creator) return rejected("agent_identity_not_bound");
+      const grant = await createCapabilityGrant({ agentId, projectId, provider: provider as CapabilityProvider, method, pathPattern, expiresAt, createdBy: creator });
       return json(grant);
     } catch (error) {
       return rejected(error instanceof Error ? error.message : "grant_create_failed");
@@ -54,7 +65,8 @@ export function registerGrantTools(server: McpServer, authConfig?: ConduitAuthCo
     if (writeScope) requireScope(extra.http?.authInfo, writeScope);
     const subject = actorSubject(extra as ToolExtra);
     if (!(await canGovern(subject, projectId))) return rejected("grant_admin_required", { projectId: projectId ?? null });
-    return (await revokeCapabilityGrant(grantId, subject!)) ? json({ revoked: true, grantId }) : rejected("grant_not_found_or_not_owned", { grantId });
+    const creator = await governingAgent(subject);
+    return creator && (await revokeCapabilityGrant(grantId, creator)) ? json({ revoked: true, grantId }) : rejected("grant_not_found_or_not_owned", { grantId });
   });
 
   server.registerTool("grants_list", {
@@ -65,7 +77,7 @@ export function registerGrantTools(server: McpServer, authConfig?: ConduitAuthCo
     if (readScope) requireScope(extra.http?.authInfo, readScope);
     const subject = actorSubject(extra as ToolExtra);
     if (includeRevoked && !(await canGovern(subject, projectId))) return rejected("grant_admin_required", { projectId: projectId ?? null });
-    const effectiveAgentId = agentId ?? subject;
+    const effectiveAgentId = agentId ?? await governingAgent(subject);
     if (!effectiveAgentId && !projectId) return rejected("grant_scope_required");
     return json(await listCapabilityGrants({ agentId: effectiveAgentId, projectId, provider: provider as CapabilityProvider | undefined, includeRevoked }));
   });
