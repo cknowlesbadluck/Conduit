@@ -2,7 +2,8 @@ import express from "express";
 import { getOAuthProtectedResourceMetadataUrl, hostHeaderValidation, mcpAuthMetadataRouter, originValidation, requireBearerAuth } from "@modelcontextprotocol/express";
 import { toNodeHandler } from "@modelcontextprotocol/node";
 import { createMcpHandler } from "@modelcontextprotocol/server";
-import { init, isReady, checkReady } from "./store.js";
+import { init, isReady } from "./store.js";
+import { checkPersistence } from "./db-ready.js";
 import { initCapabilityStore } from "./capability-store.js";
 import { buildProtectedResourceMetadata, createDevelopmentAuthInfo, createTokenVerifier, DEVELOPMENT_ANONYMOUS_SUBJECT, DEVELOPMENT_TOKEN_SUBJECT, loadAuthConfig, requireScope } from "./auth.js";
 import { createConduitServer } from "./mcp.js";
@@ -48,9 +49,11 @@ function rateLimitMcp(req: express.Request, res: express.Response, next: express
 app.get("/", (_req, res) => res.json({ service: SERVICE_NAME, version: VERSION, status: "online", mcp: "/mcp", health: "/health", ready: "/ready", events: "/events" }));
 app.get("/health", (_req, res) => res.json({ status: "ok", service: "conduit" }));
 app.get("/ready", async (_req, res) => {
-  const ready = await checkReady();
+  const initialized = isReady();
+  const persistenceOk = initialized ? await checkPersistence() : false;
+  const ready = initialized && persistenceOk;
   res.status(ready ? 200 : 503).json({
-    status: ready ? "ready" : (isReady() ? "degraded" : "initializing"),
+    status: ready ? "ready" : (initialized ? "degraded" : "initializing"),
     service: "conduit",
     persistence: process.env.DATABASE_URL && process.env.CONDUIT_TEST_MEMORY !== "true" ? "postgres" : "memory",
   });
