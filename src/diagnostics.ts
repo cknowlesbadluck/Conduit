@@ -7,6 +7,13 @@ export type ConduitDiagnostics = {
   discovery: { cimd: boolean; dcr: boolean };
 };
 
+type AuthorizationServerMetadata = {
+  issuer?: unknown;
+  authorization_endpoint?: unknown;
+  token_endpoint?: unknown;
+  jwks_uri?: unknown;
+};
+
 const safeFetch = async (url: string) => {
   try {
     const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(5000), headers: { accept: "application/json" } });
@@ -15,6 +22,35 @@ const safeFetch = async (url: string) => {
     return { ok: false, detail: error instanceof Error ? error.message : "fetch_failed" };
   }
 };
+
+export function buildAuthorizationServerMetadataCheck(
+  issuer: string,
+  metadata: AuthorizationServerMetadata,
+): { ok: boolean; detail: string } {
+  if (metadata.issuer !== issuer) return { ok: false, detail: "issuer_mismatch" };
+  if (typeof metadata.authorization_endpoint !== "string" || typeof metadata.token_endpoint !== "string") {
+    return { ok: false, detail: "missing_required_endpoint" };
+  }
+  if (typeof metadata.jwks_uri !== "string") return { ok: false, detail: "missing_jwks_uri" };
+  for (const endpoint of [metadata.authorization_endpoint, metadata.token_endpoint, metadata.jwks_uri]) {
+    try {
+      const url = new URL(endpoint);
+      if (url.protocol !== "https:") return { ok: false, detail: "insecure_endpoint" };
+    } catch {
+      return { ok: false, detail: "invalid_endpoint" };
+    }
+  }
+  return { ok: true, detail: "metadata_valid" };
+}
+
+function wellKnownPath(issuer: string, suffix: "oauth-authorization-server" | "openid-configuration") {
+  const url = new URL(issuer);
+  const path = url.pathname.replace(/\/$/, "");
+  url.pathname = `/.well-known/${suffix}${path ? path : ""}`;
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
 
 export function buildDiagnosticsFromMetadata(input: {
   resource: string;
@@ -68,11 +104,47 @@ export async function runDiagnostics(authConfig?: ConduitAuthConfig, baseUrl?: s
   if (authConfig) {
     const discovery = await safeFetch(authConfig.discoveryUrl);
     checks.authorizationServer = { ok: discovery.ok, status: discovery.status };
+
+    if (discovery.ok) {
+      try {
+        const discoveryMetadata = await discovery.response!.json() as AuthorizationServerMetadata;
+        const validation = buildAuthorizationServerMetadataCheck(authConfig.issuer, discoveryMetadata);
+        checks.authorizationServer = { ok: validation.ok, status: discovery.status, detail: validation.detail };
+      } catch {
+        checks.authorizationServer = { ok: false, status: discovery.status, detail: "invalid_json" };
+      }
+    }
+
+    const standardDiscoveryUrls = [
+      wellKnownPath(authConfig.issuer, "oauth-authorization-server"),
+      wellKnownPath(authConfig.issuer, "openid-configuration"),
+      `${authConfig.issuer.replace(/\/$/, "")}/.well-known/openid-configuration`,
+    ];
+    let standardDiscoveryOk = false;
+    for (const url of standardDiscoveryUrls) {
+      const candidate = await safeFetch(url);
+      if (!candidate.ok) continue;
+      try {
+        const candidateMetadata = await candidate.response!.json() as AuthorizationServerMetadata;
+        const validation = buildAuthorizationServerMetadataCheck(authConfig.issuer, candidateMetadata);
+        if (validation.ok) {
+          checks.authorizationServerStandard = { ok: true, status: candidate.status, detail: url };
+          standardDiscoveryOk = true;
+          break;
+        }
+        checks.authorizationServerStandard = { ok: false, status: candidate.status, detail: validation.detail };
+      } catch {
+        checks.authorizationServerStandard = { ok: false, status: candidate.status, detail: "invalid_json" };
+      }
+    }
+    if (!standardDiscoveryOk && !checks.authorizationServerStandard) checks.authorizationServerStandard = { ok: false, detail: "standard_discovery_unreachable" };
+
     const jwks = await safeFetch(authConfig.metadata.jwks_uri);
     checks.jwks = { ok: jwks.ok, status: jwks.status };
-    checks.issuer = { ok: true, detail: new URL(authConfig.issuer).origin };
+    checks.issuer = { ok: true, detail: authConfig.issuer };
   } else {
     checks.authorizationServer = { ok: false, detail: "oauth_not_configured" };
+    checks.authorizationServerStandard = { ok: false, detail: "oauth_not_configured" };
     checks.jwks = { ok: false, detail: "oauth_not_configured" };
     checks.issuer = { ok: false, detail: "oauth_not_configured" };
   }
