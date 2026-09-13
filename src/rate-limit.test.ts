@@ -19,3 +19,14 @@ test("rate limiter reports retry delay and expires old entries", () => {
   now.value = 101;
   assert.equal(limiter.check("agent_1").allowed, true);
 });
+
+test("rate limiter evicts idle keys when maxKeys is exceeded", () => {
+  const now = { value: 0 };
+  const limiter = new SlidingWindowLimiter({ limit: 2, windowMs: 100, maxKeys: 2, now: () => now.value });
+  assert.equal(limiter.check("a").allowed, true);
+  assert.equal(limiter.check("b").allowed, true);
+  now.value = 50;
+  assert.equal(limiter.check("c").allowed, true);
+  now.value = 151;
+  assert.equal(limiter.check("c").allowed, true);
+});
