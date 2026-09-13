@@ -5,7 +5,6 @@ import { createCapabilityGrant, listCapabilityGrants, revokeCapabilityGrant } fr
 import { errorResult } from "./errors.js";
 import { requireScope, type ConduitAuthConfig } from "./auth.js";
 import type { CapabilityProvider } from "./capabilities.js";
-import { registerPaginationTools } from "./pagination-tools.js";
 import { runDiagnostics } from "./diagnostics.js";
 
 type ToolExtra = { http?: { authInfo?: AuthInfo } };
@@ -63,6 +62,4 @@ export function registerGrantTools(server: McpServer, authConfig?: ConduitAuthCo
     try { return json(await runDiagnostics(authConfig, baseUrl)); }
     catch (error) { return rejected("diagnostics_failed", { message: error instanceof Error ? error.message : "diagnostics_failed" }); }
   });
-
-  registerPaginationTools(server, authConfig);
 }

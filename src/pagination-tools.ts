@@ -1,11 +1,12 @@
 import { z } from "zod";
-import type { McpServer } from "@modelcontextprotocol/server";
+import type { AuthInfo, McpServer } from "@modelcontextprotocol/server";
 import { getCoordinationContext, listActivity, listAgents, listContacts, listProjects, listResources, listTasks, listTools } from "./store.js";
 import { getDevelopmentContext } from "./development.js";
 import { errorResult } from "./errors.js";
 import { requireScope, type ConduitAuthConfig } from "./auth.js";
 import { paginate } from "./pagination.js";
-import type { ToolExtra } from "./mcp.js";
+
+type ToolExtra = { http?: { authInfo?: AuthInfo } };
 
 const json = (value: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(value) }], structuredContent: value as Record<string, unknown> });
 const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } as const;

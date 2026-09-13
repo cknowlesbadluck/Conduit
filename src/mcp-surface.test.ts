@@ -19,6 +19,8 @@ test("public MCP tool surface remains explicit and complete", async () => {
   for (const name of coreTools) assert.match(source, new RegExp(`registerTool\\("${name}"`), name);
   for (const name of policyTools) assert.match(policySource, new RegExp(`registerTool\\("${name}"`), name);
   for (const name of paginatedTools) assert.match(paginationSource, new RegExp(`registerTool\\("${name}"`), name);
+  assert.match(source, /registerPaginationTools\(server, authConfig\)/);
+  assert.doesNotMatch(policySource, /registerPaginationTools/);
   assert.match(source, /new McpServer\(\{ name: SERVICE_NAME, version: VERSION/);
   assert.doesNotMatch(source, /version: ["']0\.6\.0["']/);
   assert.match(source, /errorResult\(error, details\)/);
