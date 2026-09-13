@@ -3,9 +3,12 @@ import { getOAuthProtectedResourceMetadataUrl, hostHeaderValidation, mcpAuthMeta
 import { toNodeHandler } from "@modelcontextprotocol/node";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { init, isReady } from "./store.js";
+import { initCapabilityStore } from "./capability-store.js";
 import { buildProtectedResourceMetadata, createDevelopmentAuthInfo, createTokenVerifier, DEVELOPMENT_ANONYMOUS_SUBJECT, DEVELOPMENT_TOKEN_SUBJECT, loadAuthConfig } from "./auth.js";
 import { createConduitServer } from "./mcp.js";
 import { VERSION, SERVICE_NAME } from "./version.js";
+import { MCP_RATE_LIMITER } from "./rate-limit.js";
+import { timingSafeEqual } from "node:crypto";
 
 const app = express();
 app.disable("x-powered-by");
@@ -22,112 +25,89 @@ app.use((_req, res, next) => {
 app.use(express.json({ limit: process.env.MAX_JSON_BODY || "1mb" }));
 
 const configuredOrigins = process.env.MCP_ALLOWED_ORIGINS?.split(",").map((origin) => origin.trim()).filter(Boolean).map((origin) => {
-  try {
-    return new URL(origin).origin;
-  } catch {
-    throw new Error(`MCP_ALLOWED_ORIGINS contains an invalid absolute URL: ${origin}`);
-  }
+  try { return new URL(origin).origin; } catch { throw new Error(`MCP_ALLOWED_ORIGINS contains an invalid absolute URL: ${origin}`); }
 });
 const allowedOrigins = new Set(configuredOrigins || []);
 const allowedOriginHostnames = [...allowedOrigins].map((origin) => new URL(origin).hostname);
-
 const allowedCorsHeaders = "Authorization, Content-Type, MCP-Protocol-Version, MCP-Session-Id, Mcp-Method, Mcp-Name";
 
 function applyCors(req: express.Request, res: express.Response) {
   const requestOrigin = req.header("origin");
   if (allowedOrigins.size > 0) {
-    if (requestOrigin && allowedOrigins.has(requestOrigin)) {
-      res.set("Access-Control-Allow-Origin", requestOrigin);
-      res.set("Vary", "Origin");
-    }
-  } else {
-    res.set("Access-Control-Allow-Origin", "*");
-  }
-  res.set({
-    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": allowedCorsHeaders,
-    "Access-Control-Expose-Headers": "WWW-Authenticate, MCP-Session-Id",
-  });
+    if (requestOrigin && allowedOrigins.has(requestOrigin)) { res.set("Access-Control-Allow-Origin", requestOrigin); res.set("Vary", "Origin"); }
+  } else res.set("Access-Control-Allow-Origin", "*");
+  res.set({ "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS", "Access-Control-Allow-Headers": allowedCorsHeaders, "Access-Control-Expose-Headers": "WWW-Authenticate, MCP-Session-Id" });
 }
 
 const publicUrl = process.env.PUBLIC_URL?.trim();
 const allowedHostnames = new Set<string>(["localhost", "127.0.0.1", "[::1]"]);
 if (publicUrl) { try { allowedHostnames.add(new URL(publicUrl).hostname); } catch { throw new Error("PUBLIC_URL must be a valid absolute URL"); } }
-
-// Validate Host and Origin before handling CORS preflight. This keeps OPTIONS
-// from becoming a bypass around MCP's DNS-rebinding protections.
 app.use(hostHeaderValidation([...allowedHostnames]));
 if (allowedOriginHostnames.length) app.use(originValidation(allowedOriginHostnames));
-
-// Remote MCP hosts run in browsers as well as native clients. Bearer tokens
-// are supplied explicitly rather than by cookies, so cross-origin discovery
-// and authenticated requests must be permitted for OAuth/CIMD to complete.
-app.use((req, res, next) => {
-  applyCors(req, res);
-  if (req.method === "OPTIONS") { res.sendStatus(204); return; }
-  next();
-});
+app.use((req, res, next) => { applyCors(req, res); if (req.method === "OPTIONS") { res.sendStatus(204); return; } next(); });
 
 const port = Number(process.env.PORT || 3000);
 const allowAnonymous = process.env.CONDUIT_ALLOW_ANONYMOUS === "true" && process.env.NODE_ENV !== "production";
 
-/**
- * OAuth discovery is commonly fetched by browser-based MCP hosts. Keep the
- * hand-authored protected-resource documents as accessible as the SDK's
- * authorization-server metadata route.
- */
-function protectedResourceMetadataResponse(res: express.Response, metadata: ReturnType<typeof buildProtectedResourceMetadata>) {
-  res.type("application/json").json(metadata);
-}
-
-function unauthorizedBearer(res: express.Response) {
-  res.set("WWW-Authenticate", `Bearer realm="${SERVICE_NAME}", error="invalid_token"`);
+function protectedResourceMetadataResponse(res: express.Response, metadata: ReturnType<typeof buildProtectedResourceMetadata>) { res.type("application/json").json(metadata); }
+function unauthorizedBearer(res: express.Response, metadataUrl?: string) {
+  const resourceMetadata = metadataUrl ? `, resource_metadata="${metadataUrl}"` : "";
+  res.set("WWW-Authenticate", `Bearer realm="${SERVICE_NAME}", error="invalid_token"${resourceMetadata}`);
   res.status(401).json({ error: "unauthorized" });
 }
 
-app.get("/", (_req, res) => res.json({ service: SERVICE_NAME, version: VERSION, status: "online", mcp: "/mcp", health: "/health", ready: "/ready" }));
+function timingSafeTokenMatch(expected: string, supplied: string | undefined) {
+  if (!supplied) return false;
+  const left = Buffer.from(expected, "utf8");
+  const right = Buffer.from(supplied, "utf8");
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
+function rateLimitMcp(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const authInfo = req.auth;
+  const actor = authInfo?.extra?.sub || authInfo?.clientId || req.ip || "anonymous";
+  const result = MCP_RATE_LIMITER.check(`mcp:${actor}`);
+  if (!result.allowed) {
+    res.set("Retry-After", String(Math.ceil(result.retryAfterMs / 1000)));
+    res.status(429).json({ error: "rate_limited", retryAfterMs: result.retryAfterMs });
+    return;
+  }
+  next();
+}
+
+app.get("/", (_req, res) => res.json({ service: SERVICE_NAME, version: VERSION, status: "online", mcp: "/mcp", health: "/health", ready: "/ready", events: "/events" }));
 app.get("/health", (_req, res) => res.json({ status: "ok", service: "conduit" }));
 app.get("/ready", (_req, res) => res.status(isReady() ? 200 : 503).json({ status: isReady() ? "ready" : "initializing", service: "conduit" }));
 
 async function boot() {
   await init();
+  await initCapabilityStore();
   const authConfig = await loadAuthConfig();
   if (authConfig) {
     const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(new URL(authConfig.resourceUrl)).toString();
     const protectedResourceMetadata = buildProtectedResourceMetadata(authConfig);
-    // Serve identical full RFC 9728 documents at both the root and path-specific well-known
-    // locations. Clients follow the 401 WWW-Authenticate resource_metadata pointer to the
-    // path-specific URL; mcpAuthMetadataRouter alone serves a thinner document there.
-    for (const path of ["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"]) {
-      app.get(path, (_req, res) => protectedResourceMetadataResponse(res, protectedResourceMetadata));
-    }
-    // Still mount the SDK router for Authorization Server metadata mirroring.
+    for (const path of ["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"]) app.get(path, (_req, res) => protectedResourceMetadataResponse(res, protectedResourceMetadata));
     app.use(mcpAuthMetadataRouter({ oauthMetadata: authConfig.metadata, resourceServerUrl: new URL(authConfig.resourceUrl) }));
     const handler = createMcpHandler(() => createConduitServer(authConfig));
-    app.all("/mcp", requireBearerAuth({ verifier: createTokenVerifier(authConfig), resourceMetadataUrl }), toNodeHandler(handler, { onerror: console.error }));
+    app.all("/mcp", requireBearerAuth({ verifier: createTokenVerifier(authConfig), resourceMetadataUrl }), rateLimitMcp, toNodeHandler(handler, { onerror: console.error }));
     console.log(`Conduit OAuth enabled for ${authConfig.resourceUrl}`);
-  } else if (process.env.CONDUIT_TOKEN) {
+  } else if (process.env.CONDUIT_TOKEN && process.env.NODE_ENV !== "production") {
     const token = process.env.CONDUIT_TOKEN;
     const handler = createMcpHandler(() => createConduitServer());
     app.all("/mcp", (req, res, next) => {
-      if (req.header("authorization") !== `Bearer ${token}`) {
-        unauthorizedBearer(res);
-        return;
-      }
+      const supplied = req.header("authorization")?.replace(/^Bearer\s+/i, "");
+      if (!timingSafeTokenMatch(token, supplied)) { unauthorizedBearer(res); return; }
       req.auth = createDevelopmentAuthInfo(DEVELOPMENT_TOKEN_SUBJECT, token);
       next();
-    }, toNodeHandler(handler, { onerror: console.error }));
-    console.log("Conduit private bearer-token mode enabled");
+    }, rateLimitMcp, toNodeHandler(handler, { onerror: console.error }));
+    console.log("Conduit development bearer-token mode enabled");
   } else if (allowAnonymous) {
     const handler = createMcpHandler(() => createConduitServer());
-    app.all("/mcp", (req, _res, next) => {
-      req.auth = createDevelopmentAuthInfo(DEVELOPMENT_ANONYMOUS_SUBJECT, "anonymous");
-      next();
-    }, toNodeHandler(handler, { onerror: console.error }));
+    app.all("/mcp", (req, _res, next) => { req.auth = createDevelopmentAuthInfo(DEVELOPMENT_ANONYMOUS_SUBJECT, "anonymous"); next(); }, rateLimitMcp, toNodeHandler(handler, { onerror: console.error }));
     console.warn("Conduit anonymous MCP mode is enabled for development only");
   } else {
-    app.all("/mcp", (_req, res) => res.status(503).json({ error: "auth_not_configured", message: "Configure DESCOPE_MCP_SERVER_WELL_KNOWN_URL or CONDUIT_TOKEN" }));
-    console.error("No MCP authentication configured; /mcp is disabled");
+    app.all("/mcp", (_req, res) => res.status(503).json({ error: "auth_not_configured", message: "Configure DESCOPE_MCP_SERVER_WELL_KNOWN_URL in production" }));
+    console.error("No MCP OAuth authentication configured; /mcp is disabled");
   }
   const server = app.listen(port, "0.0.0.0", () => console.log(`Conduit listening on ${port}`));
   const shutdown = async () => { server.close(); process.exit(0); };
@@ -135,5 +115,4 @@ async function boot() {
 }
 
 boot().catch((error) => { console.error("Conduit startup failed", error); process.exit(1); });
-
 export default app;
