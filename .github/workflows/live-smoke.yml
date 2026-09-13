@@ -10,9 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      CONDUIT_URL: https://conduit-feco.onrender.com
-      MCP_RESOURCE: https://conduit-feco.onrender.com/mcp
-      DESCOPE_DISCOVERY: https://api.descope.com/v1/apps/agentic/P3HwLMKYYNbXzGbsRNPW9QRkXk27/MS3JD96awFEicI9nXypa53EaVmKKA/.well-known/openid-configuration
+      CONDUIT_URL: ${{ vars.CONDUIT_URL || 'https://conduit-feco.onrender.com' }}
+      MCP_RESOURCE: ${{ vars.MCP_RESOURCE || 'https://conduit-feco.onrender.com/mcp' }}
     steps:
       - name: Verify service health
         run: |
@@ -29,81 +28,53 @@ jobs:
       - name: Verify protected-resource metadata parity
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --max-time 30 \
-            "$CONDUIT_URL/.well-known/oauth-protected-resource" | tee /tmp/resource-root.json
-          curl --fail --silent --show-error --max-time 30 \
-            "$CONDUIT_URL/.well-known/oauth-protected-resource/mcp" | tee /tmp/resource-path.json
+          curl --fail --silent --show-error --max-time 30 "$CONDUIT_URL/.well-known/oauth-protected-resource" | tee /tmp/resource-root.json
+          curl --fail --silent --show-error --max-time 30 "$CONDUIT_URL/.well-known/oauth-protected-resource/mcp" | tee /tmp/resource-path.json
           python - <<'PY'
           import json
-          with open('/tmp/resource-root.json', encoding='utf-8') as f:
-              root = json.load(f)
-          with open('/tmp/resource-path.json', encoding='utf-8') as f:
-              path = json.load(f)
+          root = json.load(open('/tmp/resource-root.json', encoding='utf-8'))
+          path = json.load(open('/tmp/resource-path.json', encoding='utf-8'))
           assert root == path, (root, path)
-          assert root['resource'] == 'https://conduit-feco.onrender.com/mcp', root
+          assert root['resource'] == __import__('os').environ['MCP_RESOURCE'], root
           assert root['authorization_servers'], root
           scopes = root.get('scopes_supported', [])
           assert 'mcp:conduit.read' in scopes, root
           assert 'mcp:conduit.write' in scopes, root
           assert 'header' in root.get('bearer_methods_supported', []), root
-          print('Protected-resource metadata (identical root + path):', json.dumps(root, indent=2))
+          print('Protected-resource metadata:', json.dumps(root, indent=2))
           PY
 
       - name: Verify MCP requires OAuth
         run: |
           set -euo pipefail
-          status=$(curl --silent --show-error --max-time 30 -D /tmp/mcp.headers -o /tmp/mcp.json -w '%{http_code}' \
-            -X POST "$CONDUIT_URL/mcp" \
-            -H 'content-type: application/json' \
-            --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"live-smoke","version":"1.0.0"}}}')
+          status=$(curl --silent --show-error --max-time 30 -D /tmp/mcp.headers -o /tmp/mcp.json -w '%{http_code}' -X POST "$CONDUIT_URL/mcp" -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"live-smoke","version":"1.0.0"}}}')
           test "$status" = "401"
           grep -qi '^www-authenticate:.*Bearer' /tmp/mcp.headers
+          grep -qi '^www-authenticate:.*resource_metadata' /tmp/mcp.headers
 
-      - name: Verify Descope discovery and authorization-server surface
+      - name: Verify authorization-server metadata and discovery advertisements
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --max-time 30 "$DESCOPE_DISCOVERY" | tee /tmp/descope.json
-          curl --fail --silent --show-error --max-time 30 \
-            "$CONDUIT_URL/.well-known/oauth-authorization-server" | tee /tmp/as.json
+          curl --fail --silent --show-error --max-time 30 "$CONDUIT_URL/.well-known/oauth-authorization-server" | tee /tmp/as.json
           python - <<'PY'
           import json
-          with open('/tmp/descope.json', encoding='utf-8') as f:
-              data = json.load(f)
+          data = json.load(open('/tmp/as.json', encoding='utf-8'))
           for key in ('issuer', 'jwks_uri', 'authorization_endpoint', 'token_endpoint'):
               assert data.get(key), (key, data)
-          descope_scopes = data.get('scopes_supported') or []
-          if descope_scopes:
-              assert 'mcp:conduit.read' in descope_scopes, ('Descope scopes present but missing mcp:conduit.read', data)
-              assert 'mcp:conduit.write' in descope_scopes, ('Descope scopes present but missing mcp:conduit.write', data)
-          else:
-              print('Descope discovery omitted scopes_supported; relying on Conduit PRM scopes')
-          with open('/tmp/as.json', encoding='utf-8') as f:
-              as_meta = json.load(f)
-          for key in ('issuer', 'jwks_uri', 'authorization_endpoint', 'token_endpoint'):
-              assert as_meta.get(key), (key, as_meta)
-          methods = as_meta.get('code_challenge_methods_supported') or []
-          assert 'S256' in methods, as_meta
-          # Descope agentic AS metadata currently omits RFC 7591 registration_endpoint
-          # and client_id_metadata_document_supported. Those are useful for CIMD hosts
-          # but are not required for Conduit token verification. Soft-check only.
-          if not as_meta.get('registration_endpoint'):
-              print('authorization-server metadata omitted registration_endpoint (Descope)')
-          if as_meta.get('client_id_metadata_document_supported') is not True:
-              print('authorization-server metadata omitted client_id_metadata_document_supported (Descope)')
-          print('Descope issuer:', data['issuer'])
-          print('Descope scopes:', descope_scopes)
-          print('AS issuer:', as_meta.get('issuer'))
-          print('registration_endpoint:', as_meta.get('registration_endpoint'))
-          print('client_id_metadata_document_supported:', as_meta.get('client_id_metadata_document_supported'))
+          methods = data.get('code_challenge_methods_supported') or []
+          assert 'S256' in methods, data
+          if not data.get('registration_endpoint'):
+              print('authorization-server metadata omitted registration_endpoint; CIMD may be the active registration path')
+          if data.get('client_id_metadata_document_supported') is not True:
+              print('authorization-server metadata omitted client_id_metadata_document_supported')
+          print('AS issuer:', data['issuer'])
+          print('DCR:', bool(data.get('registration_endpoint')))
+          print('CIMD:', data.get('client_id_metadata_document_supported'))
           PY
 
-      - name: Verify service advertises OAuth on unauthorized MCP response
+      - name: Verify authenticated event stream is protected
         run: |
           set -euo pipefail
-          status=$(curl --silent --show-error --max-time 30 -D /tmp/mcp.headers -o /dev/null -w '%{http_code}' \
-            -X POST "$CONDUIT_URL/mcp" \
-            -H 'content-type: application/json' \
-            --data '{"jsonrpc":"2.0","id":2,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"live-smoke","version":"1.0.0"}}}')
+          status=$(curl --silent --show-error --max-time 30 -D /tmp/events.headers -o /tmp/events.json -w '%{http_code}' "$CONDUIT_URL/events")
           test "$status" = "401"
-          cat /tmp/mcp.headers
-          grep -qi '^www-authenticate:.*resource_metadata' /tmp/mcp.headers
+          grep -qi '^www-authenticate:.*Bearer' /tmp/events.headers

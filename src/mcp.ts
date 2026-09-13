@@ -11,6 +11,8 @@ import { callMcpBridge } from "./mcp-bridge.js";
 import { requireScope, type ConduitAuthConfig } from "./auth.js";
 import { VERSION, SERVICE_NAME } from "./version.js";
 import { errorResult } from "./errors.js";
+import { registerGrantTools } from "./grant-tools.js";
+import { enforceExternalCapability } from "./external-policy.js";
 
 export type ToolExtra = { http?: { authInfo?: AuthInfo } };
 
@@ -31,11 +33,6 @@ const boundAgent = async (extra: ToolExtra) => {
   return subject ? getBoundAgentId(subject) : undefined;
 };
 
-/**
- * Resolve the logical agent for an identity-bound write.
- * Authenticated actors must already be bound and cannot impersonate another agent.
- * Unauthenticated development/token mode (no subject) honors an explicit agent id.
- */
 export async function resolveBoundAgent(extra: ToolExtra, requested?: string) {
   const subject = actorSubject(extra);
   if (!subject) return requested ?? null;
@@ -100,25 +97,30 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
     const isRead = method === "GET" || method === "HEAD";
     if (isRead) { if (readScope) auth(extra, readScope); } else { if (writeScope) auth(extra, writeScope); }
     try {
+      const agentId = await resolveBoundAgent(extra);
+      await enforceExternalCapability({ agentId: agentId ?? undefined, provider, method, path, projectId });
       const result = await callIntegration({ provider, method, path, body });
       console.info(JSON.stringify({ type: "integration.call", provider, method, path: result.path, status: result.status, ok: result.ok, projectId: projectId ?? null, actor: actorSubject(extra) ?? null }));
       return json(result);
-    } catch (error) { const message = error instanceof Error ? error.message : "integration_call_failed"; console.warn(JSON.stringify({ type: "integration.call.failed", provider, method, path, projectId: projectId ?? null, actor: actorSubject(extra) ?? null, error: message })); return rejected("integration_call_failed", { message }); }
+    } catch (error) { const message = error instanceof Error ? error.message : "integration_call_failed"; console.warn(JSON.stringify({ type: "integration.call.failed", provider, method, path, projectId: projectId ?? null, actor: actorSubject(extra) ?? null, error: message })); return rejected(message === "capability_denied" ? "capability_denied" : "integration_call_failed", { message }); }
   });
 
   server.registerTool("mcp_bridge_call", { description: "Forward one JSON-RPC request to a remote HTTPS MCP endpoint. Discovery/list methods require read scope; tools/call and other methods require write scope. Private, loopback, and link-local targets are rejected, DNS is pinned after validation, and redirects are not followed.", inputSchema: z.object({ endpoint: z.string().url(), method: z.string().min(1).max(200), id: z.union([z.string(), z.number(), z.null()]).optional(), params: z.unknown().optional(), projectId: z.string().min(1).max(200).optional() }), annotations: openWorldWrite }, async ({ endpoint, method, id, params, projectId }, extra) => {
     const readMethods = new Set(["initialize", "notifications/initialized", "ping", "tools/list", "resources/list", "resources/templates/list", "prompts/list", "resources/read"]);
     if (readMethods.has(method)) { if (readScope) auth(extra, readScope); } else { if (writeScope) auth(extra, writeScope); }
     try {
+      const target = new URL(endpoint);
+      const agentId = await resolveBoundAgent(extra);
+      await enforceExternalCapability({ agentId: agentId ?? undefined, provider: "mcp_bridge", method, path: `${target.origin}${target.pathname}${target.search}`, projectId });
       const result = await callMcpBridge({ endpoint, request: { jsonrpc: "2.0", id, method, params } });
-      console.info(JSON.stringify({ type: "mcp.bridge.call", endpoint: new URL(endpoint).origin, method, status: result.status, ok: result.ok, projectId: projectId ?? null, actor: actorSubject(extra) ?? null }));
+      console.info(JSON.stringify({ type: "mcp.bridge.call", endpoint: target.origin, method, status: result.status, ok: result.ok, projectId: projectId ?? null, actor: actorSubject(extra) ?? null }));
       return json(result);
     } catch (error) {
       const message = error instanceof Error ? error.message : "mcp_bridge_call_failed";
       let origin: string | null = null;
       try { origin = new URL(endpoint).origin; } catch { origin = null; }
       console.warn(JSON.stringify({ type: "mcp.bridge.call.failed", endpoint: origin, method, projectId: projectId ?? null, actor: actorSubject(extra) ?? null, error: message }));
-      return rejected("mcp_bridge_call_failed", { message });
+      return rejected(message === "capability_denied" ? "capability_denied" : "mcp_bridge_call_failed", { message });
     }
   });
 
@@ -167,5 +169,6 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
   server.registerTool("tools_list", { description: "List shared tools and endpoints", inputSchema: z.object({ projectId: z.string().min(1).optional() }), annotations: readOnly }, async ({ projectId }, extra) => { if (readScope) auth(extra, readScope); return json(await listTools(projectId)); });
   server.registerTool("activity_list", { description: "List recent Conduit activity", inputSchema: z.object({ limit: z.number().int().min(1).max(200).optional(), projectId: z.string().min(1).optional() }), annotations: readOnly }, async ({ limit, projectId }, extra) => { if (readScope) auth(extra, readScope); return json(await listActivity(limit, projectId)); });
 
+  registerGrantTools(server, authConfig);
   return server;
 }
