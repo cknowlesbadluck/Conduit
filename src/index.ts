@@ -4,7 +4,7 @@ import { toNodeHandler } from "@modelcontextprotocol/node";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { init, isReady } from "./store.js";
 import { initCapabilityStore } from "./capability-store.js";
-import { buildProtectedResourceMetadata, createDevelopmentAuthInfo, createTokenVerifier, DEVELOPMENT_ANONYMOUS_SUBJECT, DEVELOPMENT_TOKEN_SUBJECT, loadAuthConfig } from "./auth.js";
+import { buildProtectedResourceMetadata, createDevelopmentAuthInfo, createTokenVerifier, DEVELOPMENT_ANONYMOUS_SUBJECT, DEVELOPMENT_TOKEN_SUBJECT, loadAuthConfig, requireScope } from "./auth.js";
 import { createConduitServer } from "./mcp.js";
 import { VERSION, SERVICE_NAME } from "./version.js";
 import { MCP_RATE_LIMITER, TOOL_RATE_LIMITER } from "./rate-limit.js";
@@ -68,14 +68,22 @@ async function boot() {
     req.on("close", cleanup);
   };
   const eventAuthMiddleware = authConfig
-    ? requireBearerAuth({ verifier: createTokenVerifier(authConfig), resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(new URL(authConfig.resourceUrl)).toString() })
+    ? async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+        const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(new URL(authConfig.resourceUrl)).toString();
+        const token = req.header("authorization")?.replace(/^Bearer\s+/i, "");
+        if (!token) { unauthorizedBearer(res, resourceMetadataUrl); return; }
+        try {
+          const authInfo = await createTokenVerifier(authConfig).verifyAccessToken(token);
+          requireScope(authInfo, authConfig.readScope);
+          req.auth = authInfo;
+          next();
+        } catch { unauthorizedBearer(res, resourceMetadataUrl); }
+      }
     : (req: express.Request, res: express.Response, next: express.NextFunction) => {
         if (process.env.CONDUIT_TOKEN && process.env.NODE_ENV !== "production") {
           const supplied = req.header("authorization")?.replace(/^Bearer\s+/i, "");
           if (!timingSafeTokenMatch(process.env.CONDUIT_TOKEN, supplied)) { unauthorizedBearer(res); return; }
-          req.auth = createDevelopmentAuthInfo(DEVELOPMENT_TOKEN_SUBJECT, process.env.CONDUIT_TOKEN);
-          next();
-          return;
+          req.auth = createDevelopmentAuthInfo(DEVELOPMENT_TOKEN_SUBJECT, process.env.CONDUIT_TOKEN); next(); return;
         }
         if (allowAnonymous) { req.auth = createDevelopmentAuthInfo(DEVELOPMENT_ANONYMOUS_SUBJECT, "anonymous"); next(); return; }
         res.status(503).json({ error: "auth_not_configured" });
