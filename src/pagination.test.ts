@@ -14,5 +14,5 @@ test("pagination returns a bounded page and opaque next cursor", () => {
 test("pagination clamps excessive limits", () => {
   const page = paginate([1, 2, 3], { limit: 9999, max: 2 });
   assert.deepEqual(page.items, [1, 2]);
-  assert.equal(page.nextCursor, undefined);
+  assert.equal(typeof page.nextCursor, "string");
 });
