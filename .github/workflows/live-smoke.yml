@@ -57,10 +57,14 @@ jobs:
           set -euo pipefail
           curl --fail --silent --show-error --max-time 30 "$CONDUIT_URL/.well-known/oauth-authorization-server" | tee /tmp/as.json
           python - <<'PY'
-          import json
+          import json, os
           data = json.load(open('/tmp/as.json', encoding='utf-8'))
+          prm = json.load(open('/tmp/resource-root.json', encoding='utf-8'))
           for key in ('issuer', 'jwks_uri', 'authorization_endpoint', 'token_endpoint'):
               assert data.get(key), (key, data)
+          assert data['issuer'] in prm['authorization_servers'], (data, prm)
+          for key in ('issuer', 'jwks_uri', 'authorization_endpoint', 'token_endpoint'):
+              assert data[key].startswith('https://'), (key, data[key])
           methods = data.get('code_challenge_methods_supported') or []
           assert 'S256' in methods, data
           if not data.get('registration_endpoint'):
