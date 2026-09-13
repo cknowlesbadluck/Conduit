@@ -1,4 +1,4 @@
-# Conduit 0.6.1
+# Conduit 0.7.0
 
 Standalone remote MCP coordination and integration bridge for AI agents, tools, connectors, skills, MCP servers, shared context, and development resources.
 

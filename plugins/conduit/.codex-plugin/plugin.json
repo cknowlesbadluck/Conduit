@@ -1,6 +1,6 @@
 {
   "name": "conduit",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "Coordinate AI agents and development resources through Conduit's authenticated remote MCP bridge.",
   "author": {
     "name": "Christopher Knowles",
