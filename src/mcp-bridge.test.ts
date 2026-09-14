@@ -14,6 +14,9 @@ test("MCP bridge rejects non-HTTPS endpoints and local targets", async () => {
   await assert.rejects(() => callMcpBridge({ endpoint: "https://127.0.0.1/mcp", request: { jsonrpc: "2.0", id: 1, method: "tools/list" } }), /mcp_endpoint_local_target/);
   await assert.rejects(() => callMcpBridge({ endpoint: "https://169.254.169.254/latest/meta-data", request: { jsonrpc: "2.0", id: 1, method: "tools/list" } }), /mcp_endpoint_local_target/);
   await assert.rejects(() => callMcpBridge({ endpoint: "https://[::1]/mcp", request: { jsonrpc: "2.0", id: 1, method: "tools/list" } }), /mcp_endpoint_local_target/);
+  await assert.rejects(() => callMcpBridge({ endpoint: "https://[fe80::1]/mcp", request: { jsonrpc: "2.0", id: 1, method: "tools/list" } }), /mcp_endpoint_local_target/);
+  await assert.rejects(() => callMcpBridge({ endpoint: "https://[fe90::1]/mcp", request: { jsonrpc: "2.0", id: 1, method: "tools/list" } }), /mcp_endpoint_local_target/);
+  await assert.rejects(() => callMcpBridge({ endpoint: "https://[febf::1]/mcp", request: { jsonrpc: "2.0", id: 1, method: "tools/list" } }), /mcp_endpoint_local_target/);
   await assert.rejects(() => callMcpBridge({ endpoint: "https://[::ffff:127.0.0.1]/mcp", request: { jsonrpc: "2.0", id: 1, method: "tools/list" } }), /mcp_endpoint_local_target/);
   await assert.rejects(() => callMcpBridge({ endpoint: "https://[fd00::1]/mcp", request: { jsonrpc: "2.0", id: 1, method: "tools/list" } }), /mcp_endpoint_local_target/);
   await assert.rejects(() => callMcpBridge({ endpoint: "https://[2002:7f00:1::1]/mcp", request: { jsonrpc: "2.0", id: 1, method: "tools/list" } }), /mcp_endpoint_local_target/);
@@ -31,12 +34,29 @@ test("MCP bridge rejects non-HTTPS endpoints and local targets", async () => {
 test("isDisallowedAddress rejects IPv4-compatible IPv6 embeddings", () => {
   assert.equal(isDisallowedAddress("::7f00:1"), true);
   assert.equal(isDisallowedAddress("::127.0.0.1"), true);
+  assert.equal(isDisallowedAddress("::"), true);
   assert.equal(isDisallowedAddress("::1"), true);
+  assert.equal(isDisallowedAddress("fe80::1"), true);
+  assert.equal(isDisallowedAddress("fe90::1"), true);
+  assert.equal(isDisallowedAddress("febf::1"), true);
   assert.equal(isDisallowedAddress("2001:4860:4860::8888"), false);
 });
 
 test("MCP bridge rejects hostnames that resolve to private addresses", async () => {
   setMcpBridgeLookupForTests(async () => [{ address: "127.0.0.1", family: 4 }]);
+  await assert.rejects(
+    () => callMcpBridge({ endpoint: "https://evil.example.test/mcp", request: { jsonrpc: "2.0", id: 1, method: "tools/list" } }),
+    /mcp_endpoint_local_target/,
+  );
+});
+
+test("MCP bridge rejects hostnames that resolve to IPv6 link-local addresses across fe80::/10", async () => {
+  setMcpBridgeLookupForTests(async () => [{ address: "fe90::1", family: 6 }]);
+  await assert.rejects(
+    () => callMcpBridge({ endpoint: "https://evil.example.test/mcp", request: { jsonrpc: "2.0", id: 1, method: "tools/list" } }),
+    /mcp_endpoint_local_target/,
+  );
+  setMcpBridgeLookupForTests(async () => [{ address: "febf::1", family: 6 }]);
   await assert.rejects(
     () => callMcpBridge({ endpoint: "https://evil.example.test/mcp", request: { jsonrpc: "2.0", id: 1, method: "tools/list" } }),
     /mcp_endpoint_local_target/,
