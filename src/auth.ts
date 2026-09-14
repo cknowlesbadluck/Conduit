@@ -48,8 +48,38 @@ export async function loadAuthConfig(): Promise<ConduitAuthConfig | null> {
     throw new Error("MCP_RESOURCE_URL must use HTTPS in production");
   }
 
-  const response = await fetch(discoveryUrl, { headers: { accept: "application/json" } });
+  let parsedDiscoveryUrl: URL;
+  try {
+    parsedDiscoveryUrl = new URL(discoveryUrl);
+  } catch {
+    throw new Error("DESCOPE_MCP_SERVER_WELL_KNOWN_URL must be a valid absolute URL");
+  }
+  if (parsedDiscoveryUrl.protocol !== "https:" && process.env.NODE_ENV === "production") {
+    throw new Error("DESCOPE_MCP_SERVER_WELL_KNOWN_URL must use HTTPS in production");
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(discoveryUrl, {
+      headers: { accept: "application/json" },
+      redirect: "error",
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Unable to load Descope discovery metadata: ${message}`);
+  }
   if (!response.ok) throw new Error(`Unable to load Descope discovery metadata: HTTP ${response.status}`);
+  if (response.url) {
+    let finalUrl: URL;
+    try {
+      finalUrl = new URL(response.url);
+    } catch {
+      throw new Error("Descope discovery request resolved to an invalid URL");
+    }
+    if (finalUrl.protocol !== "https:" && process.env.NODE_ENV === "production") {
+      throw new Error("Descope discovery request must not resolve to HTTP in production");
+    }
+  }
 
   const raw = (await response.json()) as Record<string, unknown>;
   const issuer = typeof raw.issuer === "string" ? raw.issuer : "";
@@ -60,9 +90,37 @@ export async function loadAuthConfig(): Promise<ConduitAuthConfig | null> {
     throw new Error("Descope discovery metadata is missing issuer, jwks_uri, authorization_endpoint, or token_endpoint");
   }
 
+  for (const [key, endpointUrl] of [
+    ["issuer", issuer],
+    ["jwks_uri", jwksUri],
+    ["authorization_endpoint", authorizationEndpoint],
+    ["token_endpoint", tokenEndpoint],
+  ] as const) {
+    let url: URL;
+    try {
+      url = new URL(endpointUrl);
+    } catch {
+      throw new Error(`Descope discovery metadata has invalid URL for ${key}: ${endpointUrl}`);
+    }
+    if (url.protocol !== "https:" && process.env.NODE_ENV === "production") {
+      throw new Error(`Descope discovery metadata ${key} must use HTTPS in production: ${endpointUrl}`);
+    }
+  }
+
   const configuredIssuer = process.env.DESCOPE_MCP_SERVER_ISSUER?.trim();
-  if (configuredIssuer && configuredIssuer !== issuer) {
-    throw new Error("DESCOPE_MCP_SERVER_ISSUER does not match the issuer returned by discovery");
+  if (configuredIssuer) {
+    let parsedConfiguredIssuer: URL;
+    try {
+      parsedConfiguredIssuer = new URL(configuredIssuer);
+    } catch {
+      throw new Error("DESCOPE_MCP_SERVER_ISSUER must be a valid absolute URL");
+    }
+    if (parsedConfiguredIssuer.protocol !== "https:" && process.env.NODE_ENV === "production") {
+      throw new Error("DESCOPE_MCP_SERVER_ISSUER must use HTTPS in production");
+    }
+    if (configuredIssuer !== issuer) {
+      throw new Error("DESCOPE_MCP_SERVER_ISSUER does not match the issuer returned by discovery");
+    }
   }
 
   const metadata: OAuthMetadata = {
