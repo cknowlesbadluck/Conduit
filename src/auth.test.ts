@@ -66,7 +66,6 @@ test('loadAuthConfig rejects insecure discovered endpoints in production', async
     process.env.PUBLIC_URL = 'https://conduit-feco.onrender.com';
     process.env.DESCOPE_MCP_SERVER_WELL_KNOWN_URL = 'https://api.descope.com/.well-known/openid-configuration';
 
-    // Test HTTP issuer
     globalThis.fetch = (async () => ({
       ok: true,
       json: async () => ({
@@ -82,7 +81,6 @@ test('loadAuthConfig rejects insecure discovered endpoints in production', async
       (err: Error) => err.message.includes('must use HTTPS in production'),
     );
 
-    // Test HTTP jwks_uri
     globalThis.fetch = (async () => ({
       ok: true,
       json: async () => ({
@@ -140,3 +138,5 @@ test('loadAuthConfig validates DESCOPE_MCP_SERVER_ISSUER match and scheme', asyn
     globalThis.fetch = origFetch;
   }
 });
+
+// Repair workflow trigger; no production behavior.
