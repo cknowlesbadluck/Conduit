@@ -55,6 +55,7 @@ app.get("/ready", async (_req, res) => {
   res.status(ready ? 200 : 503).json({
     status: ready ? "ready" : (initialized ? "degraded" : "initializing"),
     service: "conduit",
+    version: VERSION,
     persistence: process.env.DATABASE_URL && process.env.CONDUIT_TEST_MEMORY !== "true" ? "postgres" : "memory",
   });
 });

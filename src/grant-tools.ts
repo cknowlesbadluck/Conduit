@@ -51,8 +51,21 @@ export function registerGrantTools(server: McpServer, authConfig?: ConduitAuthCo
   server.registerTool("grants_list", { description: "List capability grants visible to the caller. Revoked grants are excluded unless explicitly requested by a project owner or administrator.", inputSchema: z.object({ agentId: z.string().min(1).max(200).optional(), projectId: z.string().min(1).max(200).optional(), provider: z.enum(["github", "render", "supabase", "mcp_bridge"] as const).optional(), includeRevoked: z.boolean().optional() }), annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ agentId, projectId, provider, includeRevoked }, extra) => {
     if (readScope) requireScope(extra.http?.authInfo, readScope);
     const subject = actorSubject(extra as ToolExtra);
-    if (includeRevoked && !(await canGovern(subject, projectId))) return rejected("grant_admin_required", { projectId: projectId ?? null });
-    const effectiveAgentId = agentId ?? await governingAgent(subject);
+    const callerAgent = await governingAgent(subject);
+    const isGovernor = await canGovern(subject, projectId);
+
+    if (includeRevoked && !isGovernor) return rejected("grant_admin_required", { projectId: projectId ?? null });
+
+    let effectiveAgentId: string | undefined;
+    if (isGovernor) {
+      effectiveAgentId = agentId ?? callerAgent;
+    } else {
+      if (agentId && agentId !== callerAgent) {
+        return rejected("grant_admin_required", { agentId });
+      }
+      effectiveAgentId = callerAgent;
+    }
+
     if (!effectiveAgentId && !projectId) return rejected("grant_scope_required");
     return json(await listCapabilityGrants({ agentId: effectiveAgentId, projectId, provider: provider as CapabilityProvider | undefined, includeRevoked }));
   });

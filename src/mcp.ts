@@ -1,3 +1,6 @@
+function sanitizeForLog(text: string): string {
+  return text.replace(/([?&](?:token|key|secret|auth|code|password|access_token|api_key|apikey)=)[^&]*/gi, "$1[REDACTED]");
+}
 import { McpServer, type AuthInfo } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
@@ -89,9 +92,9 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
     if (isRead) { if (readScope) auth(extra, readScope); } else { if (writeScope) auth(extra, writeScope); }
     try {
       const agentId = await resolveBoundAgent(extra);
-      await enforceExternalCapability({ agentId: agentId ?? undefined, provider, method, path, projectId });
+      await enforceExternalCapability({ agentId: agentId ?? undefined, provider, method, path: sanitizeForLog(path), projectId });
       const result = await callIntegration({ provider, method, path, body });
-      console.info(JSON.stringify({ type: "integration.call", provider, method, path: result.path, status: result.status, ok: result.ok, projectId: projectId ?? null, actor: actorSubject(extra) ?? null }));
+      console.info(JSON.stringify({ type: "integration.call", provider, method, path: sanitizeForLog(result.path), status: result.status, ok: result.ok, projectId: projectId ?? null, actor: actorSubject(extra) ?? null }));
       return json(result);
     } catch (error) { const message = error instanceof Error ? error.message : "integration_call_failed"; console.warn(JSON.stringify({ type: "integration.call.failed", provider, method, path, projectId: projectId ?? null, actor: actorSubject(extra) ?? null, error: message })); return rejected(message === "capability_denied" ? "capability_denied" : "integration_call_failed", { message }); }
   });
