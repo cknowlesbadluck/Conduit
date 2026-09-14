@@ -18,7 +18,7 @@ Conduit is an MCP bridge that lets compatible AI agents and development tools se
 **What the LLM lacks:** authoritative project state, durable coordination state, credentials, external APIs, and trusted authorization. Conduit supplies those through server-side controls.
 
 ## UI / Client Experience
-Conduit is primarily an MCP server rather than a standalone dashboard. Client experiences are supplied by connected AI assistants.
+Conduit is primarily an MCP server. Client experiences are supplied by connected AI assistants. An optional read-only Station UI (`/station`, enabled with `CONDUIT_STATION=1`) can monitor tasks and capability grants for authenticated operators; it does not replace MCP clients or perform mutations.
 
 **First interaction:** an MCP client authenticates and initializes against the protected MCP endpoint.
 
