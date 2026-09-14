@@ -11,6 +11,7 @@ import { VERSION, SERVICE_NAME } from "./version.js";
 import { MCP_RATE_LIMITER, TOOL_RATE_LIMITER } from "./rate-limit.js";
 import { timingSafeEqual } from "node:crypto";
 import { replayRecentEvents, subscribeEvents } from "./events.js";
+import { registerStationRoutes } from "./station/routes.js";
 
 const app = express();
 app.disable("x-powered-by");
@@ -99,6 +100,12 @@ async function boot() {
         res.status(503).json({ error: "auth_not_configured" });
       };
   app.get("/events", eventAuthMiddleware, rateLimitMcp, eventHandler);
+
+  const stationEnabled = ["1", "true", "yes", "on"].includes((process.env.CONDUIT_STATION ?? "").trim().toLowerCase());
+  if (stationEnabled) {
+    registerStationRoutes(app, eventAuthMiddleware);
+    console.log("Conduit station enabled at /station");
+  }
 
   if (authConfig) {
     const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(new URL(authConfig.resourceUrl)).toString();
