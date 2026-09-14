@@ -92,7 +92,7 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
     if (isRead) { if (readScope) auth(extra, readScope); } else { if (writeScope) auth(extra, writeScope); }
     try {
       const agentId = await resolveBoundAgent(extra);
-      await enforceExternalCapability({ agentId: agentId ?? undefined, provider, method, path: sanitizeForLog(path), projectId });
+      await enforceExternalCapability({ agentId: agentId ?? undefined, provider, method, path, projectId });
       const result = await callIntegration({ provider, method, path, body });
       console.info(JSON.stringify({ type: "integration.call", provider, method, path: sanitizeForLog(result.path), status: result.status, ok: result.ok, projectId: projectId ?? null, actor: actorSubject(extra) ?? null }));
       return json(result);
