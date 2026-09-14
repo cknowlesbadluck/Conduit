@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { OAuthError } from '@modelcontextprotocol/server';
-import { buildProtectedResourceMetadata, requireScope } from './auth.js';
+import { buildProtectedResourceMetadata, requireScope, loadAuthConfig } from './auth.js';
 
 test('scope policy accepts granted scope', () => {
   assert.doesNotThrow(() => requireScope({ token: 'x', clientId: 'c', scopes: ['mcp:conduit.read'], expiresAt: Math.floor(Date.now() / 1000) + 60 }, 'mcp:conduit.read'));

@@ -25,6 +25,33 @@ async function canGovern(subject: string | undefined, projectId?: string) {
   return project?.createdBy === (await governingAgent(subject));
 }
 
+export type GrantListDecision =
+  | { ok: false; error: string; details?: Record<string, unknown> }
+  | { ok: true; agentId?: string; projectId?: string; includeRevoked?: boolean };
+
+export function decideGrantListVisibility(input: {
+  requestedAgentId?: string;
+  requestedProjectId?: string;
+  includeRevoked?: boolean;
+  callerAgentId?: string;
+  isAdmin: boolean;
+  governsRequestedProject: boolean;
+}): GrantListDecision {
+  const { requestedAgentId, requestedProjectId, includeRevoked, callerAgentId, isAdmin, governsRequestedProject } = input;
+  if (includeRevoked && !isAdmin && !governsRequestedProject) {
+    return { ok: false, error: "grant_admin_required", details: { projectId: requestedProjectId ?? null } };
+  }
+  if (isAdmin || governsRequestedProject) {
+    if (!requestedAgentId && !requestedProjectId) return { ok: false, error: "grant_scope_required" };
+    return { ok: true, agentId: requestedAgentId, projectId: requestedProjectId, includeRevoked };
+  }
+  if (!callerAgentId) return { ok: false, error: "agent_identity_not_bound" };
+  if (requestedAgentId && requestedAgentId !== callerAgentId) {
+    return { ok: false, error: "grant_not_visible", details: { agentId: requestedAgentId } };
+  }
+  return { ok: true, agentId: callerAgentId, projectId: requestedProjectId, includeRevoked: false };
+}
+
 export function registerGrantTools(server: McpServer, authConfig?: ConduitAuthConfig) {
   const writeScope = authConfig?.writeScope;
   const readScope = authConfig?.readScope;
