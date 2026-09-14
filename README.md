@@ -119,6 +119,15 @@ The expected sequence is:
 
 `GET /events` is an authenticated Server-Sent Events stream for task lifecycle coordination. Use `?projectId=<id>` for project filtering. Events include task create, claim, block, release, complete, and handoff activity. The stream sends recent activity on connect, heartbeats while idle, and new activity as it appears.
 
+## Station (optional)
+
+Set `CONDUIT_STATION=1` to enable a **read-only** HTML monitor at `/station` (tasks and grants).
+
+- Auth: same Bearer token / OAuth as `/events` and `/mcp`
+- Optional filter: `/station?projectId=...`
+- JSON: `/station?format=json` or `Accept: application/json`
+- No claim/complete/grant mutations from this UI
+
 ## Coordination model
 
 Projects are optional coordination domains. Existing unscoped workflows remain valid, while tasks, contacts, tools, resources, and activity can be associated with a project for isolation and focused context.
