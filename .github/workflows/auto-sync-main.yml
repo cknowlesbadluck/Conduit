@@ -1,0 +1,33 @@
+name: Auto-sync main into PR branch
+
+on:
+  push:
+    branches:
+      - conduit-release-0.7.1-9358966330171302683
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Merge main, preferring PR changes on conflicts
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge origin/main --no-edit -X ours
+          git push origin HEAD:${GITHUB_REF_NAME}
+      - name: Remove temporary workflow
+        if: success()
+        run: |
+          git rm .github/workflows/auto-sync-main.yml
+          git commit -m "chore: remove temporary PR sync workflow"
+          git push origin HEAD:${GITHUB_REF_NAME}
