@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { OAuthError } from '@modelcontextprotocol/server';
-import { buildProtectedResourceMetadata, requireScope, loadAuthConfig } from './auth.js';
+import { buildProtectedResourceMetadata, requireScope } from './auth.js';
 
 test('scope policy accepts granted scope', () => {
   assert.doesNotThrow(() => requireScope({ token: 'x', clientId: 'c', scopes: ['mcp:conduit.read'], expiresAt: Math.floor(Date.now() / 1000) + 60 }, 'mcp:conduit.read'));
@@ -33,10 +33,7 @@ test('protected resource metadata identifies the MCP resource and supported scop
   });
 });
 
-function restoreEnv(name: string, value: string | undefined) {
-  if (value === undefined) delete process.env[name];
-  else process.env[name] = value;
-}
+import { loadAuthConfig } from './auth.js';
 
 test('loadAuthConfig rejects HTTP discovery URL in production', async () => {
   const origEnv = process.env.NODE_ENV;
@@ -52,9 +49,9 @@ test('loadAuthConfig rejects HTTP discovery URL in production', async () => {
       (err: Error) => err.message.includes('must use HTTPS in production'),
     );
   } finally {
-    restoreEnv('NODE_ENV', origEnv);
-    restoreEnv('DESCOPE_MCP_SERVER_WELL_KNOWN_URL', origDiscovery);
-    restoreEnv('PUBLIC_URL', origPublic);
+    process.env.NODE_ENV = origEnv;
+    process.env.DESCOPE_MCP_SERVER_WELL_KNOWN_URL = origDiscovery;
+    process.env.PUBLIC_URL = origPublic;
   }
 });
 
@@ -69,6 +66,7 @@ test('loadAuthConfig rejects insecure discovered endpoints in production', async
     process.env.PUBLIC_URL = 'https://conduit-feco.onrender.com';
     process.env.DESCOPE_MCP_SERVER_WELL_KNOWN_URL = 'https://api.descope.com/.well-known/openid-configuration';
 
+    // Test HTTP issuer
     globalThis.fetch = (async () => ({
       ok: true,
       json: async () => ({
@@ -84,6 +82,7 @@ test('loadAuthConfig rejects insecure discovered endpoints in production', async
       (err: Error) => err.message.includes('must use HTTPS in production'),
     );
 
+    // Test HTTP jwks_uri
     globalThis.fetch = (async () => ({
       ok: true,
       json: async () => ({
@@ -99,9 +98,9 @@ test('loadAuthConfig rejects insecure discovered endpoints in production', async
       (err: Error) => err.message.includes('must use HTTPS in production'),
     );
   } finally {
-    restoreEnv('NODE_ENV', origEnv);
-    restoreEnv('DESCOPE_MCP_SERVER_WELL_KNOWN_URL', origDiscovery);
-    restoreEnv('PUBLIC_URL', origPublic);
+    process.env.NODE_ENV = origEnv;
+    process.env.DESCOPE_MCP_SERVER_WELL_KNOWN_URL = origDiscovery;
+    process.env.PUBLIC_URL = origPublic;
     globalThis.fetch = origFetch;
   }
 });
@@ -134,10 +133,10 @@ test('loadAuthConfig validates DESCOPE_MCP_SERVER_ISSUER match and scheme', asyn
       (err: Error) => err.message.includes('does not match the issuer returned by discovery'),
     );
   } finally {
-    restoreEnv('NODE_ENV', origEnv);
-    restoreEnv('DESCOPE_MCP_SERVER_WELL_KNOWN_URL', origDiscovery);
-    restoreEnv('DESCOPE_MCP_SERVER_ISSUER', origIssuer);
-    restoreEnv('PUBLIC_URL', origPublic);
+    process.env.NODE_ENV = origEnv;
+    process.env.DESCOPE_MCP_SERVER_WELL_KNOWN_URL = origDiscovery;
+    process.env.DESCOPE_MCP_SERVER_ISSUER = origIssuer;
+    process.env.PUBLIC_URL = origPublic;
     globalThis.fetch = origFetch;
   }
 });
