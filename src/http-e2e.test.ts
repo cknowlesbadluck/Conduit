@@ -3,6 +3,13 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { createConduitApp } from "./app-factory.js";
 
+const mcpHeaders = (sessionId?: string) => ({
+  Accept: "application/json, text/event-stream",
+  "Content-Type": "application/json",
+  "MCP-Protocol-Version": "2025-06-18",
+  ...(sessionId ? { "MCP-Session-Id": sessionId } : {}),
+});
+
 test("black-box MCP HTTP initializes and lists tools", async () => {
   const app = createConduitApp({ anonymous: true });
   const server = createServer(app);
@@ -15,7 +22,7 @@ test("black-box MCP HTTP initializes and lists tools", async () => {
 
     const initialize = await fetch(`${baseUrl}/mcp`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "MCP-Protocol-Version": "2025-06-18" },
+      headers: mcpHeaders(),
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: 1,
@@ -36,11 +43,7 @@ test("black-box MCP HTTP initializes and lists tools", async () => {
 
     const tools = await fetch(`${baseUrl}/mcp`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "MCP-Protocol-Version": "2025-06-18",
-        "MCP-Session-Id": sessionId,
-      },
+      headers: mcpHeaders(sessionId),
       body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }),
     });
     assert.equal(tools.status, 200);
