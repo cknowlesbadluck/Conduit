@@ -144,3 +144,54 @@ test("releaseTask transitions task from claimed and blocked states to open, enfo
   assert.equal(releaseEvents.length, 2);
   assert.ok(releaseEvents.every((e) => e.taskId === task.id && e.agentId === "release-agent-1" && e.projectId === project.id));
 });
+
+test("blockTask updates task status, logs activity event, and rejects invalid calls", async () => {
+  await registerAgent({ id: "block-a1", name: "Block Agent 1" });
+  await registerAgent({ id: "block-a2", name: "Block Agent 2" });
+
+  const project = await createProject({ name: "Block Test Project", createdBy: "block-a1" });
+  assert.ok(project);
+
+  const task = await createTask({ title: "Task to block", createdBy: "block-a1", projectId: project.id });
+  assert.ok(task);
+
+  assert.equal(await blockTask(task.id, "unregistered-agent", "reason"), null);
+  assert.equal(await blockTask("missing-task-id", "block-a1", "reason"), null);
+  assert.equal(await blockTask(task.id, "block-a1", "reason"), null);
+
+  const claimed = await claimTask(task.id, "block-a1");
+  assert.ok(claimed);
+  assert.equal(claimed.status, "claimed");
+
+  assert.equal(await blockTask(task.id, "block-a2", "not claimant"), null);
+
+  const blockedWithReason = await blockTask(task.id, "block-a1", "Waiting for dependency");
+  assert.ok(blockedWithReason);
+  assert.equal(blockedWithReason.status, "blocked");
+  assert.equal(blockedWithReason.claimedBy, "block-a1");
+
+  const activity1 = await listActivity(50, project.id);
+  const blockEvent1 = activity1.find((e) => e.type === "task.block" && e.taskId === task.id);
+  assert.ok(blockEvent1);
+  assert.equal(blockEvent1.agentId, "block-a1");
+  assert.equal(blockEvent1.reason, "Waiting for dependency");
+  assert.equal(blockEvent1.projectId, project.id);
+
+  assert.equal(await blockTask(task.id, "block-a1", "already blocked"), null);
+
+  const released = await releaseTask(task.id, "block-a1");
+  assert.ok(released);
+  const claimedAgain = await claimTask(task.id, "block-a1");
+  assert.ok(claimedAgain);
+
+  const blockedNoReason = await blockTask(task.id, "block-a1");
+  assert.ok(blockedNoReason);
+  assert.equal(blockedNoReason.status, "blocked");
+
+  const activity2 = await listActivity(50, project.id);
+  const blockEvents = activity2.filter((e) => e.type === "task.block" && e.taskId === task.id);
+  assert.equal(blockEvents.length, 2);
+  const latestBlockEvent = blockEvents[0];
+  assert.equal(latestBlockEvent.agentId, "block-a1");
+  assert.equal(latestBlockEvent.reason, undefined);
+});
