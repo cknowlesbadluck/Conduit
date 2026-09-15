@@ -7,7 +7,7 @@ import { buildProtectedResourceMetadata, createDevelopmentAuthInfo, createTokenV
 import type { OAuthTokenVerifier } from "@modelcontextprotocol/server";
 import { VERSION, SERVICE_NAME } from "./version.js";
 import { MCP_RATE_LIMITER, TOOL_RATE_LIMITER } from "./rate-limit.js";
-import { getConduitStatus } from "./status.js";
+import { getPublicConduitStatus } from "./status.js";
 import { checkPersistence } from "./db-ready.js";
 import { isReady } from "./store.js";
 import { conduitUiHtml, CONDUIT_UI_CSS, CONDUIT_UI_JS } from "./ui.js";
@@ -59,7 +59,7 @@ export function createConduitApp(options: ConduitAppOptions = {}) {
   app.get("/ui.js", (_req, res) => res.type("application/javascript").send(CONDUIT_UI_JS));
   app.get("/status", async (_req, res, next) => {
     try {
-      res.json(await getConduitStatus());
+      res.json(await getPublicConduitStatus());
     } catch (error) {
       next(error);
     }

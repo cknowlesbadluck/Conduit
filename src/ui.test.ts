@@ -44,10 +44,14 @@ test("status is JSON and existing health/ready endpoints remain available", asyn
     ]);
     assert.equal(status.status, 200);
     assert.equal(status.headers.get("content-type")?.includes("application/json"), true);
-    const body = await status.json() as { service: string; status: string; connections: unknown[] };
+    const body = await status.json() as { service: string; status: string; connections: unknown[]; tasks: unknown[]; activity: unknown[]; counts?: { agents: number } };
     assert.equal(body.service, "Conduit");
     assert.equal(body.status, "online");
     assert.ok(Array.isArray(body.connections));
+    assert.equal(body.connections.length, 0);
+    assert.equal(body.tasks.length, 0);
+    assert.equal(body.activity.length, 0);
+    assert.ok(body.counts);
     assert.equal(health.status, 200);
     assert.equal(ready.status, 200);
   });

@@ -22,6 +22,23 @@ export type ConduitStatus = {
   activity: Record<string, string>[];
 };
 
+export type ConduitPublicStatus = {
+  service: string;
+  version: string;
+  status: "online";
+  connections: [];
+  tools: [];
+  tasks: [];
+  activity: [];
+  counts: {
+    agents: number;
+    connected: number;
+    tools: number;
+    tasks: number;
+    activity: number;
+  };
+};
+
 const SECRET_KEY = /token|secret|password|authorization|cookie|api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|private[_-]?key/i;
 const SECRET_VALUE = /(https?:\/\/[^\s?]+\?[^\s]*?(?:token|key|secret|password|auth)[^\s]*)/gi;
 const ACTOR_KEYS = ["agentId", "actor", "clientId", "subject", "createdBy", "claimedBy"] as const;
@@ -77,5 +94,26 @@ export async function getConduitStatus(): Promise<ConduitStatus> {
     tools: safeTools,
     tasks: safeTasks,
     activity: recentActivity.slice(0, 25),
+  };
+}
+
+/** Unauthenticated public projection. Counts only — no agent IDs, task titles, or activity payloads. */
+export async function getPublicConduitStatus(): Promise<ConduitPublicStatus> {
+  const detailed = await getConduitStatus();
+  return {
+    service: detailed.service,
+    version: detailed.version,
+    status: detailed.status,
+    connections: [],
+    tools: [],
+    tasks: [],
+    activity: [],
+    counts: {
+      agents: detailed.connections.length,
+      connected: detailed.connections.filter((connection) => connection.status === "connected").length,
+      tools: detailed.tools.length,
+      tasks: detailed.tasks.length,
+      activity: detailed.activity.length,
+    },
   };
 }
