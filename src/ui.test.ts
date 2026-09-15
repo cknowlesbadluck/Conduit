@@ -2,8 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { createConduitApp } from "./app-factory.js";
+import { init } from "./store.js";
 
 async function withServer(run: (baseUrl: string) => Promise<void>) {
+  await init();
   const server = createServer(createConduitApp({ anonymous: true }));
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
