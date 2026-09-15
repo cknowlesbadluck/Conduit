@@ -12,6 +12,7 @@ import {
   completeTask,
   handoff,
   listAgents,
+  listActivity,
 } from "./store.js";
 
 test("getProject and getTask return records or null", async () => {
@@ -70,4 +71,72 @@ test("task lifecycle enforces ownership and legal transitions", async () => {
   const completed = await completeTask(task!.id, "life-b");
   assert.equal(completed?.status, "completed");
   assert.equal(await releaseTask(task!.id, "life-b"), null);
+});
+
+test("releaseTask transitions task from claimed and blocked states to open, enforcing permissions and logging activity", async () => {
+  await registerAgent({ id: "release-agent-1", name: "Release Agent 1" });
+  await registerAgent({ id: "release-agent-2", name: "Release Agent 2" });
+  const project = await createProject({ name: "Release Test Project", createdBy: "release-agent-1" });
+  assert.ok(project);
+
+  const task = await createTask({ title: "Release Test Task", createdBy: "release-agent-1", projectId: project.id });
+  assert.ok(task);
+
+  // Releasing open task fails
+  assert.equal(await releaseTask(task.id, "release-agent-1"), null);
+
+  // Claim task
+  const claimed = await claimTask(task.id, "release-agent-1");
+  assert.equal(claimed?.status, "claimed");
+  assert.equal(claimed?.claimedBy, "release-agent-1");
+
+  // Releasing task with non-existent agent fails
+  assert.equal(await releaseTask(task.id, "nonexistent-agent"), null);
+
+  // Releasing task with non-existent task ID fails
+  assert.equal(await releaseTask("nonexistent-task", "release-agent-1"), null);
+
+  // Releasing task claimed by another agent fails
+  assert.equal(await releaseTask(task.id, "release-agent-2"), null);
+
+  // Release claimed task back to open
+  const releasedFromClaimed = await releaseTask(task.id, "release-agent-1");
+  assert.ok(releasedFromClaimed);
+  assert.equal(releasedFromClaimed.status, "open");
+  assert.equal(releasedFromClaimed.claimedBy, undefined);
+
+  // Verify task in store is open
+  const fetchedTask1 = await getTask(task.id);
+  assert.equal(fetchedTask1?.status, "open");
+  assert.equal(fetchedTask1?.claimedBy, undefined);
+
+  // Claim and block task
+  await claimTask(task.id, "release-agent-1");
+  const blocked = await blockTask(task.id, "release-agent-1", "Blocked for testing");
+  assert.equal(blocked?.status, "blocked");
+
+  // Release blocked task back to open
+  const releasedFromBlocked = await releaseTask(task.id, "release-agent-1");
+  assert.ok(releasedFromBlocked);
+  assert.equal(releasedFromBlocked.status, "open");
+  assert.equal(releasedFromBlocked.claimedBy, undefined);
+
+  // Verify task in store is open
+  const fetchedTask2 = await getTask(task.id);
+  assert.equal(fetchedTask2?.status, "open");
+  assert.equal(fetchedTask2?.claimedBy, undefined);
+
+  // Claim and complete task
+  await claimTask(task.id, "release-agent-1");
+  const completed = await completeTask(task.id, "release-agent-1");
+  assert.equal(completed?.status, "completed");
+
+  // Releasing completed task fails
+  assert.equal(await releaseTask(task.id, "release-agent-1"), null);
+
+  // Verify activity log contains task.release events
+  const activity = await listActivity(50, project.id);
+  const releaseEvents = activity.filter((a) => a.type === "task.release");
+  assert.equal(releaseEvents.length, 2);
+  assert.ok(releaseEvents.every((e) => e.taskId === task.id && e.agentId === "release-agent-1" && e.projectId === project.id));
 });
