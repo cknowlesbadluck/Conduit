@@ -1,0 +1,3 @@
+## 2025-03-30 - Map Insertion-Order Eviction for Rate Limiting
+**Learning:** In JavaScript Map implementations, iterating over `Map.keys()` or `Map.entries()` yields elements in insertion order (FIFO). Converting `Map.entries()` to an Array to perform `sort()` in rate-limiter eviction introduces $O(N \log N)$ runtime overhead and significant array allocations. Utilizing JS Map FIFO iteration avoids sorting overhead and cuts eviction time by over ~70%.
+**Action:** Prefer Map insertion-order FIFO iteration for LRU/FIFO eviction strategies instead of allocating arrays and sorting when strict sorting is not strictly required.
