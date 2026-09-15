@@ -9,25 +9,37 @@ export type ConduitConnection = {
   lastActivity?: string;
 };
 
+type StatusTool = { id: string; projectId?: string; name: string; description: string; createdBy?: string; createdAt: string };
+type StatusTask = { id: string; projectId?: string; title: string; status: Awaited<ReturnType<typeof listTasks>>[number]["status"]; claimedBy?: string; createdAt: string; updatedAt: string };
+
 export type ConduitStatus = {
   service: string;
   version: string;
   status: "online";
   connections: ConduitConnection[];
-  tools: Awaited<ReturnType<typeof listTools>>;
-  tasks: Awaited<ReturnType<typeof listTasks>>;
+  tools: StatusTool[];
+  tasks: StatusTask[];
   activity: Record<string, string>[];
 };
 
 const SECRET_KEY = /token|secret|password|authorization|cookie|api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|private[_-]?key/i;
+const SECRET_VALUE = /(https?:\/\/[^\s?]+\?[^\s]*?(?:token|key|secret|password|auth)[^\s]*)/gi;
 const ACTOR_KEYS = ["agentId", "actor", "clientId", "subject", "createdBy", "claimedBy"] as const;
 
 function isSensitiveKey(key: string) {
   return SECRET_KEY.test(key);
 }
 
+function sanitizeValue(value: string) {
+  return value.replace(SECRET_VALUE, "[REDACTED_URL]");
+}
+
 function sanitizeActivity(event: Record<string, string>) {
-  return Object.fromEntries(Object.entries(event).filter(([key]) => !isSensitiveKey(key)));
+  return Object.fromEntries(
+    Object.entries(event)
+      .filter(([key]) => !isSensitiveKey(key))
+      .map(([key, value]) => [key, sanitizeValue(value)]),
+  );
 }
 
 function activityMatchesAgent(event: Record<string, string>, agentId: string) {
@@ -53,13 +65,16 @@ export async function getConduitStatus(): Promise<ConduitStatus> {
     };
   });
 
+  const safeTools: StatusTool[] = tools.map(({ endpoint: _endpoint, ...tool }) => tool);
+  const safeTasks: StatusTask[] = tasks.slice(0, 25).map(({ description: _description, createdBy: _createdBy, ...task }) => task);
+
   return {
     service: SERVICE_NAME,
     version: VERSION,
     status: "online",
     connections,
-    tools,
-    tasks: tasks.slice(0, 25),
+    tools: safeTools,
+    tasks: safeTasks,
     activity: recentActivity.slice(0, 25),
   };
 }
