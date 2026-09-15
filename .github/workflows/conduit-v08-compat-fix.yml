@@ -1,7 +1,8 @@
 name: Conduit v0.8 compatibility repair
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [conduit-v0.8-development]
 
 jobs:
   repair:
