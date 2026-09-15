@@ -4,12 +4,18 @@ import { createServer } from "node:http";
 import { createConduitApp } from "./app-factory.js";
 import { MCP_PROTOCOL_VERSION, SERVICE_NAME } from "./version.js";
 
-const mcpHeaders = (sessionId?: string) => ({
+const mcpHeaders = () => ({
   Accept: "application/json, text/event-stream",
   "Content-Type": "application/json",
   "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
-  ...(sessionId ? { "MCP-Session-Id": sessionId } : {}),
 });
+
+async function readMcpResponse(response: Response) {
+  const text = await response.text();
+  const dataLine = text.split(/\r?\n/).find((line) => line.startsWith("data: "));
+  assert.ok(dataLine, `expected MCP SSE data event, received: ${text}`);
+  return JSON.parse(dataLine.slice("data: ".length)) as { result?: Record<string, unknown> };
+}
 
 test("black-box MCP HTTP initializes and lists tools", async () => {
   const app = createConduitApp({ anonymous: true });
@@ -36,20 +42,19 @@ test("black-box MCP HTTP initializes and lists tools", async () => {
       }),
     });
     assert.equal(initialize.status, 200);
-    const initializeBody = await initialize.json() as { result?: { serverInfo?: { name?: string } } };
-    assert.equal(initializeBody.result?.serverInfo?.name, SERVICE_NAME);
-
-    const sessionId = initialize.headers.get("MCP-Session-Id");
-    assert.ok(sessionId);
+    const initializeBody = await readMcpResponse(initialize);
+    const initializeResult = initializeBody.result as { serverInfo?: { name?: string } } | undefined;
+    assert.equal(initializeResult?.serverInfo?.name, SERVICE_NAME);
 
     const tools = await fetch(`${baseUrl}/mcp`, {
       method: "POST",
-      headers: mcpHeaders(sessionId),
+      headers: mcpHeaders(),
       body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }),
     });
     assert.equal(tools.status, 200);
-    const toolsBody = await tools.json() as { result?: { tools?: Array<{ name: string }> } };
-    assert.ok(toolsBody.result?.tools?.some((tool) => tool.name === "agent_identity"));
+    const toolsBody = await readMcpResponse(tools);
+    const toolsResult = toolsBody.result as { tools?: Array<{ name: string }> } | undefined;
+    assert.ok(toolsResult?.tools?.some((tool) => tool.name === "agent_identity"));
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
