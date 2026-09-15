@@ -1,0 +1,70 @@
+name: Conduit v0.8 finalize MCP transport repair
+
+on:
+  push:
+    branches: [conduit-v0.8-development]
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: conduit-v0.8-development
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply production MCP transport fix
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path('src/index.ts')
+          s = p.read_text()
+          s, handler_count = re.subn(
+              r'createMcpHandler\(\(\) => createConduitServer(\(authConfig\))?\)',
+              lambda m: 'createMcpHandler(() => createConduitServer' + (m.group(1) or '') + ', { legacy: "stateless" })',
+              s,
+          )
+          s, adapter_count = re.subn(
+              r'toNodeHandler\(handler, \{ onerror: console\.error \}\)',
+              'toNodeHandler(handler, { onerror: console.error })',
+              s,
+          )
+          marker = 'toNodeHandler(handler, { onerror: console.error })'
+          replacement = 'toNodeHandler(handler, { onerror: console.error })'
+          if handler_count < 3:
+              raise SystemExit(f'expected 3 MCP handler constructions, changed {handler_count}')
+          p.write_text(s)
+          PY
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/index.ts')
+          s = p.read_text()
+          s = s.replace(
+              'app.all("/mcp", requireBearerAuth({ verifier: createTokenVerifier(authConfig), resourceMetadataUrl }), rateLimitMcp, toNodeHandler(handler, { onerror: console.error }));',
+              'const nodeHandler = toNodeHandler(handler, { onerror: console.error });\n    app.all("/mcp", requireBearerAuth({ verifier: createTokenVerifier(authConfig), resourceMetadataUrl }), rateLimitMcp, (req, res) => nodeHandler(req, res, req.body));',
+          )
+          s = s.replace(
+              'app.all("/mcp", (req, res, next) => { const supplied = req.header("authorization")?.replace(/^Bearer\\s+/i, ""); if (!timingSafeTokenMatch(token, supplied)) { unauthorizedBearer(res); return; } req.auth = createDevelopmentAuthInfo(DEVELOPMENT_TOKEN_SUBJECT, token); next(); }, rateLimitMcp, toNodeHandler(handler, { onerror: console.error }));',
+              'const nodeHandler = toNodeHandler(handler, { onerror: console.error });\n    app.all("/mcp", (req, res, next) => { const supplied = req.header("authorization")?.replace(/^Bearer\\s+/i, ""); if (!timingSafeTokenMatch(token, supplied)) { unauthorizedBearer(res); return; } req.auth = createDevelopmentAuthInfo(DEVELOPMENT_TOKEN_SUBJECT, token); next(); }, rateLimitMcp, (req, res) => nodeHandler(req, res, req.body));',
+          )
+          s = s.replace(
+              'app.all("/mcp", (req, _res, next) => { req.auth = createDevelopmentAuthInfo(DEVELOPMENT_ANONYMOUS_SUBJECT, "anonymous"); next(); }, rateLimitMcp, toNodeHandler(handler, { onerror: console.error }));',
+              'const nodeHandler = toNodeHandler(handler, { onerror: console.error });\n    app.all("/mcp", (req, _res, next) => { req.auth = createDevelopmentAuthInfo(DEVELOPMENT_ANONYMOUS_SUBJECT, "anonymous"); next(); }, rateLimitMcp, (req, res) => nodeHandler(req, res, req.body));',
+          )
+          p.write_text(s)
+          PY
+          rm -f .github/workflows/conduit-v08-compat-fix.yml .github/workflows/conduit-v08-body-fix.yml .github/workflows/conduit-v08-finalize.yml
+          npm ci
+          npm run typecheck
+          npm test
+          npm run build
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/index.ts .github/workflows/conduit-v08-compat-fix.yml .github/workflows/conduit-v08-body-fix.yml .github/workflows/conduit-v08-finalize.yml
+          git commit -m 'fix: repair MCP HTTP transport compatibility'
+          git push origin conduit-v0.8-development
