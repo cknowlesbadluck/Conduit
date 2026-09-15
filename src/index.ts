@@ -11,11 +11,13 @@ import { VERSION, SERVICE_NAME } from "./version.js";
 import { MCP_RATE_LIMITER, TOOL_RATE_LIMITER } from "./rate-limit.js";
 import { timingSafeEqual } from "node:crypto";
 import { replayRecentEvents, subscribeEvents } from "./events.js";
+import { getConduitStatus } from "./status.js";
+import { conduitUiHtml, CONDUIT_UI_CSS, CONDUIT_UI_JS } from "./ui.js";
 
 const app = express();
 app.disable("x-powered-by");
 app.use((_req, res, next) => {
-  res.set({ "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer", "Cache-Control": "no-store", "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'" });
+  res.set({ "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer", "Cache-Control": "no-store", "Content-Security-Policy": "default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'" });
   next();
 });
 app.use(express.json({ limit: process.env.MAX_JSON_BODY || "1mb" }));
@@ -46,7 +48,10 @@ function rateLimitMcp(req: express.Request, res: express.Response, next: express
   next();
 }
 
-app.get("/", (_req, res) => res.json({ service: SERVICE_NAME, version: VERSION, status: "online", mcp: "/mcp", health: "/health", ready: "/ready", events: "/events" }));
+app.get("/", (_req, res) => res.type("html").send(conduitUiHtml()));
+app.get("/ui.css", (_req, res) => res.type("css").send(CONDUIT_UI_CSS));
+app.get("/ui.js", (_req, res) => res.type("application/javascript").send(CONDUIT_UI_JS));
+app.get("/status", async (_req, res, next) => { try { res.json(await getConduitStatus()); } catch (error) { next(error); } });
 app.get("/health", (_req, res) => res.json({ status: "ok", service: "conduit" }));
 app.get("/ready", async (_req, res) => {
   const initialized = isReady();
@@ -136,6 +141,18 @@ if (typeof process !== "undefined" && process.versions?.node && !process.env.CLO
 
 export const fetchHandler = async (request: Request): Promise<Response> => {
   const url = new URL(request.url);
+  if (url.pathname === "/") {
+    return new Response(conduitUiHtml(), { status: 200, headers: { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'" } });
+  }
+  if (url.pathname === "/ui.css") {
+    return new Response(CONDUIT_UI_CSS, { status: 200, headers: { "Content-Type": "text/css; charset=utf-8" } });
+  }
+  if (url.pathname === "/ui.js") {
+    return new Response(CONDUIT_UI_JS, { status: 200, headers: { "Content-Type": "application/javascript; charset=utf-8" } });
+  }
+  if (url.pathname === "/status") {
+    return new Response(JSON.stringify({ service: SERVICE_NAME, version: VERSION, status: "online", connections: [], tools: [], tasks: [], activity: [] }), { status: 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+  }
   if (url.pathname === "/health") {
     return new Response(JSON.stringify({ status: "ok", service: "conduit" }), {
       status: 200,
