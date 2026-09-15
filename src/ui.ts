@@ -32,7 +32,7 @@ export const CONDUIT_UI_JS = `
     wire.className = "wire" + (connected ? " active" : "");
     core.className = "core" + (connected ? " active" : "");
     const summaryRow = make("div", "row");
-    summaryRow.appendChild(make("strong", null, connections.length ? `${connected} connected / ${connections.length} observed` : "No agents observed"));
+    summaryRow.appendChild(make("strong", null, connections.length ? (connected + " connected / " + connections.length + " observed") : "No agents observed"));
     summaryRow.appendChild(make("span", null, "Derived from server activity"));
     summary.appendChild(summaryRow);
     if (!connections.length) { host.appendChild(make("div", "empty", "No agent connections observed.")); return; }
