@@ -2,11 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { createConduitApp } from "./app-factory.js";
+import { MCP_PROTOCOL_VERSION, SERVICE_NAME } from "./version.js";
 
 const mcpHeaders = (sessionId?: string) => ({
   Accept: "application/json, text/event-stream",
   "Content-Type": "application/json",
-  "MCP-Protocol-Version": "2025-06-18",
+  "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
   ...(sessionId ? { "MCP-Session-Id": sessionId } : {}),
 });
 
@@ -28,7 +29,7 @@ test("black-box MCP HTTP initializes and lists tools", async () => {
         id: 1,
         method: "initialize",
         params: {
-          protocolVersion: "2025-06-18",
+          protocolVersion: MCP_PROTOCOL_VERSION,
           capabilities: {},
           clientInfo: { name: "conduit-http-e2e", version: "0.8.0-test" },
         },
@@ -36,7 +37,7 @@ test("black-box MCP HTTP initializes and lists tools", async () => {
     });
     assert.equal(initialize.status, 200);
     const initializeBody = await initialize.json() as { result?: { serverInfo?: { name?: string } } };
-    assert.equal(initializeBody.result?.serverInfo?.name, "conduit");
+    assert.equal(initializeBody.result?.serverInfo?.name, SERVICE_NAME);
 
     const sessionId = initialize.headers.get("MCP-Session-Id");
     assert.ok(sessionId);
