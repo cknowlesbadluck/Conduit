@@ -19,3 +19,34 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  postgres-coordination:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: conduit
+          POSTGRES_PASSWORD: conduit
+          POSTGRES_DB: conduit_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U conduit -d conduit_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://conduit:conduit@localhost:5432/conduit_test
+      DATABASE_SSL: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run typecheck
+      - name: Run coordination concurrency tests against Postgres
+        run: |
+          npm run compile
+          node --test --test-concurrency=1 dist/coordination.test.js dist/store.lifecycle.test.js

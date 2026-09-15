@@ -4,14 +4,18 @@ import { toNodeHandler } from "@modelcontextprotocol/node";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { createConduitServer } from "./mcp.js";
 import { buildProtectedResourceMetadata, createDevelopmentAuthInfo, createTokenVerifier, DEVELOPMENT_ANONYMOUS_SUBJECT, type ConduitAuthConfig } from "./auth.js";
+import type { OAuthTokenVerifier } from "@modelcontextprotocol/server";
 import { VERSION, SERVICE_NAME } from "./version.js";
 import { MCP_RATE_LIMITER, TOOL_RATE_LIMITER } from "./rate-limit.js";
 import { getConduitStatus } from "./status.js";
+import { checkPersistence } from "./db-ready.js";
+import { isReady } from "./store.js";
 import { conduitUiHtml, CONDUIT_UI_CSS, CONDUIT_UI_JS } from "./ui.js";
 
 export interface ConduitAppOptions {
   anonymous?: boolean;
   authConfig?: ConduitAuthConfig;
+  tokenVerifier?: OAuthTokenVerifier;
 }
 
 function rateLimitMcp(req: Request, res: Response, next: NextFunction) {
@@ -61,7 +65,17 @@ export function createConduitApp(options: ConduitAppOptions = {}) {
     }
   });
   app.get("/health", (_req, res) => res.json({ status: "ok", service: "conduit" }));
-  app.get("/ready", (_req, res) => res.json({ status: "ready", service: "conduit", version: VERSION }));
+  app.get("/ready", async (_req, res) => {
+    const initialized = isReady();
+    const persistenceOk = initialized ? await checkPersistence() : false;
+    const ready = initialized && persistenceOk;
+    res.status(ready ? 200 : 503).json({
+      status: ready ? "ready" : (initialized ? "degraded" : "initializing"),
+      service: "conduit",
+      version: VERSION,
+      persistence: process.env.DATABASE_URL && process.env.CONDUIT_TEST_MEMORY !== "true" ? "postgres" : "memory",
+    });
+  });
 
   if (options.authConfig) {
     const authConfig = options.authConfig;
@@ -71,7 +85,8 @@ export function createConduitApp(options: ConduitAppOptions = {}) {
     app.get("/.well-known/oauth-protected-resource/mcp", (_req, res) => res.json(buildProtectedResourceMetadata(authConfig)));
     const handler = createMcpHandler(() => createConduitServer(authConfig), { legacy: "stateless" });
     const nodeHandler = toNodeHandler(handler, { onerror: console.error });
-    app.all("/mcp", requireBearerAuth({ verifier: createTokenVerifier(authConfig), resourceMetadataUrl }), rateLimitMcp, (req, res) => nodeHandler(req, res, req.body));
+    const verifier = options.tokenVerifier ?? createTokenVerifier(authConfig);
+    app.all("/mcp", requireBearerAuth({ verifier, resourceMetadataUrl }), rateLimitMcp, (req, res) => nodeHandler(req, res, req.body));
   } else if (options.anonymous) {
     const handler = createMcpHandler(() => createConduitServer(), { legacy: "stateless" });
     const nodeHandler = toNodeHandler(handler, { onerror: console.error });

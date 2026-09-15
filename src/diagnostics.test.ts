@@ -57,3 +57,29 @@ test("diagnostics preserves CIMD and DCR discovery state", () => {
   assert.equal(result.scopeParity.ok, true);
   assert.deepEqual(result.discovery, { cimd: true, dcr: true });
 });
+
+test("authorization server metadata check rejects insecure endpoints", () => {
+  const result = buildAuthorizationServerMetadataCheck(
+    "https://auth.example.com/tenant1",
+    {
+      issuer: "https://auth.example.com/tenant1",
+      authorization_endpoint: "http://auth.example.com/authorize",
+      token_endpoint: "https://auth.example.com/token",
+      jwks_uri: "https://auth.example.com/jwks",
+    },
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.detail, "insecure_endpoint");
+});
+
+test("diagnostics reports missing scopes as parity failure", () => {
+  const result = buildDiagnosticsFromMetadata({
+    resource: "https://conduit-feco.onrender.com/mcp",
+    scopesSupported: ["mcp:conduit.read"],
+    configuredScopes: ["mcp:conduit.read", "mcp:conduit.write"],
+    clientIdMetadataSupported: false,
+  });
+  assert.equal(result.scopeParity.ok, false);
+  assert.deepEqual(result.scopeParity.missing, ["mcp:conduit.write"]);
+  assert.deepEqual(result.discovery, { cimd: false, dcr: false });
+});
