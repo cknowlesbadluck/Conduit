@@ -59,13 +59,15 @@ export function createConduitApp(options: ConduitAppOptions = {}) {
     app.get("/.well-known/oauth-protected-resource", (_req, res) => res.json(buildProtectedResourceMetadata(authConfig)));
     app.get("/.well-known/oauth-protected-resource/mcp", (_req, res) => res.json(buildProtectedResourceMetadata(authConfig)));
     const handler = createMcpHandler(() => createConduitServer(authConfig), { legacy: "stateless" });
-    app.all("/mcp", requireBearerAuth({ verifier: createTokenVerifier(authConfig), resourceMetadataUrl }), rateLimitMcp, toNodeHandler(handler, { onerror: console.error }));
+    const nodeHandler = toNodeHandler(handler, { onerror: console.error });
+    app.all("/mcp", requireBearerAuth({ verifier: createTokenVerifier(authConfig), resourceMetadataUrl }), rateLimitMcp, (req, res) => nodeHandler(req, res, req.body));
   } else if (options.anonymous) {
     const handler = createMcpHandler(() => createConduitServer(), { legacy: "stateless" });
+    const nodeHandler = toNodeHandler(handler, { onerror: console.error });
     app.all("/mcp", (req, _res, next) => {
       req.auth = createDevelopmentAuthInfo(DEVELOPMENT_ANONYMOUS_SUBJECT, "anonymous");
       next();
-    }, rateLimitMcp, toNodeHandler(handler, { onerror: console.error }));
+    }, rateLimitMcp, (req, res) => nodeHandler(req, res, req.body));
   } else {
     app.all("/mcp", (_req, res) => res.status(503).json({ error: "auth_not_configured" }));
   }
