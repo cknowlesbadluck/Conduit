@@ -6,6 +6,8 @@ import { createConduitServer } from "./mcp.js";
 import { buildProtectedResourceMetadata, createDevelopmentAuthInfo, createTokenVerifier, DEVELOPMENT_ANONYMOUS_SUBJECT, type ConduitAuthConfig } from "./auth.js";
 import { VERSION, SERVICE_NAME } from "./version.js";
 import { MCP_RATE_LIMITER, TOOL_RATE_LIMITER } from "./rate-limit.js";
+import { getConduitStatus } from "./status.js";
+import { conduitUiHtml, CONDUIT_UI_CSS, CONDUIT_UI_JS } from "./ui.js";
 
 export interface ConduitAppOptions {
   anonymous?: boolean;
@@ -42,13 +44,22 @@ export function createConduitApp(options: ConduitAppOptions = {}) {
       "X-Frame-Options": "DENY",
       "Referrer-Policy": "no-referrer",
       "Cache-Control": "no-store",
-      "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+      "Content-Security-Policy": "default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",
     });
     next();
   });
   app.use(express.json({ limit: process.env.MAX_JSON_BODY || "1mb" }));
 
-  app.get("/", (_req, res) => res.json({ service: SERVICE_NAME, version: VERSION, status: "online", mcp: "/mcp", health: "/health", ready: "/ready" }));
+  app.get("/", (_req, res) => res.type("html").send(conduitUiHtml()));
+  app.get("/ui.css", (_req, res) => res.type("css").send(CONDUIT_UI_CSS));
+  app.get("/ui.js", (_req, res) => res.type("application/javascript").send(CONDUIT_UI_JS));
+  app.get("/status", async (_req, res, next) => {
+    try {
+      res.json(await getConduitStatus());
+    } catch (error) {
+      next(error);
+    }
+  });
   app.get("/health", (_req, res) => res.json({ status: "ok", service: "conduit" }));
   app.get("/ready", (_req, res) => res.json({ status: "ready", service: "conduit", version: VERSION }));
 
