@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  init,
   registerAgent,
   createProject,
   createTask,
@@ -13,6 +14,8 @@ import {
   handoff,
   listAgents,
 } from "./store.js";
+
+await init();
 
 test("getProject and getTask return records or null", async () => {
   await registerAgent({ id: "life-a", name: "Life A", actorSubject: "life-a-sub" });
@@ -31,6 +34,7 @@ test("getProject and getTask return records or null", async () => {
 });
 
 test("task lifecycle enforces ownership and legal transitions", async () => {
+  await registerAgent({ id: "life-a", name: "Life A", actorSubject: "life-a-sub" });
   await registerAgent({ id: "life-b", name: "Life B", actorSubject: "life-b-sub" });
   const agents = await listAgents();
   assert.ok(agents.some((agent) => agent.id === "life-a"));

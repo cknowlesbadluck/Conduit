@@ -49,4 +49,4 @@ jobs:
       - name: Run coordination concurrency tests against Postgres
         run: |
           npm run compile
-          node --test dist/coordination.test.js dist/store.lifecycle.test.js
+          node --test --test-concurrency=1 dist/coordination.test.js dist/store.lifecycle.test.js
