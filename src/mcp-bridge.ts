@@ -81,9 +81,8 @@ export function isDisallowedAddress(address: string): boolean {
   if (isIP(value) === 6) {
     const hextets = expandIpv6(value);
     if (!hextets) return true;
-    const firstHextet = hextets[0];
     if (hextets.every((hextet) => hextet === 0)) return true; // ::
-    if ((firstHextet & 0xffc0) === 0xfe80) return true; // fe80::/10
+    if ((hextets[0] & 0xffc0) === 0xfe80) return true; // fe80::/10
     if ((hextets[0] & 0xfe00) === 0xfc00) return true; // fc00::/7 ULA
     // IPv4-mapped ::ffff:x.x.x.x
     if (hextets[0] === 0 && hextets[1] === 0 && hextets[2] === 0 && hextets[3] === 0 && hextets[4] === 0 && hextets[5] === 0xffff) {

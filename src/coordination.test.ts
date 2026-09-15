@@ -55,3 +55,39 @@ test("unknown projects are rejected for project-scoped writes", async () => {
   assert.equal(await registerTool("Bad", "Bad", undefined, "project_missing", "coord-a"), null);
   assert.equal(await getCoordinationContext("project_missing"), null);
 });
+
+import { claimTask, handoff } from "./store.js";
+
+test("concurrent task claims allow exactly one winner", async () => {
+  await registerAgent({ id: "claim-agent-1", name: "Claimer 1" });
+  await registerAgent({ id: "claim-agent-2", name: "Claimer 2" });
+  const task = await createTask({ title: "Concurrent Task", createdBy: "claim-agent-1" });
+  assert.ok(task);
+
+  const results = await Promise.all([
+    claimTask(task.id, "claim-agent-1"),
+    claimTask(task.id, "claim-agent-2"),
+  ]);
+
+  const winners = results.filter((r) => r !== null);
+  assert.equal(winners.length, 1);
+  assert.equal(winners[0]?.status, "claimed");
+});
+
+test("concurrent handoff requests allow exactly one successful handoff", async () => {
+  await registerAgent({ id: "handoff-owner", name: "Handoff Owner" });
+  await registerAgent({ id: "handoff-target-1", name: "Target 1" });
+  await registerAgent({ id: "handoff-target-2", name: "Target 2" });
+
+  const task = await createTask({ title: "Handoff Task", createdBy: "handoff-owner" });
+  assert.ok(task);
+  await claimTask(task.id, "handoff-owner");
+
+  const results = await Promise.all([
+    handoff(task.id, "handoff-owner", "handoff-target-1", "Handoff to 1"),
+    handoff(task.id, "handoff-owner", "handoff-target-2", "Handoff to 2"),
+  ]);
+
+  const winners = results.filter((r) => r !== null);
+  assert.equal(winners.length, 1);
+});

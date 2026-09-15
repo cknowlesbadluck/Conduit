@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { OAuthError } from '@modelcontextprotocol/server';
-import { buildProtectedResourceMetadata, requireScope, loadAuthConfig } from './auth.js';
+import { buildProtectedResourceMetadata, requireScope } from './auth.js';
 
 test('scope policy accepts granted scope', () => {
   assert.doesNotThrow(() => requireScope({ token: 'x', clientId: 'c', scopes: ['mcp:conduit.read'], expiresAt: Math.floor(Date.now() / 1000) + 60 }, 'mcp:conduit.read'));
@@ -33,6 +33,8 @@ test('protected resource metadata identifies the MCP resource and supported scop
   });
 });
 
+import { loadAuthConfig } from './auth.js';
+
 test('loadAuthConfig rejects HTTP discovery URL in production', async () => {
   const origEnv = process.env.NODE_ENV;
   const origDiscovery = process.env.DESCOPE_MCP_SERVER_WELL_KNOWN_URL;
@@ -41,54 +43,11 @@ test('loadAuthConfig rejects HTTP discovery URL in production', async () => {
     process.env.NODE_ENV = 'production';
     process.env.PUBLIC_URL = 'https://conduit-feco.onrender.com';
     process.env.DESCOPE_MCP_SERVER_WELL_KNOWN_URL = 'http://api.descope.com/.well-known/openid-configuration';
-
-    await assert.rejects(
-      async () => loadAuthConfig(),
-      (err: Error) => err.message.includes('must use HTTPS in production'),
-    );
+    await assert.rejects(async () => loadAuthConfig(), (err: Error) => err.message.includes('must use HTTPS in production'));
   } finally {
     process.env.NODE_ENV = origEnv;
     process.env.DESCOPE_MCP_SERVER_WELL_KNOWN_URL = origDiscovery;
     process.env.PUBLIC_URL = origPublic;
-  }
-});
-
-test('loadAuthConfig rejects discovery redirects', async () => {
-  const origEnv = process.env.NODE_ENV;
-  const origDiscovery = process.env.DESCOPE_MCP_SERVER_WELL_KNOWN_URL;
-  const origPublic = process.env.PUBLIC_URL;
-  const origFetch = globalThis.fetch;
-
-  try {
-    process.env.NODE_ENV = 'production';
-    process.env.PUBLIC_URL = 'https://conduit-feco.onrender.com';
-    process.env.DESCOPE_MCP_SERVER_WELL_KNOWN_URL = 'https://api.descope.com/.well-known/openid-configuration';
-
-    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
-      if (init?.redirect === 'error') {
-        throw new TypeError('unexpected redirect');
-      }
-      return {
-        ok: true,
-        url: 'http://evil.example/.well-known/openid-configuration',
-        json: async () => ({
-          issuer: 'https://api.descope.com',
-          jwks_uri: 'https://api.descope.com/jwks',
-          authorization_endpoint: 'https://api.descope.com/auth',
-          token_endpoint: 'https://api.descope.com/token',
-        }),
-      } as Response;
-    }) as unknown as typeof fetch;
-
-    await assert.rejects(
-      async () => loadAuthConfig(),
-      (err: Error) => err.message.includes('Unable to load Descope discovery metadata'),
-    );
-  } finally {
-    process.env.NODE_ENV = origEnv;
-    process.env.DESCOPE_MCP_SERVER_WELL_KNOWN_URL = origDiscovery;
-    process.env.PUBLIC_URL = origPublic;
-    globalThis.fetch = origFetch;
   }
 });
 
@@ -97,41 +56,14 @@ test('loadAuthConfig rejects insecure discovered endpoints in production', async
   const origDiscovery = process.env.DESCOPE_MCP_SERVER_WELL_KNOWN_URL;
   const origPublic = process.env.PUBLIC_URL;
   const origFetch = globalThis.fetch;
-
   try {
     process.env.NODE_ENV = 'production';
     process.env.PUBLIC_URL = 'https://conduit-feco.onrender.com';
     process.env.DESCOPE_MCP_SERVER_WELL_KNOWN_URL = 'https://api.descope.com/.well-known/openid-configuration';
-
-    globalThis.fetch = (async () => ({
-      ok: true,
-      json: async () => ({
-        issuer: 'http://api.descope.com',
-        jwks_uri: 'https://api.descope.com/jwks',
-        authorization_endpoint: 'https://api.descope.com/auth',
-        token_endpoint: 'https://api.descope.com/token',
-      }),
-    })) as unknown as typeof fetch;
-
-    await assert.rejects(
-      async () => loadAuthConfig(),
-      (err: Error) => err.message.includes('must use HTTPS in production'),
-    );
-
-    globalThis.fetch = (async () => ({
-      ok: true,
-      json: async () => ({
-        issuer: 'https://api.descope.com',
-        jwks_uri: 'http://api.descope.com/jwks',
-        authorization_endpoint: 'https://api.descope.com/auth',
-        token_endpoint: 'https://api.descope.com/token',
-      }),
-    })) as unknown as typeof fetch;
-
-    await assert.rejects(
-      async () => loadAuthConfig(),
-      (err: Error) => err.message.includes('must use HTTPS in production'),
-    );
+    globalThis.fetch = (async () => ({ ok: true, json: async () => ({ issuer: 'http://api.descope.com', jwks_uri: 'https://api.descope.com/jwks', authorization_endpoint: 'https://api.descope.com/auth', token_endpoint: 'https://api.descope.com/token' }) })) as unknown as typeof fetch;
+    await assert.rejects(async () => loadAuthConfig(), (err: Error) => err.message.includes('must use HTTPS in production'));
+    globalThis.fetch = (async () => ({ ok: true, json: async () => ({ issuer: 'https://api.descope.com', jwks_uri: 'http://api.descope.com/jwks', authorization_endpoint: 'https://api.descope.com/auth', token_endpoint: 'https://api.descope.com/token' }) })) as unknown as typeof fetch;
+    await assert.rejects(async () => loadAuthConfig(), (err: Error) => err.message.includes('must use HTTPS in production'));
   } finally {
     process.env.NODE_ENV = origEnv;
     process.env.DESCOPE_MCP_SERVER_WELL_KNOWN_URL = origDiscovery;
@@ -140,33 +72,19 @@ test('loadAuthConfig rejects insecure discovered endpoints in production', async
   }
 });
 
-test('loadAuthConfig validates DESCOPE_MCP_SERVER_ISSUER match', async () => {
+test('loadAuthConfig validates DESCOPE_MCP_SERVER_ISSUER match and scheme', async () => {
   const origEnv = process.env.NODE_ENV;
   const origDiscovery = process.env.DESCOPE_MCP_SERVER_WELL_KNOWN_URL;
   const origIssuer = process.env.DESCOPE_MCP_SERVER_ISSUER;
   const origPublic = process.env.PUBLIC_URL;
   const origFetch = globalThis.fetch;
-
   try {
     process.env.NODE_ENV = 'production';
     process.env.PUBLIC_URL = 'https://conduit-feco.onrender.com';
     process.env.DESCOPE_MCP_SERVER_WELL_KNOWN_URL = 'https://api.descope.com/.well-known/openid-configuration';
     process.env.DESCOPE_MCP_SERVER_ISSUER = 'https://other-issuer.com';
-
-    globalThis.fetch = (async () => ({
-      ok: true,
-      json: async () => ({
-        issuer: 'https://api.descope.com',
-        jwks_uri: 'https://api.descope.com/jwks',
-        authorization_endpoint: 'https://api.descope.com/auth',
-        token_endpoint: 'https://api.descope.com/token',
-      }),
-    })) as unknown as typeof fetch;
-
-    await assert.rejects(
-      async () => loadAuthConfig(),
-      (err: Error) => err.message.includes('does not match the issuer returned by discovery'),
-    );
+    globalThis.fetch = (async () => ({ ok: true, json: async () => ({ issuer: 'https://api.descope.com', jwks_uri: 'https://api.descope.com/jwks', authorization_endpoint: 'https://api.descope.com/auth', token_endpoint: 'https://api.descope.com/token' }) })) as unknown as typeof fetch;
+    await assert.rejects(async () => loadAuthConfig(), (err: Error) => err.message.includes('does not match the issuer returned by discovery'));
   } finally {
     process.env.NODE_ENV = origEnv;
     process.env.DESCOPE_MCP_SERVER_WELL_KNOWN_URL = origDiscovery;

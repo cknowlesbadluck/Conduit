@@ -24,22 +24,34 @@ export function registerPaginationTools(server: McpServer, authConfig?: ConduitA
   server.registerTool("tools_list", { description: "List shared tools and endpoints with bounded cursor pagination", inputSchema: schema.extend({ projectId: z.string().min(1).optional() }), annotations: readOnly }, async ({ projectId, limit, cursor }, extra) => { if (readScope) auth(extra, readScope); return json(paginate(await listTools(projectId), { limit, cursor })); });
   server.registerTool("activity_list", { description: "List recent Conduit activity with bounded cursor pagination", inputSchema: schema.extend({ projectId: z.string().min(1).optional() }), annotations: readOnly }, async ({ projectId, limit, cursor }, extra) => { if (readScope) auth(extra, readScope); return json(paginate(await listActivity(200, projectId), { limit, cursor })); });
 
-  server.registerTool("conduit_context", { description: "Return a bounded snapshot of Conduit coordination state with per-section cursors", inputSchema: schema.extend({ projectId: z.string().min(1).optional() }), annotations: readOnly }, async ({ projectId, limit, cursor }, extra) => {
+  const contextSchema = schema.extend({
+    projectId: z.string().min(1).optional(),
+    cursors: z.object({
+      agents: z.string().max(200).optional(),
+      tasks: z.string().max(200).optional(),
+      contacts: z.string().max(200).optional(),
+      tools: z.string().max(200).optional(),
+      resources: z.string().max(200).optional(),
+      activity: z.string().max(200).optional(),
+      projects: z.string().max(200).optional(),
+    }).optional(),
+  });
+
+  server.registerTool("conduit_context", { description: "Return a bounded snapshot of Conduit coordination state with per-section cursors", inputSchema: contextSchema, annotations: readOnly }, async ({ projectId, limit, cursor, cursors }, extra) => {
     if (readScope) auth(extra, readScope);
     const coordination = await getCoordinationContext(projectId);
     if (!coordination) return errorResult("project_not_found", { projectId });
-    const page = { limit, cursor };
     return json({
       conduit: getDevelopmentContext(),
       coordination: {
         ...coordination,
-        agents: paginate(coordination.agents, page),
-        tasks: paginate(coordination.tasks, page),
-        contacts: paginate(coordination.contacts, page),
-        tools: paginate(coordination.tools, page),
-        resources: paginate(coordination.resources, page),
-        activity: paginate(coordination.activity, page),
-        projects: paginate(coordination.projects, page),
+        agents: paginate(coordination.agents, { limit, cursor: cursors?.agents ?? cursor }),
+        tasks: paginate(coordination.tasks, { limit, cursor: cursors?.tasks ?? cursor }),
+        contacts: paginate(coordination.contacts, { limit, cursor: cursors?.contacts ?? cursor }),
+        tools: paginate(coordination.tools, { limit, cursor: cursors?.tools ?? cursor }),
+        resources: paginate(coordination.resources, { limit, cursor: cursors?.resources ?? cursor }),
+        activity: paginate(coordination.activity, { limit, cursor: cursors?.activity ?? cursor }),
+        projects: paginate(coordination.projects, { limit, cursor: cursors?.projects ?? cursor }),
       },
     });
   });

@@ -55,6 +55,7 @@ app.get("/ready", async (_req, res) => {
   res.status(ready ? 200 : 503).json({
     status: ready ? "ready" : (initialized ? "degraded" : "initializing"),
     service: "conduit",
+    version: VERSION,
     persistence: process.env.DATABASE_URL && process.env.CONDUIT_TEST_MEMORY !== "true" ? "postgres" : "memory",
   });
 });
@@ -126,5 +127,30 @@ async function boot() {
   process.once("SIGTERM", shutdown); process.once("SIGINT", shutdown);
 }
 
-boot().catch((error) => { console.error("Conduit startup failed", error); process.exit(1); });
-export default app;
+if (typeof process !== "undefined" && process.versions?.node && !process.env.CLOUDFLARE_WORKER) {
+  boot().catch((error) => { console.error("Conduit startup failed", error); process.exit(1); });
+}
+
+export const fetchHandler = async (request: Request): Promise<Response> => {
+  const url = new URL(request.url);
+  if (url.pathname === "/health") {
+    return new Response(JSON.stringify({ status: "ok", service: "conduit" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  if (url.pathname === "/ready") {
+    return new Response(JSON.stringify({ status: "ready", service: "conduit", version: VERSION, persistence: "memory" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  return new Response(JSON.stringify({ service: SERVICE_NAME, version: VERSION, status: "online", mcp: "/mcp", health: "/health", ready: "/ready", events: "/events" }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+};
+
+export default Object.assign(app, {
+  fetch: fetchHandler,
+});

@@ -25,33 +25,6 @@ async function canGovern(subject: string | undefined, projectId?: string) {
   return project?.createdBy === (await governingAgent(subject));
 }
 
-export type GrantListDecision =
-  | { ok: false; error: string; details?: Record<string, unknown> }
-  | { ok: true; agentId?: string; projectId?: string; includeRevoked?: boolean };
-
-export function decideGrantListVisibility(input: {
-  requestedAgentId?: string;
-  requestedProjectId?: string;
-  includeRevoked?: boolean;
-  callerAgentId?: string;
-  isAdmin: boolean;
-  governsRequestedProject: boolean;
-}): GrantListDecision {
-  const { requestedAgentId, requestedProjectId, includeRevoked, callerAgentId, isAdmin, governsRequestedProject } = input;
-  if (includeRevoked && !isAdmin && !governsRequestedProject) {
-    return { ok: false, error: "grant_admin_required", details: { projectId: requestedProjectId ?? null } };
-  }
-  if (isAdmin || governsRequestedProject) {
-    if (!requestedAgentId && !requestedProjectId) return { ok: false, error: "grant_scope_required" };
-    return { ok: true, agentId: requestedAgentId, projectId: requestedProjectId, includeRevoked };
-  }
-  if (!callerAgentId) return { ok: false, error: "agent_identity_not_bound" };
-  if (requestedAgentId && requestedAgentId !== callerAgentId) {
-    return { ok: false, error: "grant_not_visible", details: { agentId: requestedAgentId } };
-  }
-  return { ok: true, agentId: callerAgentId, projectId: requestedProjectId, includeRevoked: false };
-}
-
 export function registerGrantTools(server: McpServer, authConfig?: ConduitAuthConfig) {
   const writeScope = authConfig?.writeScope;
   const readScope = authConfig?.readScope;
@@ -78,16 +51,23 @@ export function registerGrantTools(server: McpServer, authConfig?: ConduitAuthCo
   server.registerTool("grants_list", { description: "List capability grants visible to the caller. Revoked grants are excluded unless explicitly requested by a project owner or administrator.", inputSchema: z.object({ agentId: z.string().min(1).max(200).optional(), projectId: z.string().min(1).max(200).optional(), provider: z.enum(["github", "render", "supabase", "mcp_bridge"] as const).optional(), includeRevoked: z.boolean().optional() }), annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ agentId, projectId, provider, includeRevoked }, extra) => {
     if (readScope) requireScope(extra.http?.authInfo, readScope);
     const subject = actorSubject(extra as ToolExtra);
-    const decision = decideGrantListVisibility({
-      requestedAgentId: agentId,
-      requestedProjectId: projectId,
-      includeRevoked,
-      callerAgentId: await governingAgent(subject),
-      isAdmin: Boolean(subject && admins().has(subject)),
-      governsRequestedProject: await canGovern(subject, projectId),
-    });
-    if (!decision.ok) return rejected(decision.error, decision.details);
-    return json(await listCapabilityGrants({ agentId: decision.agentId, projectId: decision.projectId, provider: provider as CapabilityProvider | undefined, includeRevoked: decision.includeRevoked }));
+    const callerAgent = await governingAgent(subject);
+    const isGovernor = await canGovern(subject, projectId);
+
+    if (includeRevoked && !isGovernor) return rejected("grant_admin_required", { projectId: projectId ?? null });
+
+    let effectiveAgentId: string | undefined;
+    if (isGovernor) {
+      effectiveAgentId = agentId ?? callerAgent;
+    } else {
+      if (agentId && agentId !== callerAgent) {
+        return rejected("grant_admin_required", { agentId });
+      }
+      effectiveAgentId = callerAgent;
+    }
+
+    if (!effectiveAgentId && !projectId) return rejected("grant_scope_required");
+    return json(await listCapabilityGrants({ agentId: effectiveAgentId, projectId, provider: provider as CapabilityProvider | undefined, includeRevoked }));
   });
 
   server.registerTool("conduit_diagnostics", { description: "Run safe self-diagnostics for Conduit MCP/OAuth discovery, protected-resource metadata, authorization-server reachability, JWKS, scope parity, and CIMD/DCR advertisement. Never returns tokens or credentials.", inputSchema: z.object({ baseUrl: z.string().url().optional() }), annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ baseUrl }, extra) => {

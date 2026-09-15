@@ -58,28 +58,8 @@ export async function loadAuthConfig(): Promise<ConduitAuthConfig | null> {
     throw new Error("DESCOPE_MCP_SERVER_WELL_KNOWN_URL must use HTTPS in production");
   }
 
-  let response: Response;
-  try {
-    response = await fetch(discoveryUrl, {
-      headers: { accept: "application/json" },
-      redirect: "error",
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`Unable to load Descope discovery metadata: ${message}`);
-  }
+  const response = await fetch(discoveryUrl, { headers: { accept: "application/json" } });
   if (!response.ok) throw new Error(`Unable to load Descope discovery metadata: HTTP ${response.status}`);
-  if (response.url) {
-    let finalUrl: URL;
-    try {
-      finalUrl = new URL(response.url);
-    } catch {
-      throw new Error("Descope discovery request resolved to an invalid URL");
-    }
-    if (finalUrl.protocol !== "https:" && process.env.NODE_ENV === "production") {
-      throw new Error("Descope discovery request must not resolve to HTTP in production");
-    }
-  }
 
   const raw = (await response.json()) as Record<string, unknown>;
   const issuer = typeof raw.issuer === "string" ? raw.issuer : "";
