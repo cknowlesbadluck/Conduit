@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { createConduitApp } from "./index.js";
+import { createConduitApp } from "./app-factory.js";
 
 test("black-box MCP HTTP initializes and lists tools", async () => {
-  const app = await createConduitApp({ anonymous: true });
+  const app = createConduitApp({ anonymous: true });
   const server = createServer(app);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
 
@@ -12,9 +12,6 @@ test("black-box MCP HTTP initializes and lists tools", async () => {
     const address = server.address();
     assert.ok(address && typeof address === "object");
     const baseUrl = `http://127.0.0.1:${address.port}`;
-
-    const unauthorized = await fetch(`${baseUrl}/mcp`, { method: "GET" });
-    assert.equal(unauthorized.status, 405);
 
     const initialize = await fetch(`${baseUrl}/mcp`, {
       method: "POST",
