@@ -107,16 +107,19 @@ async function boot() {
     for (const path of ["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"]) app.get(path, (_req, res) => protectedResourceMetadataResponse(res, protectedResourceMetadata));
     app.use(mcpAuthMetadataRouter({ oauthMetadata: authConfig.metadata, resourceServerUrl: new URL(authConfig.resourceUrl) }));
     const handler = createMcpHandler(() => createConduitServer(authConfig));
-    app.all("/mcp", requireBearerAuth({ verifier: createTokenVerifier(authConfig), resourceMetadataUrl }), rateLimitMcp, toNodeHandler(handler, { onerror: console.error }));
+    const nodeHandler = toNodeHandler(handler, { onerror: console.error });
+    app.all("/mcp", requireBearerAuth({ verifier: createTokenVerifier(authConfig), resourceMetadataUrl }), rateLimitMcp, (req, res) => nodeHandler(req, res, req.body));
     console.log(`Conduit OAuth enabled for ${authConfig.resourceUrl}`);
   } else if (process.env.CONDUIT_TOKEN && process.env.NODE_ENV !== "production") {
     const token = process.env.CONDUIT_TOKEN;
     const handler = createMcpHandler(() => createConduitServer());
-    app.all("/mcp", (req, res, next) => { const supplied = req.header("authorization")?.replace(/^Bearer\s+/i, ""); if (!timingSafeTokenMatch(token, supplied)) { unauthorizedBearer(res); return; } req.auth = createDevelopmentAuthInfo(DEVELOPMENT_TOKEN_SUBJECT, token); next(); }, rateLimitMcp, toNodeHandler(handler, { onerror: console.error }));
+    const nodeHandler = toNodeHandler(handler, { onerror: console.error });
+    app.all("/mcp", (req, res, next) => { const supplied = req.header("authorization")?.replace(/^Bearer\s+/i, ""); if (!timingSafeTokenMatch(token, supplied)) { unauthorizedBearer(res); return; } req.auth = createDevelopmentAuthInfo(DEVELOPMENT_TOKEN_SUBJECT, token); next(); }, rateLimitMcp, (req, res) => nodeHandler(req, res, req.body));
     console.log("Conduit development bearer-token mode enabled");
   } else if (allowAnonymous) {
     const handler = createMcpHandler(() => createConduitServer());
-    app.all("/mcp", (req, _res, next) => { req.auth = createDevelopmentAuthInfo(DEVELOPMENT_ANONYMOUS_SUBJECT, "anonymous"); next(); }, rateLimitMcp, toNodeHandler(handler, { onerror: console.error }));
+    const nodeHandler = toNodeHandler(handler, { onerror: console.error });
+    app.all("/mcp", (req, _res, next) => { req.auth = createDevelopmentAuthInfo(DEVELOPMENT_ANONYMOUS_SUBJECT, "anonymous"); next(); }, rateLimitMcp, (req, res) => nodeHandler(req, res, req.body));
     console.warn("Conduit anonymous MCP mode is enabled for development only");
   } else {
     app.all("/mcp", (_req, res) => res.status(503).json({ error: "auth_not_configured", message: "Configure DESCOPE_MCP_SERVER_WELL_KNOWN_URL in production" }));
