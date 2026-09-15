@@ -58,10 +58,10 @@ export function createConduitApp(options: ConduitAppOptions = {}) {
     app.use(mcpAuthMetadataRouter({ oauthMetadata: authConfig.metadata, resourceServerUrl: new URL(authConfig.resourceUrl) }));
     app.get("/.well-known/oauth-protected-resource", (_req, res) => res.json(buildProtectedResourceMetadata(authConfig)));
     app.get("/.well-known/oauth-protected-resource/mcp", (_req, res) => res.json(buildProtectedResourceMetadata(authConfig)));
-    const handler = createMcpHandler(() => createConduitServer(authConfig));
+    const handler = createMcpHandler(() => createConduitServer(authConfig), { legacy: "stateless" });
     app.all("/mcp", requireBearerAuth({ verifier: createTokenVerifier(authConfig), resourceMetadataUrl }), rateLimitMcp, toNodeHandler(handler, { onerror: console.error }));
   } else if (options.anonymous) {
-    const handler = createMcpHandler(() => createConduitServer());
+    const handler = createMcpHandler(() => createConduitServer(), { legacy: "stateless" });
     app.all("/mcp", (req, _res, next) => {
       req.auth = createDevelopmentAuthInfo(DEVELOPMENT_ANONYMOUS_SUBJECT, "anonymous");
       next();
