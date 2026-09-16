@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { AuthInfo, McpServer } from "@modelcontextprotocol/server";
-import { getCoordinationContext, listActivity, listAgents, listContacts, listProjects, listResources, listTasks, listTools } from "./store.js";
+import { getCoordinationContext, listActivity, listAgents, listContacts, listLocks, listMessages, listProjects, listResources, listState, listTasks, listTools } from "./store.js";
 import { getDevelopmentContext } from "./development.js";
 import { errorResult } from "./errors.js";
 import { requireScope, type ConduitAuthConfig } from "./auth.js";
@@ -23,6 +23,9 @@ export function registerPaginationTools(server: McpServer, authConfig?: ConduitA
   server.registerTool("contacts_list", { description: "List shared contacts with bounded cursor pagination", inputSchema: schema.extend({ projectId: z.string().min(1).optional() }), annotations: readOnly }, async ({ projectId, limit, cursor }, extra) => { if (readScope) auth(extra, readScope); return json(paginate(await listContacts(projectId), { limit, cursor })); });
   server.registerTool("tools_list", { description: "List shared tools and endpoints with bounded cursor pagination", inputSchema: schema.extend({ projectId: z.string().min(1).optional() }), annotations: readOnly }, async ({ projectId, limit, cursor }, extra) => { if (readScope) auth(extra, readScope); return json(paginate(await listTools(projectId), { limit, cursor })); });
   server.registerTool("activity_list", { description: "List recent Conduit activity with bounded cursor pagination", inputSchema: schema.extend({ projectId: z.string().min(1).optional() }), annotations: readOnly }, async ({ projectId, limit, cursor }, extra) => { if (readScope) auth(extra, readScope); return json(paginate(await listActivity(200, projectId), { limit, cursor })); });
+  server.registerTool("state_list", { description: "List shared key-value state with bounded cursor pagination", inputSchema: schema.extend({ projectId: z.string().min(1).optional() }), annotations: readOnly }, async ({ projectId, limit, cursor }, extra) => { if (readScope) auth(extra, readScope); return json(paginate(await listState(projectId), { limit, cursor })); });
+  server.registerTool("messages_list", { description: "List agent messages with bounded cursor pagination", inputSchema: schema.extend({ projectId: z.string().min(1).optional(), taskId: z.string().min(1).optional(), fromAgent: z.string().min(1).optional(), toAgent: z.string().min(1).optional() }), annotations: readOnly }, async ({ projectId, taskId, fromAgent, toAgent, limit, cursor }, extra) => { if (readScope) auth(extra, readScope); return json(paginate(await listMessages({ projectId, taskId, fromAgent, toAgent }), { limit, cursor })); });
+  server.registerTool("locks_list", { description: "List active resource locks with bounded cursor pagination", inputSchema: schema.extend({ projectId: z.string().min(1).optional() }), annotations: readOnly }, async ({ projectId, limit, cursor }, extra) => { if (readScope) auth(extra, readScope); return json(paginate(await listLocks(projectId), { limit, cursor })); });
 
   const contextSchema = schema.extend({
     projectId: z.string().min(1).optional(),
@@ -34,6 +37,9 @@ export function registerPaginationTools(server: McpServer, authConfig?: ConduitA
       resources: z.string().max(200).optional(),
       activity: z.string().max(200).optional(),
       projects: z.string().max(200).optional(),
+      state: z.string().max(200).optional(),
+      messages: z.string().max(200).optional(),
+      locks: z.string().max(200).optional(),
     }).optional(),
   });
 
@@ -52,6 +58,9 @@ export function registerPaginationTools(server: McpServer, authConfig?: ConduitA
         resources: paginate(coordination.resources, { limit, cursor: cursors?.resources ?? cursor }),
         activity: paginate(coordination.activity, { limit, cursor: cursors?.activity ?? cursor }),
         projects: paginate(coordination.projects, { limit, cursor: cursors?.projects ?? cursor }),
+        state: paginate(coordination.state, { limit, cursor: cursors?.state ?? cursor }),
+        messages: paginate(coordination.messages, { limit, cursor: cursors?.messages ?? cursor }),
+        locks: paginate(coordination.locks, { limit, cursor: cursors?.locks ?? cursor }),
       },
     });
   });

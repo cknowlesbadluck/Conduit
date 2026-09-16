@@ -12,6 +12,9 @@ Conduit is a project-agnostic coordination layer exposed through a remote MCP se
 - registering or discovering participating agents
 - discovering or creating projects
 - creating, claiming, completing, and handing off tasks
+- storing and retrieving shared key-value memory/state (`state_set`, `state_get`, `state_list`)
+- sending direct, channel, or task-bound agent messages (`message_send`, `messages_list`)
+- acquiring and releasing exclusive resource locks (`lock_acquire`, `lock_release`, `locks_list`)
 - discovering shared resources, tools, and MCP endpoints
 - reading project or global coordination context
 - recording or inspecting auditable activity

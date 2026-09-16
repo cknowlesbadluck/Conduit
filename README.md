@@ -16,6 +16,9 @@ Resonance was the initial project Conduit was created to help develop. It does n
 - project creation and project-scoped coordination
 - generic resource registration and discovery
 - task creation, atomic claiming, completion, and ownership-safe handoffs
+- shared key-value memory/state (`state_set`, `state_get`, `state_list`)
+- direct, channel, and task-bound agent messaging (`message_send`, `messages_list`)
+- resource locking and concurrency control with TTL expiration (`lock_acquire`, `lock_release`, `locks_list`)
 - shared contacts and resource references
 - shared tool and MCP endpoint discovery
 - unified global or project-scoped coordination context
@@ -31,7 +34,7 @@ Resonance was the initial project Conduit was created to help develop. It does n
 
 ## MCP contract
 
-The public MCP surface includes identity and context tools (`agent_identity`, `development_context`, `conduit_context`), agent/project/resource coordination, integration and MCP bridge calls, capability grant governance (`grant_create`, `grant_revoke`, `grants_list`), `conduit_diagnostics`, task lifecycle operations, contacts, tool discovery, and activity history.
+The public MCP surface includes identity and context tools (`agent_identity`, `development_context`, `conduit_context`), agent/project/resource coordination, integration and MCP bridge calls, capability grant governance (`grant_create`, `grant_revoke`, `grants_list`), `conduit_diagnostics`, task lifecycle operations, shared state management (`state_set`, `state_get`, `state_list`), agent messaging (`message_send`, `messages_list`), resource locking (`lock_acquire`, `lock_release`, `locks_list`), contacts, tool discovery, and activity history.
 
 Successful tool results include JSON text plus `structuredContent` so hosts can parse either representation. Tool failures use a stable structured envelope and set `isError: true`.
 

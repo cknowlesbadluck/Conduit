@@ -4,7 +4,7 @@ function sanitizeForLog(text: string): string {
 import { McpServer, type AuthInfo } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
-  registerAgent, getBoundAgentId, createProject, registerResource,
+  registerAgent, getBoundAgentId, createProject, registerResource, setState, getState, sendMessage, acquireLock, releaseLock,
   getProject, createTask, getTask, claimTask, blockTask, releaseTask, completeTask, handoff, addContact, registerTool,
 } from "./store.js";
 import { getDevelopmentContext } from "./development.js";
@@ -167,6 +167,33 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
   server.registerTool("tool_register", { description: "Register a shared tool or MCP endpoint. Registration is metadata only and does not authorize mcp_bridge_call against that URL.", inputSchema: z.object({ name: z.string().min(1).max(200), description: z.string().min(1).max(2000), endpoint: z.string().url().optional(), projectId: z.string().min(1).max(200).optional(), createdBy: z.string().min(1).max(200).optional() }), annotations: writeSafe }, async ({ name, description, endpoint, projectId, createdBy }, extra) => {
     if (writeScope) auth(extra, writeScope); const actor = await resolveBoundAgent(extra, createdBy); if (!actor) return rejected("agent_identity_not_bound");
     const result = await registerTool(name, description, endpoint, projectId, actor); return result ? json(result) : rejected("project_not_found_or_agent_unregistered");
+  });
+
+
+  server.registerTool("state_set", { description: "Set shared key-value state for a project or global scope", inputSchema: z.object({ key: z.string().min(1).max(200), value: z.unknown(), projectId: z.string().min(1).max(200).optional(), updatedBy: z.string().min(1).max(200).optional() }), annotations: writeSafe }, async ({ key, value, projectId, updatedBy }, extra) => {
+    if (writeScope) auth(extra, writeScope); const actor = await resolveBoundAgent(extra, updatedBy); if (!actor) return rejected("agent_identity_not_bound");
+    const result = await setState(key, value, projectId, actor); return result ? json(result) : rejected("project_not_found_or_agent_unregistered");
+  });
+
+  server.registerTool("state_get", { description: "Retrieve shared key-value state by key", inputSchema: z.object({ key: z.string().min(1).max(200), projectId: z.string().min(1).max(200).optional() }), annotations: readOnly }, async ({ key, projectId }, extra) => {
+    if (readScope) auth(extra, readScope);
+    const result = await getState(key, projectId);
+    return result ? json(result) : rejected("state_not_found", { key });
+  });
+
+  server.registerTool("message_send", { description: "Send a message to another agent, project, or task channel", inputSchema: z.object({ content: z.string().min(1).max(5000), fromAgent: z.string().min(1).max(200).optional(), toAgent: z.string().min(1).max(200).optional(), projectId: z.string().min(1).max(200).optional(), taskId: z.string().min(1).max(200).optional() }), annotations: writeSafe }, async ({ content, fromAgent, toAgent, projectId, taskId }, extra) => {
+    if (writeScope) auth(extra, writeScope); const actor = await resolveBoundAgent(extra, fromAgent); if (!actor) return rejected("agent_identity_not_bound");
+    const result = await sendMessage(actor, content, { toAgent, projectId, taskId }); return result ? json(result) : rejected("message_rejected");
+  });
+
+  server.registerTool("lock_acquire", { description: "Acquire an exclusive lock on a resource or file identifier for a specified TTL (in seconds)", inputSchema: z.object({ resourceId: z.string().min(1).max(200), lockedBy: z.string().min(1).max(200).optional(), ttlSeconds: z.number().int().min(5).max(3600).optional(), projectId: z.string().min(1).max(200).optional(), note: z.string().max(1000).optional() }), annotations: writeSafe }, async ({ resourceId, lockedBy, ttlSeconds, projectId, note }, extra) => {
+    if (writeScope) auth(extra, writeScope); const actor = await resolveBoundAgent(extra, lockedBy); if (!actor) return rejected("agent_identity_not_bound");
+    const result = await acquireLock(resourceId, actor, { ttlSeconds, projectId, note }); return result ? json(result) : rejected("lock_conflict_or_agent_unregistered", { resourceId });
+  });
+
+  server.registerTool("lock_release", { description: "Release a held lock on a resource or file identifier", inputSchema: z.object({ resourceId: z.string().min(1).max(200), lockedBy: z.string().min(1).max(200).optional(), projectId: z.string().min(1).max(200).optional() }), annotations: writeSafe }, async ({ resourceId, lockedBy, projectId }, extra) => {
+    if (writeScope) auth(extra, writeScope); const actor = await resolveBoundAgent(extra, lockedBy); if (!actor) return rejected("agent_identity_not_bound");
+    const released = await releaseLock(resourceId, actor, projectId); return released ? json({ released: true, resourceId }) : rejected("lock_not_held_or_already_released", { resourceId });
   });
 
   registerGrantTools(server, authConfig);

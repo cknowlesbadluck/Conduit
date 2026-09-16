@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { init, registerAgent, getBoundAgentId, createProject, listProjects, registerResource, listResources, createTask, listTasks, addContact, listContacts, registerTool, listTools, listActivity, getCoordinationContext, claimTask, handoff } from "./store.js";
+import { init, registerAgent, getBoundAgentId, createProject, listProjects, registerResource, listResources, createTask, listTasks, addContact, listContacts, registerTool, listTools, listActivity, getCoordinationContext, claimTask, handoff, setState, getState, listState, sendMessage, listMessages, acquireLock, releaseLock, listLocks } from "./store.js";
 
 await init();
 
@@ -97,4 +97,77 @@ test("concurrent handoff requests allow exactly one successful handoff", async (
 
   const winners = results.filter((r) => r !== null);
   assert.equal(winners.length, 1);
+});
+
+
+test("shared state manages key-value store per project and global scope", async () => {
+  await registerAgent({ id: "state-agent", name: "State Agent" });
+  const proj = await createProject({ name: "State Project", createdBy: "state-agent" });
+  assert.ok(proj);
+
+  const globalItem = await setState("config.mode", { mode: "production", debug: false }, undefined, "state-agent");
+  assert.ok(globalItem);
+  assert.equal(globalItem.key, "config.mode");
+  const gotGlobal = await getState("config.mode");
+  assert.deepEqual(gotGlobal?.value, { mode: "production", debug: false });
+
+  const projItem = await setState("config.mode", { mode: "staging", debug: true }, proj.id, "state-agent");
+  assert.ok(projItem);
+  assert.equal(projItem.projectId, proj.id);
+  const gotProj = await getState("config.mode", proj.id);
+  assert.deepEqual(gotProj?.value, { mode: "staging", debug: true });
+
+  const stateList = await listState(proj.id);
+  assert.equal(stateList.length, 1);
+  assert.equal(stateList[0].key, "config.mode");
+});
+
+test("agent messaging supports channel, direct, and task-bound messages", async () => {
+  await registerAgent({ id: "msg-agent-1", name: "Message Agent 1" });
+  await registerAgent({ id: "msg-agent-2", name: "Message Agent 2" });
+  const proj = await createProject({ name: "Message Project", createdBy: "msg-agent-1" });
+  const task = await createTask({ title: "Message Task", createdBy: "msg-agent-1", projectId: proj?.id });
+  assert.ok(proj && task);
+
+  const msg1 = await sendMessage("msg-agent-1", "Hello Agent 2!", { toAgent: "msg-agent-2", projectId: proj.id, taskId: task.id });
+  assert.ok(msg1);
+  assert.equal(msg1.fromAgent, "msg-agent-1");
+  assert.equal(msg1.toAgent, "msg-agent-2");
+
+  const msg2 = await sendMessage("msg-agent-2", "Direct broadcast", { projectId: proj.id });
+  assert.ok(msg2);
+
+  const projectMsgs = await listMessages({ projectId: proj.id });
+  assert.equal(projectMsgs.length, 2);
+
+  const taskMsgs = await listMessages({ taskId: task.id });
+  assert.equal(taskMsgs.length, 1);
+  assert.equal(taskMsgs[0].content, "Hello Agent 2!");
+});
+
+test("resource locking prevents race conditions and manages lock lifecycles", async () => {
+  await registerAgent({ id: "lock-agent-1", name: "Lock Agent 1" });
+  await registerAgent({ id: "lock-agent-2", name: "Lock Agent 2" });
+  const proj = await createProject({ name: "Lock Project", createdBy: "lock-agent-1" });
+  assert.ok(proj);
+
+  const lock1 = await acquireLock("file:src/index.ts", "lock-agent-1", { ttlSeconds: 60, projectId: proj.id, note: "Refactoring index" });
+  assert.ok(lock1);
+  assert.equal(lock1.lockedBy, "lock-agent-1");
+
+  const lockConflict = await acquireLock("file:src/index.ts", "lock-agent-2", { ttlSeconds: 60, projectId: proj.id });
+  assert.equal(lockConflict, null);
+
+  const lockRenew = await acquireLock("file:src/index.ts", "lock-agent-1", { ttlSeconds: 120, projectId: proj.id });
+  assert.ok(lockRenew);
+
+  const releasedByOther = await releaseLock("file:src/index.ts", "lock-agent-2", proj.id);
+  assert.equal(releasedByOther, false);
+
+  const released = await releaseLock("file:src/index.ts", "lock-agent-1", proj.id);
+  assert.equal(released, true);
+
+  const lock2 = await acquireLock("file:src/index.ts", "lock-agent-2", { ttlSeconds: 60, projectId: proj.id });
+  assert.ok(lock2);
+  assert.equal(lock2.lockedBy, "lock-agent-2");
 });

@@ -10,7 +10,7 @@ const coreTools = [
   "tool_register",
 ];
 const policyTools = ["grant_create", "grant_revoke", "grants_list", "conduit_diagnostics"];
-const paginatedTools = ["agents_list", "projects_list", "resources_list", "task_list", "contacts_list", "tools_list", "activity_list", "conduit_context"];
+const paginatedTools = ["agents_list", "projects_list", "resources_list", "task_list", "contacts_list", "tools_list", "activity_list", "state_list", "messages_list", "locks_list", "conduit_context"];
 
 test("public MCP tool surface remains explicit and complete", async () => {
   const source = await readFile(new URL("../src/mcp.ts", import.meta.url), "utf8");
