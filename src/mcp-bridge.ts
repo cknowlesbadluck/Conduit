@@ -7,6 +7,13 @@ const MAX_REQUEST_BYTES = 256 * 1024;
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 15_000;
 
+const ALLOWED_HEADERS = new Set([
+  "content-type",
+  "mcp-session-id",
+  "www-authenticate",
+  "retry-after",
+]);
+
 export type McpBridgeRequest = { jsonrpc: "2.0"; id?: string | number | null; method: string; params?: unknown };
 export type McpBridgeResult = { ok: boolean; status: number; headers: Record<string, string>; data: unknown };
 export type AddressRecord = { address: string; family: number };
@@ -255,7 +262,7 @@ export async function callMcpBridge(input: { endpoint: string; request: McpBridg
   }
   const responseHeaders: Record<string, string> = {};
   for (const [key, value] of response.headers.entries()) {
-    if (["content-type", "mcp-session-id", "www-authenticate", "retry-after"].includes(key.toLowerCase())) responseHeaders[key] = value;
+    if (ALLOWED_HEADERS.has(key.toLowerCase())) responseHeaders[key] = value;
   }
   return { ok: response.ok, status: response.status, headers: responseHeaders, data };
 }

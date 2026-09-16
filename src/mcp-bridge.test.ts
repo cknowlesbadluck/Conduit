@@ -100,6 +100,30 @@ test("MCP bridge forwards JSON-RPC, pins validated addresses, and advertises pro
   assert.deepEqual(result.data, { jsonrpc: "2.0", id: 7, result: { tools: [] } });
 });
 
+test("MCP bridge filters response headers using allowed set", async () => {
+  setMcpBridgeLookupForTests(async () => [{ address: "203.0.113.10", family: 4 }]);
+  setMcpBridgeTransportForTests(async () => {
+    const headers = new Headers({
+      "content-type": "application/json",
+      "mcp-session-id": "sess-12345",
+      "www-authenticate": "Bearer",
+      "retry-after": "120",
+      "x-custom-header": "secret",
+      "server": "nginx",
+      "set-cookie": "session=abc",
+    });
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1 }), { status: 200, headers });
+  });
+
+  const result = await callMcpBridge({ endpoint: "https://mcp.example.test/mcp", request: { jsonrpc: "2.0", id: 1, method: "tools/list" } });
+  assert.deepEqual(result.headers, {
+    "content-type": "application/json",
+    "mcp-session-id": "sess-12345",
+    "www-authenticate": "Bearer",
+    "retry-after": "120",
+  });
+});
+
 test("MCP bridge returns redirect responses without following them", async () => {
   setMcpBridgeLookupForTests(async () => [{ address: "203.0.113.10", family: 4 }]);
   setMcpBridgeTransportForTests(async () => new Response("", { status: 302, headers: { location: "https://127.0.0.1/steal" } }));
