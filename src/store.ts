@@ -315,3 +315,23 @@ export async function releaseTask(taskId: string, agentId: string) {
   catch (error) { Object.assign(t, previous); throw error; }
   return t;
 }
+
+export async function countAgents() {
+  if (pool) return Number((await pool.query("SELECT COUNT(*)::int AS n FROM agents")).rows[0].n);
+  return agents.size;
+}
+
+export async function countTasks() {
+  if (pool) return Number((await pool.query("SELECT COUNT(*)::int AS n FROM tasks")).rows[0].n);
+  return tasks.size;
+}
+
+export async function countTools() {
+  if (pool) return Number((await pool.query("SELECT COUNT(*)::int AS n FROM tools")).rows[0].n);
+  return tools.length;
+}
+
+export async function countActivity() {
+  if (pool) return Number((await pool.query("SELECT COUNT(*)::int AS n FROM activity")).rows[0].n);
+  return activity.length;
+}
