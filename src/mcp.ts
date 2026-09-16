@@ -25,10 +25,20 @@ const json = (value: unknown) => ({
 });
 const auth = (extra: ToolExtra, scope: string) => requireScope(extra.http?.authInfo, scope);
 
+export function oauthSubject(extra: ToolExtra) {
+  const info = extra.http?.authInfo;
+  if (!info) return undefined;
+  return typeof info.extra?.sub === "string" && info.extra.sub.length > 0 ? info.extra.sub : undefined;
+}
+
 export function actorSubject(extra: ToolExtra) {
   const info = extra.http?.authInfo;
   if (!info) return undefined;
-  return typeof info.extra?.sub === "string" && info.extra.sub.length > 0 ? info.extra.sub : info.clientId;
+  const sub = oauthSubject(extra);
+  const clientId = typeof info.clientId === "string" && info.clientId.length > 0 ? info.clientId : undefined;
+  // Distinct OAuth clients under the same human subject (same JWT sub) must bind independently.
+  if (clientId && sub && clientId !== sub) return clientId;
+  return sub ?? clientId;
 }
 
 const boundAgent = async (extra: ToolExtra) => {
