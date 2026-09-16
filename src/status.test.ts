@@ -61,5 +61,16 @@ test("public status counts are not capped by the detailed projection slice", asy
   assert.equal(detailed.tasks.length, 25);
   assert.ok(published.counts.tasks >= 30);
   assert.ok(published.counts.activity >= 30);
+  assert.ok(published.counts.connected >= 1);
   assert.doesNotMatch(JSON.stringify(published), /count-cap-task-/);
+});
+
+test("public connected count is not limited to the detailed activity window", async () => {
+  await registerAgent({ id: "connected-window-agent", name: "Window Agent", actorSubject: "connected-window-subject" });
+  for (let i = 0; i < 60; i += 1) {
+    await createTask({ title: `connected-window-task-${i}`, createdBy: "connected-window-agent" });
+  }
+  const published = await getPublicConduitStatus();
+  assert.ok(published.counts.connected >= 1);
+  assert.doesNotMatch(JSON.stringify(published), /connected-window-agent/);
 });

@@ -1,4 +1,4 @@
-import { countActivity, countAgents, countTasks, countTools, listActivity, listAgents, listTasks, listTools } from "./store.js";
+import { countActivity, countAgents, countConnectedAgents, countTasks, countTools, listActivity, listAgents, listTasks, listTools } from "./store.js";
 import { SERVICE_NAME, VERSION } from "./version.js";
 
 export type ConduitConnectionStatus = "connected" | "registered";
@@ -40,7 +40,7 @@ export type ConduitPublicStatus = {
 };
 
 const SECRET_KEY = /token|secret|password|authorization|cookie|api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|private[_-]?key/i;
-const SECRET_VALUE = /(https?:\/\/[^\s?]+\?[^\s]*?(?:token|key|secret|password|auth)[^\s]*)/gi;
+const SECRET_VALUE = /(https?:\/\/[^\s?]+\?[^\s]*(?:token|key|secret|password|auth)[^\s]*)/gi;
 const ACTOR_KEYS = ["agentId", "actor", "clientId", "subject", "createdBy", "claimedBy"] as const;
 
 function isSensitiveKey(key: string) {
@@ -99,24 +99,24 @@ export async function getConduitStatus(): Promise<ConduitStatus> {
 
 /** Unauthenticated public projection. Counts only — no agent IDs, task titles, or activity payloads. */
 export async function getPublicConduitStatus(): Promise<ConduitPublicStatus> {
-  const [detailed, agents, tasks, tools, activity] = await Promise.all([
-    getConduitStatus(),
+  const [agents, connected, tasks, tools, activity] = await Promise.all([
     countAgents(),
+    countConnectedAgents(),
     countTasks(),
     countTools(),
     countActivity(),
   ]);
   return {
-    service: detailed.service,
-    version: detailed.version,
-    status: detailed.status,
+    service: SERVICE_NAME,
+    version: VERSION,
+    status: "online",
     connections: [],
     tools: [],
     tasks: [],
     activity: [],
     counts: {
       agents,
-      connected: detailed.connections.filter((connection) => connection.status === "connected").length,
+      connected,
       tools,
       tasks,
       activity,
