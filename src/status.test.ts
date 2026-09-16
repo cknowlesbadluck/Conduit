@@ -61,5 +61,6 @@ test("public status counts are not capped by the detailed projection slice", asy
   assert.equal(detailed.tasks.length, 25);
   assert.ok(published.counts.tasks >= 30);
   assert.ok(published.counts.activity >= 30);
+  assert.ok(published.counts.connected >= 1);
   assert.doesNotMatch(JSON.stringify(published), /count-cap-task-/);
 });
