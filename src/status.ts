@@ -1,4 +1,4 @@
-import { listActivity, listAgents, listTasks, listTools } from "./store.js";
+import { countActivity, countAgents, countTasks, countTools, listActivity, listAgents, listTasks, listTools } from "./store.js";
 import { SERVICE_NAME, VERSION } from "./version.js";
 
 export type ConduitConnectionStatus = "connected" | "registered";
@@ -99,7 +99,13 @@ export async function getConduitStatus(): Promise<ConduitStatus> {
 
 /** Unauthenticated public projection. Counts only — no agent IDs, task titles, or activity payloads. */
 export async function getPublicConduitStatus(): Promise<ConduitPublicStatus> {
-  const detailed = await getConduitStatus();
+  const [detailed, agents, tasks, tools, activity] = await Promise.all([
+    getConduitStatus(),
+    countAgents(),
+    countTasks(),
+    countTools(),
+    countActivity(),
+  ]);
   return {
     service: detailed.service,
     version: detailed.version,
@@ -109,11 +115,11 @@ export async function getPublicConduitStatus(): Promise<ConduitPublicStatus> {
     tasks: [],
     activity: [],
     counts: {
-      agents: detailed.connections.length,
+      agents,
       connected: detailed.connections.filter((connection) => connection.status === "connected").length,
-      tools: detailed.tools.length,
-      tasks: detailed.tasks.length,
-      activity: detailed.activity.length,
+      tools,
+      tasks,
+      activity,
     },
   };
 }

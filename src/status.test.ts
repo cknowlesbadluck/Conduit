@@ -50,3 +50,16 @@ test("status projection redacts sensitive activity keys", async () => {
     }
   }
 });
+
+test("public status counts are not capped by the detailed projection slice", async () => {
+  await registerAgent({ id: "count-cap-agent", name: "Count Cap", actorSubject: "count-cap-subject" });
+  for (let i = 0; i < 30; i += 1) {
+    await createTask({ title: `count-cap-task-${i}`, createdBy: "count-cap-agent" });
+  }
+  const detailed = await getConduitStatus();
+  const published = await getPublicConduitStatus();
+  assert.equal(detailed.tasks.length, 25);
+  assert.ok(published.counts.tasks >= 30);
+  assert.ok(published.counts.activity >= 30);
+  assert.doesNotMatch(JSON.stringify(published), /count-cap-task-/);
+});
