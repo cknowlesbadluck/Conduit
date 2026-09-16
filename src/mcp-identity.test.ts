@@ -64,15 +64,21 @@ test("distinct OAuth clients under the same sub bind independent logical agents"
   assert.equal(await resolveBoundAgent(sparkExtra, "grok"), null);
 });
 
-test("legacy subject-only bindings still resolve when client prefers client_id", async () => {
+test("distinct client_id does not inherit a subject-only binding", async () => {
   const sharedSub = "legacy-sub-only";
   const clientId = "new-client-for-legacy";
 
-  // Simulate pre-migration binding keyed by pure subject
+  // Pre-migration binding keyed by pure subject
   await registerAgent({ id: "legacy-agent", name: "Legacy Agent", actorSubject: sharedSub });
 
   const extra = extraFor(sharedSub, clientId);
   assert.equal(actorSubject(extra), clientId);
-  // Dual lookup should still find the legacy subject binding
-  assert.equal(await resolveBoundAgent(extra), "legacy-agent");
+  // Distinct clients must not inherit the subject binding — they start unbound
+  // and register their own logical agent (e.g. spark vs grok).
+  assert.equal(await resolveBoundAgent(extra), null);
+
+  // Subject-only actors (no distinct client) still resolve the legacy binding
+  const subjectOnly = extraFor(sharedSub);
+  assert.equal(actorSubject(subjectOnly), sharedSub);
+  assert.equal(await resolveBoundAgent(subjectOnly), "legacy-agent");
 });
