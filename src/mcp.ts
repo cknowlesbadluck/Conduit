@@ -16,6 +16,7 @@ import { errorResult } from "./errors.js";
 import { registerGrantTools } from "./grant-tools.js";
 import { registerPaginationTools } from "./pagination-tools.js";
 import { enforceExternalCapability } from "./external-policy.js";
+import { actorBindingKey, actorBindingLookupKeys } from "./actor-binding.js";
 
 export type ToolExtra = { http?: { authInfo?: AuthInfo } };
 
@@ -36,20 +37,25 @@ export function actorSubject(extra: ToolExtra) {
   if (!info) return undefined;
   const sub = oauthSubject(extra);
   const clientId = typeof info.clientId === "string" && info.clientId.length > 0 ? info.clientId : undefined;
-  // Distinct OAuth clients under the same human subject (same JWT sub) must bind independently.
-  if (clientId && sub && clientId !== sub) return clientId;
-  return sub ?? clientId;
+  return actorBindingKey(clientId, sub);
 }
 
 const boundAgent = async (extra: ToolExtra) => {
-  const subject = actorSubject(extra);
-  return subject ? getBoundAgentId(subject) : undefined;
+  const info = extra.http?.authInfo;
+  if (!info) return undefined;
+  const sub = oauthSubject(extra);
+  const clientId = typeof info.clientId === "string" && info.clientId.length > 0 ? info.clientId : undefined;
+  for (const key of actorBindingLookupKeys(clientId, sub)) {
+    const bound = await getBoundAgentId(key);
+    if (bound) return bound;
+  }
+  return undefined;
 };
 
 export async function resolveBoundAgent(extra: ToolExtra, requested?: string) {
-  const subject = actorSubject(extra);
-  if (!subject) return requested ?? null;
-  const bound = await getBoundAgentId(subject);
+  const info = extra.http?.authInfo;
+  if (!info) return requested ?? null;
+  const bound = await boundAgent(extra);
   if (!bound || (requested && requested !== bound)) return null;
   return bound;
 }
