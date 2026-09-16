@@ -21,6 +21,49 @@ export const CONDUIT_UI_JS = `
     panel.appendChild(grid);
   }
 
+  function renderCounts(counts) {
+    const values = counts || {};
+    const agents = Number(values.agents || 0);
+    const connected = Number(values.connected || 0);
+    const tools = Number(values.tools || 0);
+    const tasks = Number(values.tasks || 0);
+    const activity = Number(values.activity || 0);
+    const wire = $("wire");
+    const core = document.querySelector(".core");
+    wire.className = "wire" + (connected ? " active" : "");
+    core.className = "core" + (connected ? " active" : "");
+    const host = $("agents");
+    clear(host);
+    host.appendChild(make("div", "empty", agents ? (connected + " connected / " + agents + " registered") : "No agents registered."));
+    const summary = $("connections-summary");
+    clear(summary);
+    const summaryRow = make("div", "row");
+    summaryRow.appendChild(make("strong", null, agents ? (connected + " connected / " + agents + " registered") : "No agents registered"));
+    summaryRow.appendChild(make("span", null, "Public projection — counts only"));
+    summary.appendChild(summaryRow);
+    function countList(id, n, noun) {
+      const el = $(id); clear(el);
+      const row = make("div", "row");
+      row.appendChild(make("strong", null, n + " " + noun));
+      row.appendChild(make("span", null, "Identifiers omitted from public /status"));
+      el.appendChild(row);
+    }
+    countList("tools", tools, tools === 1 ? "tool" : "tools");
+    countList("tasks", tasks, tasks === 1 ? "task" : "tasks");
+    countList("activity", activity, activity === 1 ? "event" : "events");
+    const details = $("details");
+    clear(details);
+    details.appendChild(make("h2", null, "Inspection"));
+    const grid = make("div", "kv");
+    [["Projection", "public counts"], ["Agents", String(agents)], ["Connected", String(connected)], ["Tools", String(tools)], ["Tasks", String(tasks)], ["Activity", String(activity)]].forEach(([label, value]) => {
+      const item = document.createElement("div");
+      item.appendChild(make("label", null, label));
+      item.appendChild(make("strong", null, value));
+      grid.appendChild(item);
+    });
+    details.appendChild(grid);
+  }
+
   function renderConnections(connections) {
     const host = $("agents");
     const summary = $("connections-summary");
@@ -71,6 +114,10 @@ export const CONDUIT_UI_JS = `
     $("version").textContent = data.version || "";
     $("service-state").textContent = data.status || "unknown";
     $("service-dot").className = "dot" + (data.status === "online" ? " active" : "");
+    if (data.counts) {
+      renderCounts(data.counts);
+      return;
+    }
     renderConnections(data.connections || []);
     renderList("tools", data.tools || [], "name", "description");
     renderList("tasks", data.tasks || [], "title", "status");
