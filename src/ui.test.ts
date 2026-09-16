@@ -67,3 +67,10 @@ test("MCP route keeps the existing anonymous development path", async () => {
     assert.notEqual(response.status, 503);
   });
 });
+
+test("public UI script prefers counts over empty coordination arrays", async () => {
+  const { CONDUIT_UI_JS } = await import("./ui.js");
+  assert.match(CONDUIT_UI_JS, /if \(data\.counts\)/);
+  assert.match(CONDUIT_UI_JS, /Public projection/);
+  assert.match(CONDUIT_UI_JS, /Identifiers omitted from public \/status/);
+});
