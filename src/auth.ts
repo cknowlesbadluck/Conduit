@@ -193,10 +193,10 @@ export function buildProtectedResourceMetadata(config: ConduitAuthConfig) {
 }
 
 /** Synthetic actor used by CONDUIT_TOKEN and anonymous development modes so identity-bound writes work without OAuth. */
-export function createDevelopmentAuthInfo(subject: string, token: string): AuthInfo {
+export function createDevelopmentAuthInfo(subject: string, token: string, clientId?: string): AuthInfo {
   return {
     token,
-    clientId: subject,
+    clientId: clientId ?? subject,
     scopes: [],
     extra: { sub: subject },
   };
