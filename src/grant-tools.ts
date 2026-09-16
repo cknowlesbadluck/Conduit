@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { McpServer, AuthInfo } from "@modelcontextprotocol/server";
 import { getProject, getBoundAgentId } from "./store.js";
+import { actorBindingKey } from "./actor-binding.js";
 import { createCapabilityGrant, listCapabilityGrants, revokeCapabilityGrant } from "./capability-store.js";
 import { errorResult } from "./errors.js";
 import { requireScope, type ConduitAuthConfig } from "./auth.js";
@@ -14,7 +15,9 @@ const admins = () => new Set((process.env.CONDUIT_GRANT_ADMIN_SUBJECTS ?? "").sp
 const actorSubject = (extra: ToolExtra) => {
   const info = extra.http?.authInfo;
   if (!info) return undefined;
-  return typeof info.extra?.sub === "string" && info.extra.sub.length > 0 ? info.extra.sub : info.clientId;
+  const sub = typeof info.extra?.sub === "string" && info.extra.sub.length > 0 ? info.extra.sub : undefined;
+  const clientId = typeof info.clientId === "string" && info.clientId.length > 0 ? info.clientId : undefined;
+  return actorBindingKey(clientId, sub);
 };
 async function governingAgent(subject: string | undefined) { return subject ? (await getBoundAgentId(subject)) ?? subject : undefined; }
 async function canGovern(subject: string | undefined, projectId?: string) {
