@@ -14,9 +14,22 @@ const admins = () => new Set((process.env.CONDUIT_GRANT_ADMIN_SUBJECTS ?? "").sp
 const actorSubject = (extra: ToolExtra) => {
   const info = extra.http?.authInfo;
   if (!info) return undefined;
-  return typeof info.extra?.sub === "string" && info.extra.sub.length > 0 ? info.extra.sub : info.clientId;
+  const sub = typeof info.extra?.sub === "string" && info.extra.sub.length > 0 ? info.extra.sub : undefined;
+  const clientId = typeof info.clientId === "string" && info.clientId.length > 0 ? info.clientId : undefined;
+  if (clientId && sub && clientId !== sub) return `${clientId}::${sub}`;
+  return sub ?? clientId;
 };
-async function governingAgent(subject: string | undefined) { return subject ? (await getBoundAgentId(subject)) ?? subject : undefined; }
+async function governingAgent(subject: string | undefined) {
+  if (!subject) return undefined;
+  const primary = await getBoundAgentId(subject);
+  if (primary) return primary;
+  const sep = subject.indexOf("::");
+  if (sep > 0) {
+    const legacy = await getBoundAgentId(subject.slice(sep + 2));
+    if (legacy) return legacy;
+  }
+  return subject;
+}
 async function canGovern(subject: string | undefined, projectId?: string) {
   if (!subject) return false;
   if (admins().has(subject)) return true;
