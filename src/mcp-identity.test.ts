@@ -34,10 +34,10 @@ test("authenticated writes use the bound agent and reject impersonation", async 
   assert.equal(await resolveBoundAgent(extraFor("unbound-actor")), null);
 });
 
-test("actorSubject prefers distinct client_id over sub", () => {
+test("actorSubject uses client_id::sub when both claims exist", () => {
   const extra = extraFor("user-sub-shared", "client-grok");
   assert.equal(oauthSubject(extra), "user-sub-shared");
-  assert.equal(actorSubject(extra), "client-grok");
+  assert.equal(actorSubject(extra), "client-grok::user-sub-shared");
 });
 
 test("subject-only actors keep legacy binding key", () => {
@@ -54,31 +54,48 @@ test("distinct OAuth clients under the same sub bind independent logical agents"
   const grokExtra = extraFor(sharedSub, grokClient);
   const sparkExtra = extraFor(sharedSub, sparkClient);
 
-  assert.equal(actorSubject(grokExtra), grokClient);
-  assert.equal(actorSubject(sparkExtra), sparkClient);
+  assert.equal(actorSubject(grokExtra), `${grokClient}::${sharedSub}`);
+  assert.equal(actorSubject(sparkExtra), `${sparkClient}::${sharedSub}`);
 
   await registerAgent({ id: "grok-client-bind", name: "Grok", actorSubject: actorSubject(grokExtra)! });
   await registerAgent({ id: "spark-client-bind", name: "Spark", actorSubject: actorSubject(sparkExtra)! });
 
-  assert.equal(await getBoundAgentId(grokClient), "grok-client-bind");
-  assert.equal(await getBoundAgentId(sparkClient), "spark-client-bind");
+  assert.equal(await getBoundAgentId(`${grokClient}::${sharedSub}`), "grok-client-bind");
+  assert.equal(await getBoundAgentId(`${sparkClient}::${sharedSub}`), "spark-client-bind");
   assert.equal(await resolveBoundAgent(grokExtra), "grok-client-bind");
   assert.equal(await resolveBoundAgent(sparkExtra), "spark-client-bind");
   assert.equal(await resolveBoundAgent(grokExtra, "spark-client-bind"), null);
   assert.equal(await resolveBoundAgent(sparkExtra, "grok-client-bind"), null);
 });
 
-test("distinct client_id does not inherit a subject-only binding", async () => {
+test("qualified client still falls back to a legacy subject binding", async () => {
   const sharedSub = "legacy-sub-only";
   const clientId = "new-client-for-legacy";
 
   await registerAgent({ id: "legacy-agent", name: "Legacy Agent", actorSubject: sharedSub });
 
   const extra = extraFor(sharedSub, clientId);
-  assert.equal(actorSubject(extra), clientId);
-  assert.equal(await resolveBoundAgent(extra), null);
+  assert.equal(actorSubject(extra), `${clientId}::${sharedSub}`);
+  assert.equal(await resolveBoundAgent(extra), "legacy-agent");
 
   const subjectOnly = extraFor(sharedSub);
   assert.equal(actorSubject(subjectOnly), sharedSub);
   assert.equal(await resolveBoundAgent(subjectOnly), "legacy-agent");
+});
+
+test("same OAuth client and different users do not share a binding key", () => {
+  const clientId = "shared-host-client";
+  const a = extraFor("user-a", clientId);
+  const b = extraFor("user-b", clientId);
+  assert.equal(actorSubject(a), `${clientId}::user-a`);
+  assert.equal(actorSubject(b), `${clientId}::user-b`);
+  assert.notEqual(actorSubject(a), actorSubject(b));
+});
+
+test("one logical agent may accept a second qualified subject", async () => {
+  const agentId = "shared-logical-grok";
+  assert.ok(await registerAgent({ id: agentId, name: "Grok", actorSubject: "legacy-sub-grok" }));
+  assert.ok(await registerAgent({ id: agentId, name: "Grok", actorSubject: "client-x::legacy-sub-grok" }));
+  assert.equal(await getBoundAgentId("legacy-sub-grok"), agentId);
+  assert.equal(await getBoundAgentId("client-x::legacy-sub-grok"), agentId);
 });
