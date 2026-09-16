@@ -1,1 +1,3 @@
-RESTORE_FROM_LOCAL
+import pg from "pg";
+
+const { Pool } = pg;
