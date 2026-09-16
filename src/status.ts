@@ -59,9 +59,40 @@ function sanitizeActivity(event: Record<string, string>) {
   );
 }
 
-function activityMatchesAgent(event: Record<string, string>, agentId: string) {
-  if (event.type === "agent.register") return false;
-  return ACTOR_KEYS.some((key) => event[key] === agentId);
+/**
+ * Fast O(M) single pass to index the latest activity event per agent ID.
+ * Avoids O(N * M) repeated linear scans over activity events for N agents.
+ */
+function buildLatestActivityByAgent(activity: Record<string, string>[]): Map<string, Record<string, string>> {
+  const latestActivityByAgent = new Map<string, Record<string, string>>();
+  for (const event of activity) {
+    if (event.type === "agent.register") continue;
+    for (const key of ACTOR_KEYS) {
+      const agentId = event[key];
+      if (agentId && !latestActivityByAgent.has(agentId)) {
+        latestActivityByAgent.set(agentId, event);
+      }
+    }
+  }
+  return latestActivityByAgent;
+}
+
+/**
+ * Fast O(M) single pass to collect all active agent IDs in recent activity logs.
+ * Reduces connected agent count check from O(N * M) to O(N + M).
+ */
+function buildActiveAgentIds(activity: Record<string, string>[]): Set<string> {
+  const activeAgentIds = new Set<string>();
+  for (const event of activity) {
+    if (event.type === "agent.register") continue;
+    for (const key of ACTOR_KEYS) {
+      const agentId = event[key];
+      if (agentId) {
+        activeAgentIds.add(agentId);
+      }
+    }
+  }
+  return activeAgentIds;
 }
 
 export async function getConduitStatus(): Promise<ConduitStatus> {
@@ -73,8 +104,11 @@ export async function getConduitStatus(): Promise<ConduitStatus> {
   ]);
 
   const recentActivity = activity.map(sanitizeActivity);
+
+  // Optimization: O(N + M) indexed lookup instead of O(N * M) nested activity.find per agent
+  const latestActivityByAgent = buildLatestActivityByAgent(activity);
   const connections = agents.map((agent) => {
-    const matchingEvent = activity.find((event) => activityMatchesAgent(event, agent.id));
+    const matchingEvent = latestActivityByAgent.get(agent.id);
     return {
       id: agent.id,
       label: agent.name,
@@ -107,7 +141,9 @@ export async function getPublicConduitStatus(): Promise<ConduitPublicStatus> {
     listAgents(),
     listActivity(200),
   ]);
-  const connected = agentList.filter((agent) => recent.some((event) => activityMatchesAgent(event, agent.id))).length;
+  // Optimization: O(N + M) set lookup instead of O(N * M) nested recent.some per agent
+  const activeAgentIds = buildActiveAgentIds(recent);
+  const connected = agentList.filter((agent) => activeAgentIds.has(agent.id)).length;
   return {
     service: SERVICE_NAME,
     version: VERSION,
