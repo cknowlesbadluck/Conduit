@@ -27,3 +27,9 @@ test('development auth subjects are stable and distinct', () => {
   assert.equal(tokenAuth.extra?.sub, DEVELOPMENT_TOKEN_SUBJECT);
   assert.equal(anonAuth.extra?.sub, DEVELOPMENT_ANONYMOUS_SUBJECT);
 });
+
+test('development auth can set a distinct clientId under the same sub', () => {
+  const info = createDevelopmentAuthInfo('user-sub', 'token', 'oauth-client-abc');
+  assert.equal(info.extra?.sub, 'user-sub');
+  assert.equal(info.clientId, 'oauth-client-abc');
+});
