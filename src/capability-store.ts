@@ -166,7 +166,8 @@ export async function listCapabilityGrants(
       params.push(filter.agentId);
     }
     if (filter.projectId) {
-      clauses.push(`project_id=$${params.length + 1}`);
+      const projectParam = params.length + 1;
+      clauses.push(`(project_id IS NULL OR project_id=$${projectParam})`);
       params.push(filter.projectId);
     }
     if (filter.provider) {
@@ -196,7 +197,7 @@ export async function listCapabilityGrants(
     .filter(
       (grant) =>
         (!filter.agentId || grant.agentId === filter.agentId) &&
-        (!filter.projectId || grant.projectId === filter.projectId) &&
+        (!filter.projectId || !grant.projectId || grant.projectId === filter.projectId) &&
         (!filter.provider || grant.provider === filter.provider) &&
         (filter.includeRevoked || !grant.revokedAt),
     )
