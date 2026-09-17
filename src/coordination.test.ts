@@ -56,6 +56,15 @@ test("authenticated actor binding prevents identity switching", async () => {
   assert.equal(await registerAgent({ id: "bound-b", name: "Bound B spoof", actorSubject: "actor-a" }), null);
 });
 
+test("one logical agent can bind legacy sub and composite client subject", async () => {
+  const agentId = "multi-subject-agent";
+  assert.ok(await registerAgent({ id: agentId, name: "Multi", actorSubject: "legacy-multi-sub" }));
+  assert.ok(await registerAgent({ id: agentId, name: "Multi", actorSubject: "client-multi::legacy-multi-sub" }));
+  assert.equal(await getBoundAgentId("legacy-multi-sub"), agentId);
+  assert.equal(await getBoundAgentId("client-multi::legacy-multi-sub"), agentId);
+  assert.equal(await registerAgent({ id: "other-agent", name: "Other", actorSubject: "legacy-multi-sub" }), null);
+});
+
 test("unknown projects are rejected for project-scoped writes", async () => {
   await registerAgent({ id: "coord-a", name: "Coordinator A", actorSubject: "subject-a" });
   assert.equal(await createTask({ title: "bad", createdBy: "coord-a", projectId: "project_missing" }), null);
