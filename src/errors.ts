@@ -11,6 +11,8 @@ const messages: Record<string, string> = {
   project_creator_not_registered: "Project creator is not registered",
   project_not_found: "Project not found",
   project_not_found_or_agent_unregistered: "Project was not found or agent is not registered",
+  project_not_found_or_not_owned: "Project was not found or is not owned by the authenticated agent",
+  resource_not_found_or_not_owned: "Resource was not found or is not owned by the authenticated agent",
   task_not_claimed_by_agent: "Task is not claimed by the authenticated agent",
   task_not_found: "Task not found",
   task_not_owned_or_not_claimed: "Task is not owned by or claimed by the authenticated agent",
