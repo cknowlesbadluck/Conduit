@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { init, registerAgent, getBoundAgentId, createProject, listProjects, registerResource, listResources, createTask, listTasks, addContact, listContacts, registerTool, listTools, listActivity, getCoordinationContext, claimTask, handoff } from "./store.js";
+import { init, registerAgent, getBoundAgentId, createProject, listProjects, registerResource, listResources, createTask, listTasks, addContact, listContacts, registerTool, listTools, listActivity, getCoordinationContext, claimTask, handoff, archiveProject, archiveResource, getProject } from "./store.js";
 
 await init();
 
@@ -97,4 +97,28 @@ test("concurrent handoff requests allow exactly one successful handoff", async (
 
   const winners = results.filter((r) => r !== null);
   assert.equal(winners.length, 1);
+});
+
+test("owner-only project and resource tombstones leave live lists", async () => {
+  await registerAgent({ id: "tomb-owner", name: "Tomb Owner", actorSubject: "subject-tomb-owner" });
+  await registerAgent({ id: "tomb-other", name: "Tomb Other", actorSubject: "subject-tomb-other" });
+  const project = await createProject({ name: "Tomb Project", createdBy: "tomb-owner" });
+  assert.ok(project);
+  const resource = await registerResource({ projectId: project.id, name: "Tomb Resource", description: "stale", kind: "repository", endpoint: "https://github.com/example/stale", createdBy: "tomb-owner" });
+  assert.ok(resource);
+
+  assert.equal(await archiveProject(project.id, "tomb-other"), null);
+  assert.equal(await archiveResource(resource.id, "tomb-other"), null);
+  assert.ok((await listProjects()).some((item) => item.id === project.id));
+  assert.ok((await listResources()).some((item) => item.id === resource.id));
+
+  const archivedResource = await archiveResource(resource.id, "tomb-owner");
+  const archivedProject = await archiveProject(project.id, "tomb-owner");
+  assert.ok(archivedResource?.archivedAt);
+  assert.ok(archivedProject?.archivedAt);
+  assert.equal((await listResources()).some((item) => item.id === resource.id), false);
+  assert.equal((await listProjects()).some((item) => item.id === project.id), false);
+  assert.equal(await getProject(project.id), null);
+  const again = await archiveProject(project.id, "tomb-owner");
+  assert.ok(again?.archivedAt);
 });
