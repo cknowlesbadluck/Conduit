@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 
 const coreTools = [
   "agent_identity", "development_context", "agent_register",
-  "project_create", "project_get", "resource_register",
+  "project_create", "project_get", "project_archive", "resource_register", "resource_archive",
   "integrations_list", "integration_call", "mcp_bridge_call", "task_create", "task_get",
   "task_block", "task_release", "task_claim", "task_complete", "task_handoff", "contact_add",
   "tool_register",
