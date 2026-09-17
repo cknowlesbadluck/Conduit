@@ -14,7 +14,7 @@ export type CoordinationContext = { service: string; generatedAt: string; projec
 
 const agents = new Map<string, Agent>();
 const agentBindings = new Map<string, string>();
-const boundAgentSubjects = new Map<string, string>();
+const boundAgentSubjects = new Map<string, Set<string>>();
 const projects = new Map<string, Project>();
 const resources = new Map<string, Resource>();
 const tasks = new Map<string, Task>();
@@ -83,7 +83,7 @@ export async function init() {
       CREATE TABLE IF NOT EXISTS schema_migrations (version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now());
       INSERT INTO schema_migrations(version) VALUES('0.7.1') ON CONFLICT (version) DO NOTHING;
       CREATE TABLE IF NOT EXISTS agents (id text PRIMARY KEY, name text NOT NULL, description text, created_at timestamptz NOT NULL DEFAULT now());
-      CREATE TABLE IF NOT EXISTS agent_bindings (subject text PRIMARY KEY, agent_id text NOT NULL UNIQUE REFERENCES agents(id), created_at timestamptz NOT NULL DEFAULT now());
+      CREATE TABLE IF NOT EXISTS agent_bindings (subject text PRIMARY KEY, agent_id text NOT NULL REFERENCES agents(id), created_at timestamptz NOT NULL DEFAULT now());
       CREATE TABLE IF NOT EXISTS projects (id text PRIMARY KEY, name text NOT NULL, description text NOT NULL DEFAULT '', created_by text NOT NULL REFERENCES agents(id), created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now());
       CREATE TABLE IF NOT EXISTS resources (id text PRIMARY KEY, project_id text REFERENCES projects(id), name text NOT NULL, description text NOT NULL, kind text NOT NULL, endpoint text, created_by text NOT NULL REFERENCES agents(id), created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now());
       CREATE TABLE IF NOT EXISTS tasks (id text PRIMARY KEY, project_id text REFERENCES projects(id), title text NOT NULL, description text NOT NULL, status text NOT NULL CHECK (status IN ('open','claimed','blocked','completed')), created_by text NOT NULL REFERENCES agents(id), claimed_by text REFERENCES agents(id), created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now());
@@ -107,6 +107,9 @@ export async function init() {
       CREATE INDEX IF NOT EXISTS tasks_created_by_created_idx ON tasks(created_by, created_at DESC);
       CREATE INDEX IF NOT EXISTS activity_at_idx ON activity(at DESC);
       CREATE INDEX IF NOT EXISTS handoffs_task_idx ON handoffs(task_id, created_at DESC);
+      ALTER TABLE agent_bindings DROP CONSTRAINT IF EXISTS agent_bindings_agent_id_key;
+      CREATE INDEX IF NOT EXISTS agent_bindings_agent_id_idx ON agent_bindings(agent_id);
+      INSERT INTO schema_migrations(version) VALUES('0.8.1-drop-agent-id-unique') ON CONFLICT (version) DO NOTHING;
     `);
   }
   ready = true;
@@ -118,8 +121,6 @@ export async function registerAgent(input: { id: string; name: string; descripti
       if (input.actorSubject) {
         const binding = (await client.query("SELECT agent_id AS \"agentId\" FROM agent_bindings WHERE subject=$1 FOR UPDATE", [input.actorSubject])).rows[0] as { agentId: string } | undefined;
         if (binding && binding.agentId !== input.id) return null;
-        const claimedByOther = (await client.query("SELECT subject FROM agent_bindings WHERE agent_id=$1 AND subject<>$2 FOR UPDATE", [input.id, input.actorSubject])).rows[0];
-        if (claimedByOther) return null;
       }
       await client.query("INSERT INTO agents(id,name,description) VALUES($1,$2,$3) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,description=EXCLUDED.description", [input.id, input.name, input.description ?? null]);
       if (input.actorSubject) await client.query("INSERT INTO agent_bindings(subject,agent_id) VALUES($1,$2) ON CONFLICT(subject) DO UPDATE SET agent_id=EXCLUDED.agent_id", [input.actorSubject, input.id]);
@@ -130,12 +131,13 @@ export async function registerAgent(input: { id: string; name: string; descripti
     return agent;
   } else {
     const existingBinding = input.actorSubject ? agentBindings.get(input.actorSubject) : undefined;
-    const boundSubject = input.actorSubject ? boundAgentSubjects.get(input.id) : undefined;
-    if ((existingBinding && existingBinding !== input.id) || (boundSubject && boundSubject !== input.actorSubject)) return null;
+    if (existingBinding && existingBinding !== input.id) return null;
     agents.set(input.id, { id: input.id, name: input.name, description: input.description, createdAt: agents.get(input.id)?.createdAt ?? now() });
     if (input.actorSubject) {
       agentBindings.set(input.actorSubject, input.id);
-      boundAgentSubjects.set(input.id, input.actorSubject);
+      const subjects = boundAgentSubjects.get(input.id) ?? new Set<string>();
+      subjects.add(input.actorSubject);
+      boundAgentSubjects.set(input.id, subjects);
     }
     const agent = agents.get(input.id)!;
     await log("agent.register", { agentId: input.id });
