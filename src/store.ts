@@ -14,7 +14,7 @@ export type CoordinationContext = { service: string; generatedAt: string; projec
 
 const agents = new Map<string, Agent>();
 const agentBindings = new Map<string, string>();
-const boundAgentSubjects = new Map<string, string>();
+const boundAgentSubjects = new Map<string, Set<string>>();
 const projects = new Map<string, Project>();
 const resources = new Map<string, Resource>();
 const tasks = new Map<string, Task>();
@@ -135,20 +135,12 @@ export async function registerAgent(input: { id: string; name: string; descripti
     agents.set(input.id, { id: input.id, name: input.name, description: input.description, createdAt: agents.get(input.id)?.createdAt ?? now() });
     if (input.actorSubject) {
       agentBindings.set(input.actorSubject, input.id);
-      boundAgentSubjects.set(input.id, input.actorSubject);
+      const subjects = boundAgentSubjects.get(input.id) ?? new Set<string>();
+      subjects.add(input.actorSubject);
+      boundAgentSubjects.set(input.id, subjects);
     }
     const agent = agents.get(input.id)!;
     await log("agent.register", { agentId: input.id });
     return agent;
   }
-}
-
-export async function getBoundAgentId(actorSubject: string) {
-  if (pool) return (await pool.query("SELECT agent_id AS \"agentId\" FROM agent_bindings WHERE subject=$1", [actorSubject])).rows[0]?.agentId as string | undefined;
-  return agentBindings.get(actorSubject);
-}
-
-export async function listAgents() {
-  if (pool) return (await pool.query("SELECT id,name,description,created_at AS \"createdAt\" FROM agents ORDER BY created_at DESC, id DESC")).rows;
-  return [...agents.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
