@@ -73,8 +73,23 @@ export async function getConduitStatus(): Promise<ConduitStatus> {
   ]);
 
   const recentActivity = activity.map(sanitizeActivity);
+
+  // Performance Optimization: Build a lookup map of agentId -> latest activity event in O(M) time.
+  // Since activity is ordered newest-first (DESC), the first event encountered for an agent is their latest.
+  // This reduces connection matching complexity from O(N * M) to O(N + M).
+  const latestActivityByAgent = new Map<string, Record<string, string>>();
+  for (const event of activity) {
+    if (event.type === "agent.register") continue;
+    for (const key of ACTOR_KEYS) {
+      const actorId = event[key];
+      if (actorId && !latestActivityByAgent.has(actorId)) {
+        latestActivityByAgent.set(actorId, event);
+      }
+    }
+  }
+
   const connections = agents.map((agent) => {
-    const matchingEvent = activity.find((event) => activityMatchesAgent(event, agent.id));
+    const matchingEvent = latestActivityByAgent.get(agent.id);
     return {
       id: agent.id,
       label: agent.name,
@@ -107,7 +122,18 @@ export async function getPublicConduitStatus(): Promise<ConduitPublicStatus> {
     listAgents(),
     listActivity(200),
   ]);
-  const connected = agentList.filter((agent) => recent.some((event) => activityMatchesAgent(event, agent.id))).length;
+
+  // Performance Optimization: Extract all active agent IDs into a Set in O(M) single pass.
+  // Replaces O(N * M) nested .some() scan with O(1) Set lookup per agent (O(N + M) total).
+  const activeAgentIds = new Set<string>();
+  for (const event of recent) {
+    if (event.type === "agent.register") continue;
+    for (const key of ACTOR_KEYS) {
+      const actorId = event[key];
+      if (actorId) activeAgentIds.add(actorId);
+    }
+  }
+  const connected = agentList.filter((agent) => activeAgentIds.has(agent.id)).length;
   return {
     service: SERVICE_NAME,
     version: VERSION,
