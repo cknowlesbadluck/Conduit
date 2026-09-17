@@ -77,12 +77,13 @@ export async function getConduitStatus(): Promise<ConduitStatus> {
   // Performance Optimization: Build a lookup map of agentId -> latest activity event in O(M) time.
   // Since activity is ordered newest-first (DESC), the first event encountered for an agent is their latest.
   // This reduces connection matching complexity from O(N * M) to O(N + M).
-  const latestActivityByAgent = new Map<string, Record<string, string>>();
+  type ActivityItem = (typeof activity)[number];
+  const latestActivityByAgent = new Map<string, ActivityItem>();
   for (const event of activity) {
     if (event.type === "agent.register") continue;
     for (const key of ACTOR_KEYS) {
       const actorId = event[key];
-      if (actorId && !latestActivityByAgent.has(actorId)) {
+      if (actorId && typeof actorId === "string" && !latestActivityByAgent.has(actorId)) {
         latestActivityByAgent.set(actorId, event);
       }
     }
@@ -130,7 +131,7 @@ export async function getPublicConduitStatus(): Promise<ConduitPublicStatus> {
     if (event.type === "agent.register") continue;
     for (const key of ACTOR_KEYS) {
       const actorId = event[key];
-      if (actorId) activeAgentIds.add(actorId);
+      if (actorId && typeof actorId === "string") activeAgentIds.add(actorId);
     }
   }
   const connected = agentList.filter((agent) => activeAgentIds.has(agent.id)).length;
