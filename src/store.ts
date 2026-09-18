@@ -160,7 +160,7 @@ export async function listAgents() {
   return [...agents.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-async function agentExists(agentId: string) { if (pool) return Boolean((await pool.query("SELECT 1 FROM agents WHERE id=$1", [agentId])).rowCount); return agents.has(agentId); }
+export async function agentExists(agentId: string) { if (pool) return Boolean((await pool.query("SELECT 1 FROM agents WHERE id=$1", [agentId])).rowCount); return agents.has(agentId); }
 async function projectExists(projectId: string) { if (pool) return Boolean((await pool.query("SELECT 1 FROM projects WHERE id=$1 AND archived_at IS NULL", [projectId])).rowCount); const project = projects.get(projectId); return Boolean(project && !project.archivedAt); }
 
 export async function createProject(input: { name: string; description?: string; createdBy: string }) {
