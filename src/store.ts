@@ -4,8 +4,8 @@ const { Pool } = pg;
 
 export type TaskStatus = "open" | "claimed" | "blocked" | "completed";
 export type Agent = { id: string; name: string; description?: string; createdAt: string };
-export type Project = { id: string; name: string; description: string; createdBy: string; createdAt: string; updatedAt: string };
-export type Resource = { id: string; projectId?: string; name: string; description: string; kind: string; endpoint?: string; createdBy: string; createdAt: string; updatedAt: string };
+export type Project = { id: string; name: string; description: string; createdBy: string; createdAt: string; updatedAt: string; archivedAt?: string };
+export type Resource = { id: string; projectId?: string; name: string; description: string; kind: string; endpoint?: string; createdBy: string; createdAt: string; updatedAt: string; archivedAt?: string };
 export type Task = { id: string; projectId?: string; title: string; description: string; status: TaskStatus; createdBy: string; claimedBy?: string; createdAt: string; updatedAt: string };
 export type Contact = { id: string; projectId?: string; name: string; value: string; kind: string; createdBy?: string; createdAt: string };
 export type Tool = { id: string; projectId?: string; name: string; description: string; endpoint?: string; createdBy?: string; createdAt: string };
@@ -110,6 +110,11 @@ export async function init() {
       ALTER TABLE agent_bindings DROP CONSTRAINT IF EXISTS agent_bindings_agent_id_key;
       CREATE INDEX IF NOT EXISTS agent_bindings_agent_id_idx ON agent_bindings(agent_id);
       INSERT INTO schema_migrations(version) VALUES('0.8.1-drop-agent-id-unique') ON CONFLICT (version) DO NOTHING;
+      ALTER TABLE projects ADD COLUMN IF NOT EXISTS archived_at timestamptz;
+      ALTER TABLE resources ADD COLUMN IF NOT EXISTS archived_at timestamptz;
+      CREATE INDEX IF NOT EXISTS projects_live_created_idx ON projects(created_at DESC, id DESC) WHERE archived_at IS NULL;
+      CREATE INDEX IF NOT EXISTS resources_live_created_idx ON resources(created_at DESC, id DESC) WHERE archived_at IS NULL;
+      INSERT INTO schema_migrations(version) VALUES('0.8.2-tombstones') ON CONFLICT (version) DO NOTHING;
     `);
   }
   ready = true;
@@ -156,7 +161,7 @@ export async function listAgents() {
 }
 
 async function agentExists(agentId: string) { if (pool) return Boolean((await pool.query("SELECT 1 FROM agents WHERE id=$1", [agentId])).rowCount); return agents.has(agentId); }
-async function projectExists(projectId: string) { if (pool) return Boolean((await pool.query("SELECT 1 FROM projects WHERE id=$1", [projectId])).rowCount); return projects.has(projectId); }
+async function projectExists(projectId: string) { if (pool) return Boolean((await pool.query("SELECT 1 FROM projects WHERE id=$1 AND archived_at IS NULL", [projectId])).rowCount); const project = projects.get(projectId); return Boolean(project && !project.archivedAt); }
 
 export async function createProject(input: { name: string; description?: string; createdBy: string }) {
   if (!(await agentExists(input.createdBy))) return null;
@@ -164,7 +169,7 @@ export async function createProject(input: { name: string; description?: string;
   if(pool) await pool.query("INSERT INTO projects(id,name,description,created_by) VALUES($1,$2,$3,$4)",[p.id,p.name,p.description,p.createdBy]); else projects.set(p.id,p);
   await log("project.create",{projectId:p.id,agentId:p.createdBy}); return p;
 }
-export async function listProjects(){if(pool)return(await pool.query("SELECT id,name,description,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM projects ORDER BY created_at DESC, id DESC")).rows;return[...projects.values()].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
+export async function listProjects(){if(pool)return(await pool.query("SELECT id,name,description,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\",archived_at AS \"archivedAt\" FROM projects WHERE archived_at IS NULL ORDER BY created_at DESC, id DESC")).rows.map(normalizeProject);return[...projects.values()].filter(p=>!p.archivedAt).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
 
 export async function registerResource(input:{projectId?:string;name:string;description:string;kind:string;endpoint?:string;createdBy:string}){
   if(!(await agentExists(input.createdBy))||(input.projectId&&!(await projectExists(input.projectId))))return null;
@@ -172,7 +177,7 @@ export async function registerResource(input:{projectId?:string;name:string;desc
   if(pool)await pool.query("INSERT INTO resources(id,project_id,name,description,kind,endpoint,created_by) VALUES($1,$2,$3,$4,$5,$6,$7)",[r.id,r.projectId??null,r.name,r.description,r.kind,r.endpoint??null,r.createdBy]);else resources.set(r.id,r);
   await log("resource.register",{resourceId:r.id,agentId:r.createdBy,...(r.projectId?{projectId:r.projectId}:{})});return r;
 }
-export async function listResources(projectId?:string){if(pool)return(await pool.query("SELECT id,project_id AS \"projectId\",name,description,kind,endpoint,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM resources"+(projectId?" WHERE project_id=$1":"")+" ORDER BY created_at DESC, id DESC",projectId?[projectId]:[])).rows;return[...resources.values()].filter(r=>!projectId||r.projectId===projectId).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
+export async function listResources(projectId?:string){if(pool){const where=projectId?" WHERE project_id=$1 AND archived_at IS NULL":" WHERE archived_at IS NULL";return(await pool.query("SELECT id,project_id AS \"projectId\",name,description,kind,endpoint,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\",archived_at AS \"archivedAt\" FROM resources"+where+" ORDER BY created_at DESC, id DESC",projectId?[projectId]:[])).rows.map(normalizeResource);}return[...resources.values()].filter(r=>!r.archivedAt&&(!projectId||r.projectId===projectId)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
 
 export async function createTask(input:{title:string;description?:string;createdBy:string;projectId?:string}){if(!(await agentExists(input.createdBy))||(input.projectId&&!(await projectExists(input.projectId))))return null;const t:Task={id:id("task"),projectId:input.projectId,title:input.title,description:input.description??"",status:"open",createdBy:input.createdBy,createdAt:now(),updatedAt:now()};if(pool)await pool.query("INSERT INTO tasks(id,project_id,title,description,status,created_by) VALUES($1,$2,$3,$4,$5,$6)",[t.id,t.projectId??null,t.title,t.description,t.status,t.createdBy]);else tasks.set(t.id,t);await log("task.create",{taskId:t.id,agentId:t.createdBy,...(t.projectId?{projectId:t.projectId}:{})});return t;}
 
@@ -260,14 +265,98 @@ export async function listActivity(limit=50,projectId?:string){const safeLimit=M
 
 export async function getCoordinationContext(projectId?:string):Promise<CoordinationContext|null>{
   let project:Project|null=null;
-  if(projectId){project=pool?(await pool.query("SELECT id,name,description,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM projects WHERE id=$1",[projectId])).rows[0] as Project|undefined ?? null:projects.get(projectId)??null;if(!project)return null;}
+  if(projectId){project=await getProject(projectId);if(!project)return null;}
   const [agentList,taskList,contactList,toolList,resourceList,activityList,projectList]=await Promise.all([listAgents(),listTasks({ projectId }),listContacts(projectId),listTools(projectId),listResources(projectId),listActivity(50,projectId),projectId?Promise.resolve([]):listProjects()]);
   return {service:"Conduit",generatedAt:now(),project,projects:projectList,agents:agentList,tasks:taskList,contacts:contactList,tools:toolList,resources:resourceList,activity:activityList};
 }
 
+function normalizeTimestamp(value: unknown): string | undefined {
+  if (!value) return undefined;
+  return new Date(value as string | Date).toISOString();
+}
+
+function normalizeProject(row: Record<string, unknown>): Project {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    description: row.description as string,
+    createdBy: row.createdBy as string,
+    createdAt: new Date(row.createdAt as string | Date).toISOString(),
+    updatedAt: new Date(row.updatedAt as string | Date).toISOString(),
+    archivedAt: normalizeTimestamp(row.archivedAt),
+  };
+}
+
+function normalizeResource(row: Record<string, unknown>): Resource {
+  return {
+    id: row.id as string,
+    projectId: (row.projectId as string | null) ?? undefined,
+    name: row.name as string,
+    description: row.description as string,
+    kind: row.kind as string,
+    endpoint: (row.endpoint as string | null) ?? undefined,
+    createdBy: row.createdBy as string,
+    createdAt: new Date(row.createdAt as string | Date).toISOString(),
+    updatedAt: new Date(row.updatedAt as string | Date).toISOString(),
+    archivedAt: normalizeTimestamp(row.archivedAt),
+  };
+}
+
 export async function getProject(projectId: string) {
-  if (pool) { const row = (await pool.query("SELECT id,name,description,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM projects WHERE id=$1", [projectId])).rows[0]; return (row as Project) || null; }
-  return projects.get(projectId) || null;
+  if (pool) {
+    const row = (await pool.query("SELECT id,name,description,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\",archived_at AS \"archivedAt\" FROM projects WHERE id=$1 AND archived_at IS NULL", [projectId])).rows[0];
+    return row ? normalizeProject(row) : null;
+  }
+  const project = projects.get(projectId);
+  return project && !project.archivedAt ? project : null;
+}
+
+export async function archiveProject(projectId: string, agentId: string) {
+  if (!(await agentExists(agentId))) return null;
+  if (pool) {
+    return withTransaction(async client => {
+      const existing = (await client.query("SELECT id,name,description,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\",archived_at AS \"archivedAt\" FROM projects WHERE id=$1 AND created_by=$2 FOR UPDATE", [projectId, agentId])).rows[0] as Record<string, unknown> | undefined;
+      if (!existing) return null;
+      if (existing.archivedAt) return normalizeProject(existing);
+      const row = (await client.query("UPDATE projects SET archived_at=now(),updated_at=now() WHERE id=$1 AND created_by=$2 RETURNING id,name,description,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\",archived_at AS \"archivedAt\"", [projectId, agentId])).rows[0];
+      const project = normalizeProject(row);
+      await logWithClient(client, "project.archive", { projectId, agentId });
+      return project;
+    });
+  }
+  const project = projects.get(projectId);
+  if (!project || project.createdBy !== agentId) return null;
+  if (project.archivedAt) return project;
+  const previous = { ...project };
+  project.archivedAt = now();
+  project.updatedAt = project.archivedAt;
+  try { await log("project.archive", { projectId, agentId }); }
+  catch (error) { Object.assign(project, previous); throw error; }
+  return project;
+}
+
+export async function archiveResource(resourceId: string, agentId: string) {
+  if (!(await agentExists(agentId))) return null;
+  if (pool) {
+    return withTransaction(async client => {
+      const existing = (await client.query("SELECT id,project_id AS \"projectId\",name,description,kind,endpoint,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\",archived_at AS \"archivedAt\" FROM resources WHERE id=$1 AND created_by=$2 FOR UPDATE", [resourceId, agentId])).rows[0] as Record<string, unknown> | undefined;
+      if (!existing) return null;
+      if (existing.archivedAt) return normalizeResource(existing);
+      const row = (await client.query("UPDATE resources SET archived_at=now(),updated_at=now() WHERE id=$1 AND created_by=$2 RETURNING id,project_id AS \"projectId\",name,description,kind,endpoint,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\",archived_at AS \"archivedAt\"", [resourceId, agentId])).rows[0];
+      const resource = normalizeResource(row);
+      await logWithClient(client, "resource.archive", { resourceId, agentId, ...(resource.projectId ? { projectId: resource.projectId } : {}) });
+      return resource;
+    });
+  }
+  const resource = resources.get(resourceId);
+  if (!resource || resource.createdBy !== agentId) return null;
+  if (resource.archivedAt) return resource;
+  const previous = { ...resource };
+  resource.archivedAt = now();
+  resource.updatedAt = resource.archivedAt;
+  try { await log("resource.archive", { resourceId, agentId, ...(resource.projectId ? { projectId: resource.projectId } : {}) }); }
+  catch (error) { Object.assign(resource, previous); throw error; }
+  return resource;
 }
 
 export async function getTask(taskId: string) {

@@ -5,7 +5,7 @@ import { McpServer, type AuthInfo } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
   registerAgent, getBoundAgentId, createProject, registerResource,
-  getProject, createTask, getTask, claimTask, blockTask, releaseTask, completeTask, handoff, addContact, registerTool,
+  getProject, archiveProject, archiveResource, createTask, getTask, claimTask, blockTask, releaseTask, completeTask, handoff, addContact, registerTool,
 } from "./store.js";
 import { getDevelopmentContext } from "./development.js";
 import { callIntegration, integrationMethods, integrationProviders, listIntegrations } from "./integrations.js";
@@ -96,10 +96,18 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
     const result = await getProject(projectId);
     return result ? json(result) : rejected("project_not_found", { projectId });
   });
+  server.registerTool("project_archive", { description: "Archive a project created by the authenticated agent. Tombstone only; records are not hard-deleted.", inputSchema: z.object({ projectId: z.string().min(1), agentId: z.string().min(1).max(200).optional() }), annotations: writeIdempotent }, async ({ projectId, agentId }, extra) => {
+    if (writeScope) auth(extra, writeScope); const actor = await resolveBoundAgent(extra, agentId); if (!actor) return rejected("agent_identity_not_bound");
+    const result = await archiveProject(projectId, actor); return result ? json(result) : rejected("project_not_found_or_not_owned", { projectId });
+  });
 
   server.registerTool("resource_register", { description: "Register a shared development resource or integration reference. This stores metadata only and does not grant Conduit permission to call the endpoint.", inputSchema: z.object({ projectId: z.string().min(1).max(200).optional(), name: z.string().min(1).max(200), description: z.string().min(1).max(2000), kind: z.string().min(1).max(100), endpoint: z.string().url().optional(), createdBy: z.string().min(1).max(200).optional() }), annotations: writeSafe }, async ({ projectId, name, description, kind, endpoint, createdBy }, extra) => {
     if (writeScope) auth(extra, writeScope); const actor = await resolveBoundAgent(extra, createdBy); if (!actor) return rejected("agent_identity_not_bound");
     const result = await registerResource({ projectId, name, description, kind, endpoint, createdBy: actor }); return result ? json(result) : rejected(projectId ? "project_not_found_or_agent_unregistered" : "agent_unregistered");
+  });
+  server.registerTool("resource_archive", { description: "Archive a resource created by the authenticated agent. Tombstone only; records are not hard-deleted.", inputSchema: z.object({ resourceId: z.string().min(1), agentId: z.string().min(1).max(200).optional() }), annotations: writeIdempotent }, async ({ resourceId, agentId }, extra) => {
+    if (writeScope) auth(extra, writeScope); const actor = await resolveBoundAgent(extra, agentId); if (!actor) return rejected("agent_identity_not_bound");
+    const result = await archiveResource(resourceId, actor); return result ? json(result) : rejected("resource_not_found_or_not_owned", { resourceId });
   });
 
   server.registerTool("integrations_list", { description: "List supported runtime integrations and whether their server-side credentials are configured. Credential environment names are never returned.", inputSchema: z.object({}), annotations: readOnly }, async (_input, extra) => { if (readScope) auth(extra, readScope); return json(listIntegrations().map(({ credentialEnv: _credentialEnv, ...definition }) => definition)); });
