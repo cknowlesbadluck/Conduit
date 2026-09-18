@@ -1,1 +1,1 @@
-see-file-will-fail-if-placeholder
+PLACEHOLDER_WILL_REPLACE
