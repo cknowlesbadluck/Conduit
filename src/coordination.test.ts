@@ -122,3 +122,36 @@ test("owner-only project and resource tombstones leave live lists", async () => 
   const again = await archiveProject(project.id, "tomb-owner");
   assert.ok(again?.archivedAt);
 });
+
+test("project creator can tombstone a foreign-owned resource; unrelated agent cannot", async () => {
+  await registerAgent({ id: "pc-owner", name: "Project Creator", actorSubject: "subject-pc-owner" });
+  await registerAgent({ id: "pc-foreign", name: "Foreign Resource Owner", actorSubject: "subject-pc-foreign" });
+  await registerAgent({ id: "pc-stranger", name: "Stranger", actorSubject: "subject-pc-stranger" });
+  const project = await createProject({ name: "Creator Override", createdBy: "pc-owner" });
+  assert.ok(project);
+  const resource = await registerResource({ projectId: project.id, name: "Foreign Resource", description: "owned by other agent", kind: "repository", endpoint: "https://github.com/example/foreign", createdBy: "pc-foreign" });
+  assert.ok(resource);
+
+  assert.equal(await archiveResource(resource.id, "pc-stranger"), null);
+  const archived = await archiveResource(resource.id, "pc-owner");
+  assert.ok(archived?.archivedAt);
+  assert.equal((await listResources(project.id)).some((item) => item.id === resource.id), false);
+});
+
+test("grant admin subject can tombstone a foreign-owned project", async () => {
+  const previous = process.env.CONDUIT_GRANT_ADMIN_SUBJECTS;
+  process.env.CONDUIT_GRANT_ADMIN_SUBJECTS = "admin-sub";
+  try {
+    await registerAgent({ id: "adm-owner", name: "Admin Owner", actorSubject: "subject-adm-owner" });
+    await registerAgent({ id: "adm-actor", name: "Admin Actor", actorSubject: "admin-sub" });
+    const project = await createProject({ name: "Admin Tombstone", createdBy: "adm-owner" });
+    assert.ok(project);
+    assert.equal(await archiveProject(project.id, "adm-actor"), null);
+    const archived = await archiveProject(project.id, "adm-actor", { actorKeys: ["admin-sub"] });
+    assert.ok(archived?.archivedAt);
+    assert.equal((await listProjects()).some((item) => item.id === project.id), false);
+  } finally {
+    if (previous === undefined) delete process.env.CONDUIT_GRANT_ADMIN_SUBJECTS;
+    else process.env.CONDUIT_GRANT_ADMIN_SUBJECTS = previous;
+  }
+});
