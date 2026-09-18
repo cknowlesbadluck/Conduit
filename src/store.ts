@@ -23,18 +23,12 @@ const tools: Tool[] = [];
 const activity: ActivityEvent[] = [];
 const useDatabase = Boolean(process.env.DATABASE_URL) && process.env.CONDUIT_TEST_MEMORY !== "true";
 const sslRejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === "true";
-const sslOption = process.env.DATABASE_SSL === "false"
-  ? false
-  : { rejectUnauthorized: sslRejectUnauthorized };
-
-const pool = useDatabase
-  ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: sslOption, max: 5 })
-  : null;
+const sslOption = process.env.DATABASE_SSL === "false" ? false : { rejectUnauthorized: sslRejectUnauthorized };
+const pool = useDatabase ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: sslOption, max: 5 }) : null;
 
 let ready = false;
 const now = () => new Date().toISOString();
 const id = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
-
 export function isReady() { return ready; }
 
 async function log(type: string, data: Record<string, string>) {
@@ -42,65 +36,25 @@ async function log(type: string, data: Record<string, string>) {
   if (pool) await pool.query("INSERT INTO activity(id,type,at,data,project_id) VALUES($1,$2,$3,$4,$5)", [event.id, type, event.at, JSON.stringify(data), data.projectId ?? null]);
   else activity.push(event);
 }
-
 async function logWithClient(client: pg.PoolClient, type: string, data: Record<string, string>) {
   const event = { id: id("evt"), type, at: now(), ...data };
   await client.query("INSERT INTO activity(id,type,at,data,project_id) VALUES($1,$2,$3,$4,$5)", [event.id, type, event.at, JSON.stringify(data), data.projectId ?? null]);
 }
-
 async function withTransaction<T>(work: (client: pg.PoolClient) => Promise<T>): Promise<T> {
   if (!pool) throw new Error("database_not_configured");
   const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    const result = await work(client);
-    await client.query("COMMIT");
-    return result;
-  } catch (error) {
-    try { await client.query("ROLLBACK"); } catch { /* preserve original error */ }
-    throw error;
-  } finally {
-    client.release();
-  }
+  try { await client.query("BEGIN"); const result = await work(client); await client.query("COMMIT"); return result; }
+  catch (error) { try { await client.query("ROLLBACK"); } catch { /* preserve original error */ } throw error; }
+  finally { client.release(); }
 }
 
 const taskSelect = `id,project_id AS "projectId",title,description,status,created_by AS "createdBy",claimed_by AS "claimedBy",created_at AS "createdAt",updated_at AS "updatedAt"`;
-const normalizeTask = (row: Record<string, unknown>): Task => ({
-  id: row.id as string,
-  projectId: (row.projectId as string | null) ?? undefined,
-  title: row.title as string,
-  description: row.description as string,
-  status: row.status as TaskStatus,
-  createdBy: row.createdBy as string,
-  claimedBy: (row.claimedBy as string | null) ?? undefined,
-  createdAt: new Date(row.createdAt as string | Date).toISOString(),
-  updatedAt: new Date(row.updatedAt as string | Date).toISOString(),
-});
-
 const projectSelect = `id,name,description,created_by AS "createdBy",created_at AS "createdAt",updated_at AS "updatedAt",archived_at AS "archivedAt"`;
 const resourceSelect = `id,project_id AS "projectId",name,description,kind,endpoint,created_by AS "createdBy",created_at AS "createdAt",updated_at AS "updatedAt",archived_at AS "archivedAt"`;
 const normalizeIso = (value: unknown) => value ? new Date(value as string | Date).toISOString() : undefined;
-const normalizeProject = (row: Record<string, unknown>): Project => ({
-  id: row.id as string,
-  name: row.name as string,
-  description: row.description as string,
-  createdBy: row.createdBy as string,
-  createdAt: new Date(row.createdAt as string | Date).toISOString(),
-  updatedAt: new Date(row.updatedAt as string | Date).toISOString(),
-  archivedAt: normalizeIso(row.archivedAt),
-});
-const normalizeResource = (row: Record<string, unknown>): Resource => ({
-  id: row.id as string,
-  projectId: (row.projectId as string | null) ?? undefined,
-  name: row.name as string,
-  description: row.description as string,
-  kind: row.kind as string,
-  endpoint: (row.endpoint as string | null) ?? undefined,
-  createdBy: row.createdBy as string,
-  createdAt: new Date(row.createdAt as string | Date).toISOString(),
-  updatedAt: new Date(row.updatedAt as string | Date).toISOString(),
-  archivedAt: normalizeIso(row.archivedAt),
-});
+const normalizeTask = (row: Record<string, unknown>): Task => ({ id: row.id as string, projectId: (row.projectId as string | null) ?? undefined, title: row.title as string, description: row.description as string, status: row.status as TaskStatus, createdBy: row.createdBy as string, claimedBy: (row.claimedBy as string | null) ?? undefined, createdAt: new Date(row.createdAt as string | Date).toISOString(), updatedAt: new Date(row.updatedAt as string | Date).toISOString() });
+const normalizeProject = (row: Record<string, unknown>): Project => ({ id: row.id as string, name: row.name as string, description: row.description as string, createdBy: row.createdBy as string, createdAt: new Date(row.createdAt as string | Date).toISOString(), updatedAt: new Date(row.updatedAt as string | Date).toISOString(), archivedAt: normalizeIso(row.archivedAt) });
+const normalizeResource = (row: Record<string, unknown>): Resource => ({ id: row.id as string, projectId: (row.projectId as string | null) ?? undefined, name: row.name as string, description: row.description as string, kind: row.kind as string, endpoint: (row.endpoint as string | null) ?? undefined, createdBy: row.createdBy as string, createdAt: new Date(row.createdAt as string | Date).toISOString(), updatedAt: new Date(row.updatedAt as string | Date).toISOString(), archivedAt: normalizeIso(row.archivedAt) });
 
 export async function init() {
   if (pool) {
@@ -142,3 +96,219 @@ export async function init() {
   }
   ready = true;
 }
+
+export async function registerAgent(input: { id: string; name: string; description?: string; actorSubject?: string }) {
+  if (pool) {
+    return withTransaction(async (client) => {
+      if (input.actorSubject) {
+        const binding = (await client.query("SELECT agent_id AS \"agentId\" FROM agent_bindings WHERE subject=$1 FOR UPDATE", [input.actorSubject])).rows[0] as { agentId: string } | undefined;
+        if (binding && binding.agentId !== input.id) return null;
+      }
+      await client.query("INSERT INTO agents(id,name,description) VALUES($1,$2,$3) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,description=EXCLUDED.description", [input.id, input.name, input.description ?? null]);
+      if (input.actorSubject) await client.query("INSERT INTO agent_bindings(subject,agent_id) VALUES($1,$2) ON CONFLICT(subject) DO UPDATE SET agent_id=EXCLUDED.agent_id", [input.actorSubject, input.id]);
+      const row = (await client.query("SELECT id,name,description,created_at AS \"createdAt\" FROM agents WHERE id=$1", [input.id])).rows[0] as Agent;
+      await logWithClient(client, "agent.register", { agentId: input.id });
+      return row;
+    });
+  }
+  const existingBinding = input.actorSubject ? agentBindings.get(input.actorSubject) : undefined;
+  if (existingBinding && existingBinding !== input.id) return null;
+  agents.set(input.id, { id: input.id, name: input.name, description: input.description, createdAt: agents.get(input.id)?.createdAt ?? now() });
+  if (input.actorSubject) {
+    agentBindings.set(input.actorSubject, input.id);
+    const subjects = boundAgentSubjects.get(input.id) ?? new Set<string>();
+    subjects.add(input.actorSubject);
+    boundAgentSubjects.set(input.id, subjects);
+  }
+  const agent = agents.get(input.id)!;
+  await log("agent.register", { agentId: input.id });
+  return agent;
+}
+
+export async function getBoundAgentId(actorSubject: string) {
+  if (pool) return (await pool.query("SELECT agent_id AS \"agentId\" FROM agent_bindings WHERE subject=$1", [actorSubject])).rows[0]?.agentId as string | undefined;
+  return agentBindings.get(actorSubject);
+}
+export async function listAgents() {
+  if (pool) return (await pool.query("SELECT id,name,description,created_at AS \"createdAt\" FROM agents ORDER BY created_at DESC, id DESC")).rows;
+  return [...agents.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+async function agentExists(agentId: string) { if (pool) return Boolean((await pool.query("SELECT 1 FROM agents WHERE id=$1", [agentId])).rowCount); return agents.has(agentId); }
+async function projectExists(projectId: string) { if (pool) return Boolean((await pool.query("SELECT 1 FROM projects WHERE id=$1 AND archived_at IS NULL", [projectId])).rowCount); const project = projects.get(projectId); return Boolean(project && !project.archivedAt); }
+
+export async function createProject(input: { name: string; description?: string; createdBy: string }) {
+  if (!(await agentExists(input.createdBy))) return null;
+  const p: Project = { id: id("project"), name: input.name, description: input.description ?? "", createdBy: input.createdBy, createdAt: now(), updatedAt: now() };
+  if (pool) await pool.query("INSERT INTO projects(id,name,description,created_by) VALUES($1,$2,$3,$4)", [p.id, p.name, p.description, p.createdBy]); else projects.set(p.id, p);
+  await log("project.create", { projectId: p.id, agentId: p.createdBy }); return p;
+}
+export async function listProjects() {
+  if (pool) return (await pool.query(`SELECT ${projectSelect} FROM projects WHERE archived_at IS NULL ORDER BY created_at DESC, id DESC`)).rows.map(normalizeProject);
+  return [...projects.values()].filter((p) => !p.archivedAt).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+export async function registerResource(input: { projectId?: string; name: string; description: string; kind: string; endpoint?: string; createdBy: string }) {
+  if (!(await agentExists(input.createdBy)) || (input.projectId && !(await projectExists(input.projectId)))) return null;
+  const r: Resource = { id: id("resource"), projectId: input.projectId, name: input.name, description: input.description, kind: input.kind, endpoint: input.endpoint, createdBy: input.createdBy, createdAt: now(), updatedAt: now() };
+  if (pool) await pool.query("INSERT INTO resources(id,project_id,name,description,kind,endpoint,created_by) VALUES($1,$2,$3,$4,$5,$6,$7)", [r.id, r.projectId ?? null, r.name, r.description, r.kind, r.endpoint ?? null, r.createdBy]); else resources.set(r.id, r);
+  await log("resource.register", { resourceId: r.id, agentId: r.createdBy, ...(r.projectId ? { projectId: r.projectId } : {}) }); return r;
+}
+export async function listResources(projectId?: string) {
+  if (pool) return (await pool.query(`SELECT ${resourceSelect} FROM resources WHERE archived_at IS NULL${projectId ? " AND project_id=$1" : ""} ORDER BY created_at DESC, id DESC`, projectId ? [projectId] : [])).rows.map(normalizeResource);
+  return [...resources.values()].filter((r) => !r.archivedAt && (!projectId || r.projectId === projectId)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+export async function createTask(input: { title: string; description?: string; createdBy: string; projectId?: string }) {
+  if (!(await agentExists(input.createdBy)) || (input.projectId && !(await projectExists(input.projectId)))) return null;
+  const t: Task = { id: id("task"), projectId: input.projectId, title: input.title, description: input.description ?? "", status: "open", createdBy: input.createdBy, createdAt: now(), updatedAt: now() };
+  if (pool) await pool.query("INSERT INTO tasks(id,project_id,title,description,status,created_by) VALUES($1,$2,$3,$4,$5,$6)", [t.id, t.projectId ?? null, t.title, t.description, t.status, t.createdBy]); else tasks.set(t.id, t);
+  await log("task.create", { taskId: t.id, agentId: t.createdBy, ...(t.projectId ? { projectId: t.projectId } : {}) }); return t;
+}
+export async function listTasks(options?: { status?: TaskStatus; projectId?: string; claimedBy?: string; createdBy?: string } | TaskStatus, legacyProjectId?: string) {
+  const opts = typeof options === "string" || options === undefined ? { status: options, projectId: legacyProjectId } : options;
+  const { status, projectId, claimedBy, createdBy } = opts;
+  if (pool) {
+    const conditions: string[] = []; const params: unknown[] = [];
+    if (status) { conditions.push(`status=$${params.length + 1}`); params.push(status); }
+    if (projectId) { conditions.push(`project_id=$${params.length + 1}`); params.push(projectId); }
+    if (claimedBy) { conditions.push(`claimed_by=$${params.length + 1}`); params.push(claimedBy); }
+    if (createdBy) { conditions.push(`created_by=$${params.length + 1}`); params.push(createdBy); }
+    const rows = (await pool.query(`SELECT ${taskSelect} FROM tasks${conditions.length ? ` WHERE ${conditions.join(" AND ")}` : ""} ORDER BY created_at DESC, id DESC`, params)).rows;
+    return rows.map(normalizeTask);
+  }
+  return [...tasks.values()].filter((t) => (!status || t.status === status) && (!projectId || t.projectId === projectId) && (!claimedBy || t.claimedBy === claimedBy) && (!createdBy || t.createdBy === createdBy)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+export async function claimTask(taskId: string, agentId: string) {
+  if (!(await agentExists(agentId))) return null;
+  if (pool) return withTransaction(async (client) => {
+    const r = await client.query(`UPDATE tasks SET status='claimed',claimed_by=$2,updated_at=now() WHERE id=$1 AND status='open' RETURNING ${taskSelect}`, [taskId, agentId]);
+    if (!r.rowCount) return null; const task = normalizeTask(r.rows[0]);
+    await logWithClient(client, "task.claim", { taskId, agentId, ...(task.projectId ? { projectId: task.projectId } : {}) }); return task;
+  });
+  const t = tasks.get(taskId); if (!t || t.status !== "open") return null;
+  const previous = { ...t }; t.status = "claimed"; t.claimedBy = agentId; t.updatedAt = now();
+  try { await log("task.claim", { taskId, agentId, ...(t.projectId ? { projectId: t.projectId } : {}) }); } catch (error) { Object.assign(t, previous); throw error; }
+  return t;
+}
+export async function completeTask(taskId: string, agentId: string) {
+  if (!(await agentExists(agentId))) return null;
+  if (pool) return withTransaction(async (client) => {
+    const r = await client.query(`UPDATE tasks SET status='completed',updated_at=now() WHERE id=$1 AND claimed_by=$2 AND status='claimed' RETURNING ${taskSelect}`, [taskId, agentId]);
+    if (!r.rowCount) return null; const task = normalizeTask(r.rows[0]);
+    await logWithClient(client, "task.complete", { taskId, agentId, ...(task.projectId ? { projectId: task.projectId } : {}) }); return task;
+  });
+  const t = tasks.get(taskId); if (!t || t.status !== "claimed" || t.claimedBy !== agentId) return null;
+  const previous = { ...t }; t.status = "completed"; t.updatedAt = now();
+  try { await log("task.complete", { taskId, agentId, ...(t.projectId ? { projectId: t.projectId } : {}) }); } catch (error) { Object.assign(t, previous); throw error; }
+  return t;
+}
+export async function handoff(taskId: string, fromAgent: string, toAgent: string, note?: string) {
+  if (fromAgent === toAgent) return null; if (!(await agentExists(fromAgent)) || !(await agentExists(toAgent))) return null;
+  if (pool) return withTransaction(async (client) => {
+    const task = (await client.query(`SELECT ${taskSelect} FROM tasks WHERE id=$1 FOR UPDATE`, [taskId])).rows[0] as Record<string, unknown> | undefined;
+    if (!task || task.status !== "claimed" || task.claimedBy !== fromAgent) return null;
+    const updated = (await client.query(`UPDATE tasks SET claimed_by=$2,updated_at=now() WHERE id=$1 RETURNING ${taskSelect}`, [taskId, toAgent])).rows[0];
+    await client.query("INSERT INTO handoffs(id,task_id,from_agent,to_agent,note) VALUES($1,$2,$3,$4,$5)", [id("handoff"), taskId, fromAgent, toAgent, note ?? null]);
+    const normalized = normalizeTask(updated);
+    await logWithClient(client, "task.handoff", { taskId, agentId: fromAgent, toAgent, note: note ?? "", ...(normalized.projectId ? { projectId: normalized.projectId } : {}) });
+    return { ...normalized, handoffNote: note ?? "" };
+  });
+  const t = tasks.get(taskId); if (!t || t.status !== "claimed" || t.claimedBy !== fromAgent) return null;
+  const previous = { ...t }; t.claimedBy = toAgent; t.updatedAt = now();
+  try { await log("task.handoff", { taskId, agentId: fromAgent, toAgent, note: note ?? "", ...(t.projectId ? { projectId: t.projectId } : {}) }); } catch (error) { Object.assign(t, previous); throw error; }
+  return { ...t, handoffNote: note ?? "" };
+}
+export async function addContact(name: string, value: string, kind: string, projectId?: string, createdBy?: string) {
+  if ((projectId && !(await projectExists(projectId))) || (createdBy && !(await agentExists(createdBy)))) return null;
+  const c: Contact = { id: id("contact"), projectId, name, value, kind, createdBy, createdAt: now() };
+  if (pool) await pool.query("INSERT INTO contacts(id,project_id,name,value,kind,created_by) VALUES($1,$2,$3,$4,$5,$6)", [c.id, c.projectId ?? null, name, value, kind, createdBy ?? null]); else contacts.push(c);
+  await log("contact.add", { contactId: c.id, ...(projectId ? { projectId } : {}), ...(createdBy ? { agentId: createdBy } : {}) }); return c;
+}
+export async function listContacts(projectId?: string) {
+  if (pool) return (await pool.query("SELECT id,project_id AS \"projectId\",name,value,kind,created_by AS \"createdBy\",created_at AS \"createdAt\" FROM contacts" + (projectId ? " WHERE project_id=$1" : "") + " ORDER BY created_at DESC, id DESC", projectId ? [projectId] : [])).rows;
+  return contacts.filter((c) => !projectId || c.projectId === projectId).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+export async function registerTool(name: string, description: string, endpoint?: string, projectId?: string, createdBy?: string) {
+  if ((projectId && !(await projectExists(projectId))) || (createdBy && !(await agentExists(createdBy)))) return null;
+  const t: Tool = { id: id("tool"), projectId, name, description, endpoint, createdBy, createdAt: now() };
+  if (pool) await pool.query("INSERT INTO tools(id,project_id,name,description,endpoint,created_by) VALUES($1,$2,$3,$4,$5,$6)", [t.id, t.projectId ?? null, name, description, endpoint ?? null, createdBy ?? null]); else tools.push(t);
+  await log("tool.register", { toolId: t.id, ...(projectId ? { projectId } : {}), ...(createdBy ? { agentId: createdBy } : {}) }); return t;
+}
+export async function listTools(projectId?: string) {
+  if (pool) return (await pool.query("SELECT id,project_id AS \"projectId\",name,description,endpoint,created_by AS \"createdBy\",created_at AS \"createdAt\" FROM tools" + (projectId ? " WHERE project_id=$1" : "") + " ORDER BY created_at DESC, id DESC", projectId ? [projectId] : [])).rows;
+  return tools.filter((t) => !projectId || t.projectId === projectId).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+export async function listActivity(limit = 50, projectId?: string) {
+  const safeLimit = Math.max(1, Math.min(limit, 200));
+  if (pool) {
+    const rows = await pool.query("SELECT id,type,at,data,project_id AS \"projectId\" FROM activity" + (projectId ? " WHERE project_id=$2" : "") + " ORDER BY at DESC, id DESC LIMIT $1", projectId ? [safeLimit, projectId] : [safeLimit]);
+    return rows.rows.map((row: Record<string, unknown>) => ({ id: row.id, type: row.type, at: new Date(row.at as string).toISOString(), ...((row.data as object) ?? {}), ...(row.projectId ? { projectId: row.projectId } : {}) }));
+  }
+  const matches: ActivityEvent[] = [];
+  for (let i = activity.length - 1; i >= 0 && matches.length < safeLimit; i--) { const event = activity[i]; if (!projectId || event.projectId === projectId) matches.push(event); }
+  return matches;
+}
+export async function getProject(projectId: string) {
+  if (pool) { const row = (await pool.query(`SELECT ${projectSelect} FROM projects WHERE id=$1 AND archived_at IS NULL`, [projectId])).rows[0]; return row ? normalizeProject(row) : null; }
+  const project = projects.get(projectId); return project && !project.archivedAt ? project : null;
+}
+export async function archiveProject(projectId: string, agentId: string) {
+  if (!(await agentExists(agentId))) return null;
+  if (pool) return withTransaction(async (client) => {
+    const existing = (await client.query(`SELECT ${projectSelect} FROM projects WHERE id=$1 FOR UPDATE`, [projectId])).rows[0] as Record<string, unknown> | undefined;
+    if (!existing || existing.createdBy !== agentId) return null;
+    const current = normalizeProject(existing); if (current.archivedAt) return current;
+    const row = (await client.query(`UPDATE projects SET archived_at=now(), updated_at=now() WHERE id=$1 RETURNING ${projectSelect}`, [projectId])).rows[0];
+    const archived = normalizeProject(row); await logWithClient(client, "project.archive", { projectId, agentId }); return archived;
+  });
+  const project = projects.get(projectId); if (!project || project.createdBy !== agentId) return null;
+  if (project.archivedAt) return project; project.archivedAt = now(); project.updatedAt = project.archivedAt; await log("project.archive", { projectId, agentId }); return project;
+}
+export async function archiveResource(resourceId: string, agentId: string) {
+  if (!(await agentExists(agentId))) return null;
+  if (pool) return withTransaction(async (client) => {
+    const existing = (await client.query(`SELECT ${resourceSelect} FROM resources WHERE id=$1 FOR UPDATE`, [resourceId])).rows[0] as Record<string, unknown> | undefined;
+    if (!existing || existing.createdBy !== agentId) return null;
+    const current = normalizeResource(existing); if (current.archivedAt) return current;
+    const row = (await client.query(`UPDATE resources SET archived_at=now(), updated_at=now() WHERE id=$1 RETURNING ${resourceSelect}`, [resourceId])).rows[0];
+    const archived = normalizeResource(row); await logWithClient(client, "resource.archive", { resourceId, agentId, ...(archived.projectId ? { projectId: archived.projectId } : {}) }); return archived;
+  });
+  const resource = resources.get(resourceId); if (!resource || resource.createdBy !== agentId) return null;
+  if (resource.archivedAt) return resource; resource.archivedAt = now(); resource.updatedAt = resource.archivedAt; await log("resource.archive", { resourceId, agentId, ...(resource.projectId ? { projectId: resource.projectId } : {}) }); return resource;
+}
+export async function getCoordinationContext(projectId?: string): Promise<CoordinationContext | null> {
+  let project: Project | null = null;
+  if (projectId) { project = await getProject(projectId); if (!project) return null; }
+  const [agentList, taskList, contactList, toolList, resourceList, activityList, projectList] = await Promise.all([listAgents(), listTasks({ projectId }), listContacts(projectId), listTools(projectId), listResources(projectId), listActivity(50, projectId), projectId ? Promise.resolve([]) : listProjects()]);
+  return { service: "Conduit", generatedAt: now(), project, projects: projectList, agents: agentList, tasks: taskList, contacts: contactList, tools: toolList, resources: resourceList, activity: activityList };
+}
+export async function getTask(taskId: string) {
+  if (pool) { const row = (await pool.query(`SELECT ${taskSelect} FROM tasks WHERE id=$1`, [taskId])).rows[0]; return row ? normalizeTask(row) : null; }
+  return tasks.get(taskId) || null;
+}
+export async function blockTask(taskId: string, agentId: string, reason?: string) {
+  if (!(await agentExists(agentId))) return null;
+  if (pool) return withTransaction(async (client) => {
+    const r = await client.query(`UPDATE tasks SET status='blocked',updated_at=now() WHERE id=$1 AND claimed_by=$2 AND status='claimed' RETURNING ${taskSelect}`, [taskId, agentId]);
+    if (!r.rowCount) return null; const task = normalizeTask(r.rows[0]);
+    await logWithClient(client, "task.block", { taskId, agentId, ...(reason ? { reason } : {}), ...(task.projectId ? { projectId: task.projectId } : {}) }); return task;
+  });
+  const t = tasks.get(taskId); if (!t || t.status !== "claimed" || t.claimedBy !== agentId) return null;
+  const previous = { ...t }; t.status = "blocked"; t.updatedAt = now();
+  try { await log("task.block", { taskId, agentId, ...(reason ? { reason } : {}), ...(t.projectId ? { projectId: t.projectId } : {}) }); } catch (error) { Object.assign(t, previous); throw error; }
+  return t;
+}
+export async function releaseTask(taskId: string, agentId: string) {
+  if (!(await agentExists(agentId))) return null;
+  if (pool) return withTransaction(async (client) => {
+    const r = await client.query(`UPDATE tasks SET status='open',claimed_by=NULL,updated_at=now() WHERE id=$1 AND claimed_by=$2 AND status IN ('claimed','blocked') RETURNING ${taskSelect}`, [taskId, agentId]);
+    if (!r.rowCount) return null; const task = normalizeTask(r.rows[0]);
+    await logWithClient(client, "task.release", { taskId, agentId, ...(task.projectId ? { projectId: task.projectId } : {}) }); return task;
+  });
+  const t = tasks.get(taskId); if (!t || (t.status !== "claimed" && t.status !== "blocked") || t.claimedBy !== agentId) return null;
+  const previous = { ...t }; t.status = "open"; delete t.claimedBy; t.updatedAt = now();
+  try { await log("task.release", { taskId, agentId, ...(t.projectId ? { projectId: t.projectId } : {}) }); } catch (error) { Object.assign(t, previous); throw error; }
+  return t;
+}
+export async function countAgents() { if (pool) return Number((await pool.query("SELECT COUNT(*)::int AS n FROM agents")).rows[0].n); return agents.size; }
+export async function countTasks() { if (pool) return Number((await pool.query("SELECT COUNT(*)::int AS n FROM tasks")).rows[0].n); return tasks.size; }
+export async function countTools() { if (pool) return Number((await pool.query("SELECT COUNT(*)::int AS n FROM tools")).rows[0].n); return tools.length; }
+export async function countActivity() { if (pool) return Number((await pool.query("SELECT COUNT(*)::int AS n FROM activity")).rows[0].n); return activity.length; }
