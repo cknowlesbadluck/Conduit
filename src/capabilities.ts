@@ -31,31 +31,35 @@ function normalizePath(path: string) {
   return path.startsWith("/") ? path : `/${path}`;
 }
 
-function matchPattern(pattern: string, value: string): boolean {
+function matchPattern(pattern: string, value: string, normalizedValue?: string): boolean {
   const normalizedPattern = normalizePath(pattern);
-  const normalizedValue = normalizePath(value);
+  // Performance Optimization: Use pre-normalized request path if supplied to avoid redundant
+  // expensive URL parsing (new URL()) inside grant matching loops.
+  const targetValue = normalizedValue ?? normalizePath(value);
   if (normalizedPattern.endsWith("/**")) {
     const prefix = normalizedPattern.slice(0, -3).replace(/\/$/, "");
-    return normalizedValue === prefix || normalizedValue.startsWith(`${prefix}/`);
+    return targetValue === prefix || targetValue.startsWith(`${prefix}/`);
   }
   const patternParts = normalizedPattern.split("/").filter(Boolean);
-  const valueParts = normalizedValue.split("/").filter(Boolean);
+  const valueParts = targetValue.split("/").filter(Boolean);
   if (patternParts.length !== valueParts.length) return false;
   return patternParts.every((part, index) => part === "*" || part === valueParts[index]);
 }
 
-export function matchesCapability(grant: CapabilityGrant, request: CapabilityRequest): boolean {
+export function matchesCapability(grant: CapabilityGrant, request: CapabilityRequest, normalizedRequestPath?: string): boolean {
   if (grant.revokedAt) return false;
   if (grant.agentId !== request.agentId) return false;
   if (grant.provider !== request.provider) return false;
   if (grant.projectId && grant.projectId !== request.projectId) return false;
   if (normalizeMethod(grant.method) !== "*" && normalizeMethod(grant.method) !== normalizeMethod(request.method)) return false;
   if (grant.expiresAt && Date.parse(grant.expiresAt) <= Date.now()) return false;
-  return matchPattern(grant.pathPattern, request.path);
+  return matchPattern(grant.pathPattern, request.path, normalizedRequestPath);
 }
 
 export function assertCapability(grants: CapabilityGrant[], request: CapabilityRequest): void {
-  if (!grants.some((grant) => matchesCapability(grant, request))) {
+  // Performance Optimization: Normalize request.path once upfront before iterating over capability grants.
+  const normalizedRequestPath = normalizePath(request.path);
+  if (!grants.some((grant) => matchesCapability(grant, request, normalizedRequestPath))) {
     throw new Error("capability_denied");
   }
 }
