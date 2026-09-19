@@ -13,6 +13,7 @@ import { timingSafeEqual } from "node:crypto";
 import { replayRecentEvents, subscribeEvents } from "./events.js";
 import { getPublicConduitStatus } from "./status.js";
 import { conduitUiHtml, CONDUIT_UI_CSS, CONDUIT_UI_JS } from "./ui.js";
+import { migrateRenderDatabaseToNeon } from "./migrate-render-to-neon.js";
 
 const app = express();
 app.disable("x-powered-by");
@@ -66,6 +67,11 @@ app.get("/ready", async (_req, res) => {
 });
 
 async function boot() {
+  if (process.env.MIGRATE_ON_BOOT === "true") {
+    console.log("Starting one-time Render to Neon database migration...");
+    const result = await migrateRenderDatabaseToNeon();
+    console.log("Render to Neon migration completed", JSON.stringify(result));
+  }
   await init();
   await initCapabilityStore();
   const authConfig = await loadAuthConfig();
