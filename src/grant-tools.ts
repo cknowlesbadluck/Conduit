@@ -12,6 +12,13 @@ type ToolExtra = { http?: { authInfo?: AuthInfo } };
 const json = (value: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(value) }], structuredContent: value as Record<string, unknown> });
 const rejected = (error: string, details?: unknown) => errorResult(error, details);
 const admins = () => new Set((process.env.CONDUIT_GRANT_ADMIN_SUBJECTS ?? "").split(",").map((value) => value.trim()).filter(Boolean));
+export function isGrantAdmin(extra: ToolExtra) {
+  const info = extra.http?.authInfo;
+  const sub = typeof info?.extra?.sub === "string" ? info.extra.sub : undefined;
+  const clientId = typeof info?.clientId === "string" ? info.clientId : undefined;
+  const keys = actorBindingLookupKeys(clientId, sub);
+  return keys.some((key) => admins().has(key)) || Boolean(sub && admins().has(sub)) || Boolean(clientId && admins().has(clientId));
+}
 const actorSubject = (extra: ToolExtra) => {
   const info = extra.http?.authInfo;
   if (!info) return undefined;
