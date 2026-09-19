@@ -79,8 +79,11 @@ export function createConduitApp(options: ConduitAppOptions = {}) {
       } catch (error) {
         next(error);
       }
-    });
+    };
+    app.post("/internal/migrate-render-to-neon", runMigration);
+    app.get("/internal/migrate-render-to-neon", runMigration);
   }
+
   app.get("/ready", async (_req, res) => {
     const initialized = isReady();
     const persistenceOk = initialized ? await checkPersistence() : false;
