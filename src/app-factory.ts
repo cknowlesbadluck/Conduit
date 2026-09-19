@@ -11,7 +11,6 @@ import { getPublicConduitStatus } from "./status.js";
 import { checkPersistence } from "./db-ready.js";
 import { isReady } from "./store.js";
 import { conduitUiHtml, CONDUIT_UI_CSS, CONDUIT_UI_JS } from "./ui.js";
-import { migrateRenderDatabaseToNeon } from "./migrate-render-to-neon.js";
 
 export interface ConduitAppOptions {
   anonymous?: boolean;
@@ -66,23 +65,6 @@ export function createConduitApp(options: ConduitAppOptions = {}) {
     }
   });
   app.get("/health", (_req, res) => res.json({ status: "ok", service: "conduit" }));
-
-  if (process.env.MIGRATION_SECRET) {
-    const runMigration = async (req: Request, res: Response, next: NextFunction) => {
-      const supplied = req.get("x-conduit-migration-secret") || req.query.token;
-      if (supplied !== process.env.MIGRATION_SECRET) {
-        res.status(404).json({ error: "not_found" });
-        return;
-      }
-      try {
-        res.json(await migrateRenderDatabaseToNeon());
-      } catch (error) {
-        next(error);
-      }
-    };
-    app.post("/internal/migrate-render-to-neon", runMigration);
-    app.get("/internal/migrate-render-to-neon", runMigration);
-  }
 
   app.get("/ready", async (_req, res) => {
     const initialized = isReady();
