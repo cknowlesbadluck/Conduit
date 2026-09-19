@@ -122,3 +122,34 @@ test("owner-only project and resource tombstones leave live lists", async () => 
   const again = await archiveProject(project.id, "tomb-owner");
   assert.ok(again?.archivedAt);
 });
+
+test("project creator can tombstone a foreign-owned resource; stranger cannot", async () => {
+  await registerAgent({ id: "hygiene-owner", name: "Hygiene Owner", actorSubject: "subject-hygiene-owner" });
+  await registerAgent({ id: "hygiene-foreign", name: "Hygiene Foreign", actorSubject: "subject-hygiene-foreign" });
+  await registerAgent({ id: "hygiene-stranger", name: "Hygiene Stranger", actorSubject: "subject-hygiene-stranger" });
+  const project = await createProject({ name: "Hygiene Project", createdBy: "hygiene-owner" });
+  assert.ok(project);
+  const resource = await registerResource({ projectId: project.id, name: "Foreign Resource", description: "stale org root", kind: "repository", endpoint: "https://github.com/example/org", createdBy: "hygiene-foreign" });
+  assert.ok(resource);
+
+  assert.equal(await archiveResource(resource.id, "hygiene-stranger"), null);
+  const archived = await archiveResource(resource.id, "hygiene-owner");
+  assert.ok(archived?.archivedAt);
+  assert.equal((await listResources()).some((item) => item.id === resource.id), false);
+});
+
+test("asAdmin can tombstone foreign-owned project and resource", async () => {
+  await registerAgent({ id: "admin-actor", name: "Admin Actor", actorSubject: "subject-admin-actor" });
+  await registerAgent({ id: "foreign-owner", name: "Foreign Owner", actorSubject: "subject-foreign-owner" });
+  const project = await createProject({ name: "Admin Tomb Project", createdBy: "foreign-owner" });
+  assert.ok(project);
+  const resource = await registerResource({ projectId: project.id, name: "Admin Tomb Resource", description: "stale", kind: "repository", endpoint: "https://github.com/example/stale-admin", createdBy: "foreign-owner" });
+  assert.ok(resource);
+
+  assert.equal(await archiveResource(resource.id, "admin-actor"), null);
+  assert.equal(await archiveProject(project.id, "admin-actor"), null);
+  assert.ok(await archiveResource(resource.id, "admin-actor", { asAdmin: true }));
+  assert.ok(await archiveProject(project.id, "admin-actor", { asAdmin: true }));
+  assert.equal((await listResources()).some((item) => item.id === resource.id), false);
+  assert.equal((await listProjects()).some((item) => item.id === project.id), false);
+});
