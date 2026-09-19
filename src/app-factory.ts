@@ -68,8 +68,9 @@ export function createConduitApp(options: ConduitAppOptions = {}) {
   app.get("/health", (_req, res) => res.json({ status: "ok", service: "conduit" }));
 
   if (process.env.MIGRATION_SECRET) {
-    app.post("/internal/migrate-render-to-neon", async (req, res, next) => {
-      if (req.get("x-conduit-migration-secret") !== process.env.MIGRATION_SECRET) {
+    const runMigration = async (req: Request, res: Response, next: NextFunction) => {
+      const supplied = req.get("x-conduit-migration-secret") || req.query.token;
+      if (supplied !== process.env.MIGRATION_SECRET) {
         res.status(404).json({ error: "not_found" });
         return;
       }
