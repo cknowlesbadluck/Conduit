@@ -311,21 +311,25 @@ export async function getProject(projectId: string) {
   return project && !project.archivedAt ? project : null;
 }
 
-export async function archiveProject(projectId: string, agentId: string) {
+export type ArchiveOptions = { asAdmin?: boolean };
+
+export async function archiveProject(projectId: string, agentId: string, options?: ArchiveOptions) {
   if (!(await agentExists(agentId))) return null;
   if (pool) {
     return withTransaction(async client => {
-      const existing = (await client.query("SELECT id,name,description,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\",archived_at AS \"archivedAt\" FROM projects WHERE id=$1 AND created_by=$2 FOR UPDATE", [projectId, agentId])).rows[0] as Record<string, unknown> | undefined;
+      const existing = (await client.query("SELECT id,name,description,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\",archived_at AS \"archivedAt\" FROM projects WHERE id=$1 FOR UPDATE", [projectId])).rows[0] as Record<string, unknown> | undefined;
       if (!existing) return null;
+      const createdBy = existing.createdBy as string;
+      if (createdBy !== agentId && !options?.asAdmin) return null;
       if (existing.archivedAt) return normalizeProject(existing);
-      const row = (await client.query("UPDATE projects SET archived_at=now(),updated_at=now() WHERE id=$1 AND created_by=$2 RETURNING id,name,description,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\",archived_at AS \"archivedAt\"", [projectId, agentId])).rows[0];
+      const row = (await client.query("UPDATE projects SET archived_at=now(),updated_at=now() WHERE id=$1 RETURNING id,name,description,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\",archived_at AS \"archivedAt\"", [projectId])).rows[0];
       const project = normalizeProject(row);
       await logWithClient(client, "project.archive", { projectId, agentId });
       return project;
     });
   }
   const project = projects.get(projectId);
-  if (!project || project.createdBy !== agentId) return null;
+  if (!project || (project.createdBy !== agentId && !options?.asAdmin)) return null;
   if (project.archivedAt) return project;
   const previous = { ...project };
   project.archivedAt = now();
@@ -335,21 +339,31 @@ export async function archiveProject(projectId: string, agentId: string) {
   return project;
 }
 
-export async function archiveResource(resourceId: string, agentId: string) {
+export async function archiveResource(resourceId: string, agentId: string, options?: ArchiveOptions) {
   if (!(await agentExists(agentId))) return null;
   if (pool) {
     return withTransaction(async client => {
-      const existing = (await client.query("SELECT id,project_id AS \"projectId\",name,description,kind,endpoint,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\",archived_at AS \"archivedAt\" FROM resources WHERE id=$1 AND created_by=$2 FOR UPDATE", [resourceId, agentId])).rows[0] as Record<string, unknown> | undefined;
+      const existing = (await client.query("SELECT id,project_id AS \"projectId\",name,description,kind,endpoint,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\",archived_at AS \"archivedAt\" FROM resources WHERE id=$1 FOR UPDATE", [resourceId])).rows[0] as Record<string, unknown> | undefined;
       if (!existing) return null;
+      const createdBy = existing.createdBy as string;
+      const projectId = (existing.projectId as string | null) ?? undefined;
+      let projectCreator: string | undefined;
+      if (projectId) {
+        const projectRow = (await client.query("SELECT created_by AS \"createdBy\" FROM projects WHERE id=$1", [projectId])).rows[0] as { createdBy?: string } | undefined;
+        projectCreator = projectRow?.createdBy;
+      }
+      if (createdBy !== agentId && projectCreator !== agentId && !options?.asAdmin) return null;
       if (existing.archivedAt) return normalizeResource(existing);
-      const row = (await client.query("UPDATE resources SET archived_at=now(),updated_at=now() WHERE id=$1 AND created_by=$2 RETURNING id,project_id AS \"projectId\",name,description,kind,endpoint,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\",archived_at AS \"archivedAt\"", [resourceId, agentId])).rows[0];
+      const row = (await client.query("UPDATE resources SET archived_at=now(),updated_at=now() WHERE id=$1 RETURNING id,project_id AS \"projectId\",name,description,kind,endpoint,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\",archived_at AS \"archivedAt\"", [resourceId])).rows[0];
       const resource = normalizeResource(row);
       await logWithClient(client, "resource.archive", { resourceId, agentId, ...(resource.projectId ? { projectId: resource.projectId } : {}) });
       return resource;
     });
   }
   const resource = resources.get(resourceId);
-  if (!resource || resource.createdBy !== agentId) return null;
+  if (!resource) return null;
+  const parent = resource.projectId ? projects.get(resource.projectId) : undefined;
+  if (resource.createdBy !== agentId && parent?.createdBy !== agentId && !options?.asAdmin) return null;
   if (resource.archivedAt) return resource;
   const previous = { ...resource };
   resource.archivedAt = now();

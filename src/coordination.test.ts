@@ -122,3 +122,34 @@ test("owner-only project and resource tombstones leave live lists", async () => 
   const again = await archiveProject(project.id, "tomb-owner");
   assert.ok(again?.archivedAt);
 });
+
+test("project-creator can archive foreign-owned resource; stranger cannot; admin can archive foreign project", async () => {
+  await registerAgent({ id: "pc-owner", name: "Project Creator" });
+  await registerAgent({ id: "pc-member", name: "Member" });
+  await registerAgent({ id: "pc-stranger", name: "Stranger" });
+  await registerAgent({ id: "pc-admin", name: "Admin" });
+  const project = await createProject({ name: "PC Project", createdBy: "pc-owner" });
+  assert.ok(project);
+  const resource = await registerResource({ projectId: project.id, name: "Foreign Resource", description: "owned by member", kind: "repository", endpoint: "https://github.com/example/foreign", createdBy: "pc-member" });
+  assert.ok(resource);
+
+  assert.equal(await archiveResource(resource.id, "pc-stranger"), null);
+  const byCreator = await archiveResource(resource.id, "pc-owner");
+  assert.ok(byCreator?.archivedAt);
+  assert.equal((await listResources()).some((item) => item.id === resource.id), false);
+
+  const foreignProject = await createProject({ name: "Foreign Project", createdBy: "pc-member" });
+  assert.ok(foreignProject);
+  assert.equal(await archiveProject(foreignProject.id, "pc-owner"), null);
+  const byAdmin = await archiveProject(foreignProject.id, "pc-admin", { asAdmin: true });
+  assert.ok(byAdmin?.archivedAt);
+  assert.equal((await listProjects()).some((item) => item.id === foreignProject.id), false);
+
+  const foreignResourceProject = await createProject({ name: "Admin Resource Project", createdBy: "pc-member" });
+  assert.ok(foreignResourceProject);
+  const adminTarget = await registerResource({ projectId: foreignResourceProject.id, name: "Admin Target", description: "admin archive", kind: "mcp", endpoint: "https://example.com/mcp", createdBy: "pc-member" });
+  assert.ok(adminTarget);
+  assert.equal(await archiveResource(adminTarget.id, "pc-owner"), null);
+  const adminArchived = await archiveResource(adminTarget.id, "pc-admin", { asAdmin: true });
+  assert.ok(adminArchived?.archivedAt);
+});
