@@ -122,3 +122,33 @@ test("owner-only project and resource tombstones leave live lists", async () => 
   const again = await archiveProject(project.id, "tomb-owner");
   assert.ok(again?.archivedAt);
 });
+
+test("project-creator can tombstone a foreign-owned resource; stranger cannot; admin override can", async () => {
+  await registerAgent({ id: "tomb-proj", name: "Project Creator", actorSubject: "subject-tomb-proj" });
+  await registerAgent({ id: "tomb-res", name: "Resource Creator", actorSubject: "subject-tomb-res" });
+  await registerAgent({ id: "tomb-stranger", name: "Stranger", actorSubject: "subject-tomb-stranger" });
+  await registerAgent({ id: "tomb-admin", name: "Admin", actorSubject: "subject-tomb-admin" });
+  const project = await createProject({ name: "Admin Tomb Project", createdBy: "tomb-proj" });
+  assert.ok(project);
+  const foreign = await registerResource({ projectId: project.id, name: "Foreign Resource", description: "owned by other agent", kind: "repository", endpoint: "https://github.com/example/foreign", createdBy: "tomb-res" });
+  assert.ok(foreign);
+  const other = await registerResource({ projectId: project.id, name: "Second Foreign", description: "also foreign", kind: "mcp", endpoint: "https://example.com/mcp", createdBy: "tomb-res" });
+  assert.ok(other);
+
+  assert.equal(await archiveResource(foreign.id, "tomb-stranger"), null);
+  const byProjectCreator = await archiveResource(foreign.id, "tomb-proj");
+  assert.ok(byProjectCreator?.archivedAt);
+  assert.equal((await listResources(project.id)).some((item) => item.id === foreign.id), false);
+
+  assert.equal(await archiveResource(other.id, "tomb-stranger"), null);
+  const byAdmin = await archiveResource(other.id, "tomb-admin", { asAdmin: true });
+  assert.ok(byAdmin?.archivedAt);
+
+  const otherProject = await createProject({ name: "Foreign Project", createdBy: "tomb-res" });
+  assert.ok(otherProject);
+  assert.equal(await archiveProject(otherProject.id, "tomb-stranger"), null);
+  assert.equal(await archiveProject(otherProject.id, "tomb-proj"), null);
+  const archivedByAdmin = await archiveProject(otherProject.id, "tomb-admin", { asAdmin: true });
+  assert.ok(archivedByAdmin?.archivedAt);
+  assert.equal((await listProjects()).some((item) => item.id === otherProject.id), false);
+});

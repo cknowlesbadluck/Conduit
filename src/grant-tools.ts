@@ -92,3 +92,11 @@ export function registerGrantTools(server: McpServer, authConfig?: ConduitAuthCo
     catch (error) { return rejected("diagnostics_failed", { message: error instanceof Error ? error.message : "diagnostics_failed" }); }
   });
 }
+
+export function isGrantAdmin(extra: ToolExtra) {
+  const info = extra.http?.authInfo;
+  const sub = typeof info?.extra?.sub === "string" ? info.extra.sub : undefined;
+  const clientId = typeof info?.clientId === "string" ? info.clientId : undefined;
+  const keys = actorBindingLookupKeys(clientId, sub);
+  return keys.some((key) => admins().has(key)) || Boolean(sub && admins().has(sub)) || Boolean(clientId && admins().has(clientId));
+}
