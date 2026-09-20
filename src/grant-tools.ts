@@ -30,12 +30,16 @@ async function governingAgent(extra: ToolExtra) {
   }
   return actorSubject(extra);
 }
-async function canGovern(extra: ToolExtra, projectId?: string) {
+export function isGrantAdmin(extra: ToolExtra) {
   const info = extra.http?.authInfo;
   const sub = typeof info?.extra?.sub === "string" ? info.extra.sub : undefined;
   const clientId = typeof info?.clientId === "string" ? info.clientId : undefined;
   const keys = actorBindingLookupKeys(clientId, sub);
-  if (keys.some((key) => admins().has(key)) || (sub && admins().has(sub)) || (clientId && admins().has(clientId))) return true;
+  return keys.some((key) => admins().has(key)) || Boolean(sub && admins().has(sub)) || Boolean(clientId && admins().has(clientId));
+}
+
+async function canGovern(extra: ToolExtra, projectId?: string) {
+  if (isGrantAdmin(extra)) return true;
   if (!projectId) return false;
   const project = await getProject(projectId);
   return project?.createdBy === (await governingAgent(extra));
