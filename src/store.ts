@@ -187,7 +187,17 @@ export async function createProject(input: { name: string; description?: string;
   if(pool) await pool.query("INSERT INTO projects(id,name,description,created_by) VALUES($1,$2,$3,$4)",[p.id,p.name,p.description,p.createdBy]); else projects.set(p.id,p);
   await log("project.create",{projectId:p.id,agentId:p.createdBy}); return p;
 }
-export async function listProjects(){if(pool)return(await pool.query("SELECT id,name,description,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\",archived_at AS \"archivedAt\" FROM projects WHERE archived_at IS NULL ORDER BY created_at DESC, id DESC")).rows.map(normalizeProject);return[...projects.values()].filter(p=>!p.archivedAt).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
+export async function listProjects() {
+  if (pool) {
+    const result = await pool.query(
+      "SELECT id,name,description,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\",archived_at AS \"archivedAt\" FROM projects WHERE archived_at IS NULL ORDER BY created_at DESC, id DESC"
+    );
+    return result.rows.map(normalizeProject);
+  }
+  return [...projects.values()]
+    .filter((p) => !p.archivedAt)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
 
 export async function registerResource(input:{projectId?:string;name:string;description:string;kind:string;endpoint?:string;createdBy:string}){
   if(!(await agentExists(input.createdBy))||(input.projectId&&!(await projectExists(input.projectId))))return null;
