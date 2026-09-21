@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { init, registerAgent, getBoundAgentId, createProject, listProjects, registerResource, listResources, createTask, listTasks, addContact, listContacts, registerTool, listTools, listActivity, getCoordinationContext, claimTask, handoff, archiveProject, archiveResource, getProject } from "./store.js";
+import { init, registerAgent, getBoundAgentId, createProject, listProjects, registerResource, listResources, createTask, listTasks, addContact, listContacts, registerTool, listTools, listActivity, getCoordinationContext, claimTask, handoff, archiveProject, archiveResource, getProject, archiveContact, archiveTool, pruneActivity } from "./store.js";
 
 await init();
 
@@ -152,4 +152,52 @@ test("project-creator can archive foreign-owned resource; stranger cannot; admin
   assert.equal(await archiveResource(adminTarget.id, "pc-owner"), null);
   const adminArchived = await archiveResource(adminTarget.id, "pc-admin", { asAdmin: true });
   assert.ok(adminArchived?.archivedAt);
+});
+
+test("owner-only contact and tool tombstones leave live lists; project-creator and admin overrides work; legacy unowned rows are archivable by anyone", async () => {
+  await registerAgent({ id: "tomb-ct-owner", name: "Tomb CT Owner" });
+  await registerAgent({ id: "tomb-ct-other", name: "Tomb CT Other" });
+  await registerAgent({ id: "tomb-ct-admin", name: "Tomb CT Admin" });
+  const project = await createProject({ name: "CT Tomb Project", createdBy: "tomb-ct-owner" });
+  assert.ok(project);
+
+  const contact = await addContact("Stale Contact", "stale@example.com", "email", undefined, "tomb-ct-owner");
+  const tool = await registerTool("Stale Tool", "no longer used", "https://example.com/stale", undefined, "tomb-ct-owner");
+  assert.ok(contact); assert.ok(tool);
+
+  assert.equal(await archiveContact(contact.id, "tomb-ct-other"), null);
+  assert.equal(await archiveTool(tool.id, "tomb-ct-other"), null);
+  assert.ok((await listContacts()).some((item) => item.id === contact.id));
+  assert.ok((await listTools()).some((item) => item.id === tool.id));
+
+  const archivedContact = await archiveContact(contact.id, "tomb-ct-owner");
+  const archivedTool = await archiveTool(tool.id, "tomb-ct-owner");
+  assert.ok(archivedContact?.archivedAt);
+  assert.ok(archivedTool?.archivedAt);
+  assert.equal((await listContacts()).some((item) => item.id === contact.id), false);
+  assert.equal((await listTools()).some((item) => item.id === tool.id), false);
+  // Re-archiving is idempotent.
+  assert.ok((await archiveContact(contact.id, "tomb-ct-owner"))?.archivedAt);
+
+  // Project-creator can archive a member's contact/tool scoped to their project; a stranger cannot.
+  const memberContact = await addContact("Member Contact", "member@example.com", "email", project.id, "tomb-ct-other");
+  assert.ok(memberContact);
+  assert.equal(await archiveContact(memberContact.id, "tomb-ct-admin"), null);
+  assert.ok((await archiveContact(memberContact.id, "tomb-ct-owner"))?.archivedAt);
+
+  // Grant-admin can archive across ownership entirely.
+  const strangerTool = await registerTool("Stranger Tool", "not admin's", undefined, undefined, "tomb-ct-other");
+  assert.ok(strangerTool);
+  assert.equal(await archiveTool(strangerTool.id, "tomb-ct-admin"), null);
+  assert.ok((await archiveTool(strangerTool.id, "tomb-ct-admin", { asAdmin: true }))?.archivedAt);
+
+  // Legacy rows with no recorded creator have no owner to protect, so any registered agent may archive them.
+  const legacyContact = await addContact("Legacy Contact", "legacy@example.com", "email");
+  assert.ok(legacyContact);
+  assert.equal(legacyContact.createdBy, undefined);
+  assert.ok((await archiveContact(legacyContact.id, "tomb-ct-other"))?.archivedAt);
+});
+
+test("pruneActivity is a safe no-op against the in-memory store", async () => {
+  assert.equal(await pruneActivity(), 0);
 });

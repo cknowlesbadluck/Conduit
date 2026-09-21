@@ -6,6 +6,7 @@ import { z } from "zod";
 import {
   registerAgent, getBoundAgentId, createProject, registerResource,
   getProject, archiveProject, archiveResource, createTask, getTask, claimTask, blockTask, releaseTask, completeTask, handoff, addContact, registerTool,
+  archiveContact, archiveTool, pruneActivity,
 } from "./store.js";
 import { getDevelopmentContext } from "./development.js";
 import { callIntegration, integrationMethods, integrationProviders, listIntegrations } from "./integrations.js";
@@ -181,6 +182,19 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
   server.registerTool("tool_register", { description: "Register a shared tool or MCP endpoint. Registration is metadata only and does not authorize mcp_bridge_call against that URL.", inputSchema: z.object({ name: z.string().min(1).max(200), description: z.string().min(1).max(2000), endpoint: z.string().url().optional(), projectId: z.string().min(1).max(200).optional(), createdBy: z.string().min(1).max(200).optional() }), annotations: writeSafe }, async ({ name, description, endpoint, projectId, createdBy }, extra) => {
     if (writeScope) auth(extra, writeScope); const actor = await resolveBoundAgent(extra, createdBy); if (!actor) return rejected("agent_identity_not_bound");
     const result = await registerTool(name, description, endpoint, projectId, actor); return result ? json(result) : rejected("project_not_found_or_agent_unregistered");
+  });
+  server.registerTool("contact_archive", { description: "Archive a contact. Allowed for the creator, the parent project creator, or a grant admin. Legacy contacts with no recorded creator have no owner to protect, so any registered agent may archive them. Tombstone only; records are not hard-deleted.", inputSchema: z.object({ contactId: z.string().min(1), agentId: z.string().min(1).max(200).optional() }), annotations: writeIdempotent }, async ({ contactId, agentId }, extra) => {
+    if (writeScope) auth(extra, writeScope); const actor = await resolveBoundAgent(extra, agentId); if (!actor) return rejected("agent_identity_not_bound");
+    const result = await archiveContact(contactId, actor, { asAdmin: isGrantAdmin(extra) }); return result ? json(result) : rejected("contact_not_found_or_not_owned", { contactId });
+  });
+  server.registerTool("tool_archive", { description: "Archive a shared tool/endpoint registration. Allowed for the creator, the parent project creator, or a grant admin. Legacy entries with no recorded creator have no owner to protect, so any registered agent may archive them. Tombstone only; records are not hard-deleted.", inputSchema: z.object({ toolId: z.string().min(1), agentId: z.string().min(1).max(200).optional() }), annotations: writeIdempotent }, async ({ toolId, agentId }, extra) => {
+    if (writeScope) auth(extra, writeScope); const actor = await resolveBoundAgent(extra, agentId); if (!actor) return rejected("agent_identity_not_bound");
+    const result = await archiveTool(toolId, actor, { asAdmin: isGrantAdmin(extra) }); return result ? json(result) : rejected("tool_not_found_or_not_owned", { toolId });
+  });
+  server.registerTool("activity_prune", { description: "Delete old activity/audit rows beyond the retention window (env CONDUIT_ACTIVITY_RETENTION, default 5000 most recent), keeping the store from growing unbounded. Returns the number of rows removed; a no-op in in-memory mode, where retention is enforced automatically on write.", inputSchema: z.object({}), annotations: writeDestructive }, async (_input, extra) => {
+    if (writeScope) auth(extra, writeScope);
+    const removed = await pruneActivity();
+    return json({ removed });
   });
 
   registerGrantTools(server, authConfig);

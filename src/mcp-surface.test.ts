@@ -7,7 +7,7 @@ const coreTools = [
   "project_create", "project_get", "project_archive", "resource_register", "resource_archive",
   "integrations_list", "integration_call", "mcp_bridge_call", "task_create", "task_get",
   "task_block", "task_release", "task_claim", "task_complete", "task_handoff", "contact_add",
-  "tool_register",
+  "tool_register", "contact_archive", "tool_archive", "activity_prune",
 ];
 const policyTools = ["grant_create", "grant_revoke", "grants_list", "conduit_diagnostics"];
 const paginatedTools = ["agents_list", "projects_list", "resources_list", "task_list", "contacts_list", "tools_list", "activity_list", "conduit_context"];
