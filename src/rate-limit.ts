@@ -24,6 +24,10 @@ export class SlidingWindowLimiter {
       timestamps = [];
       this.buckets.set(key, timestamps);
     } else {
+      // Re-insert key on access to maintain LRU (least recently used) order via Map insertion order.
+      this.buckets.delete(key);
+      this.buckets.set(key, timestamps);
+
       // Timestamps are inserted in non-decreasing order. Prune expired prefixes in place.
       let firstValid = 0;
       while (firstValid < timestamps.length && timestamps[firstValid] <= cutoff) {
@@ -52,8 +56,14 @@ export class SlidingWindowLimiter {
       if (this.buckets.size <= this.options.maxKeys) break;
     }
     if (this.buckets.size > this.options.maxKeys) {
-      const oldest = [...this.buckets.entries()].sort((a, b) => (a[1][0] ?? 0) - (b[1][0] ?? 0));
-      for (const [key] of oldest.slice(0, this.buckets.size - this.options.maxKeys)) this.buckets.delete(key);
+      // Performance Optimization: Map keys maintain insertion/touch order (LRU).
+      // Deleting directly from `this.buckets.keys()` avoids allocating a full array
+      // of entries [...this.buckets.entries()] and sorting it O(N log N).
+      let toRemove = this.buckets.size - this.options.maxKeys;
+      for (const key of this.buckets.keys()) {
+        this.buckets.delete(key);
+        if (--toRemove <= 0) break;
+      }
     }
   }
 }
