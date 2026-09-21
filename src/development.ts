@@ -16,7 +16,7 @@ export function getDevelopmentContext(): DevelopmentContext {
       "Register and discover agents.",
       "Create, claim, complete, and hand off work with ownership controls.",
       "Register and discover shared contacts, resources, tools, and MCP endpoints.",
-      "Maintain an auditable activity trail for coordinated work.",
+      "Maintain an auditable activity trail for coordinated work, with tombstone archival for projects, resources, contacts, and tools, and bounded retention for the activity log.",
       "Expose a single authenticated MCP endpoint for participating agents.",
     ],
     constraints: [

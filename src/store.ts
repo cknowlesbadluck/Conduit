@@ -7,8 +7,8 @@ export type Agent = { id: string; name: string; description?: string; createdAt:
 export type Project = { id: string; name: string; description: string; createdBy: string; createdAt: string; updatedAt: string; archivedAt?: string };
 export type Resource = { id: string; projectId?: string; name: string; description: string; kind: string; endpoint?: string; createdBy: string; createdAt: string; updatedAt: string; archivedAt?: string };
 export type Task = { id: string; projectId?: string; title: string; description: string; status: TaskStatus; createdBy: string; claimedBy?: string; createdAt: string; updatedAt: string };
-export type Contact = { id: string; projectId?: string; name: string; value: string; kind: string; createdBy?: string; createdAt: string };
-export type Tool = { id: string; projectId?: string; name: string; description: string; endpoint?: string; createdBy?: string; createdAt: string };
+export type Contact = { id: string; projectId?: string; name: string; value: string; kind: string; createdBy?: string; createdAt: string; archivedAt?: string };
+export type Tool = { id: string; projectId?: string; name: string; description: string; endpoint?: string; createdBy?: string; createdAt: string; archivedAt?: string };
 export type ActivityEvent = Record<string, string>;
 export type CoordinationContext = { service: string; generatedAt: string; project: Project | null; projects: Project[]; agents: Agent[]; tasks: Task[]; contacts: Contact[]; tools: Tool[]; resources: Resource[]; activity: ActivityEvent[] };
 
@@ -37,10 +37,22 @@ const id = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
 
 export function isReady() { return ready; }
 
+const ACTIVITY_RETENTION_LIMIT = Math.max(200, Number(process.env.CONDUIT_ACTIVITY_RETENTION) || 5000);
+
 async function log(type: string, data: Record<string, string>) {
   const event = { id: id("evt"), type, at: now(), ...data };
   if (pool) await pool.query("INSERT INTO activity(id,type,at,data,project_id) VALUES($1,$2,$3,$4,$5)", [event.id, type, event.at, JSON.stringify(data), data.projectId ?? null]);
-  else activity.push(event);
+  else { activity.push(event); if (activity.length > ACTIVITY_RETENTION_LIMIT) activity.splice(0, activity.length - ACTIVITY_RETENTION_LIMIT); }
+}
+
+/** Bounds unbounded audit-log growth: keeps the most recent ACTIVITY_RETENTION_LIMIT rows. Hygiene pass, not a per-write op — safe to run occasionally (e.g. at startup, or on demand via activity_prune). */
+export async function pruneActivity() {
+  if (!pool) return 0;
+  const result = await pool.query(
+    "DELETE FROM activity WHERE id IN (SELECT id FROM activity ORDER BY at DESC, id DESC OFFSET $1)",
+    [ACTIVITY_RETENTION_LIMIT],
+  );
+  return result.rowCount ?? 0;
 }
 
 async function logWithClient(client: pg.PoolClient, type: string, data: Record<string, string>) {
@@ -115,7 +127,13 @@ export async function init() {
       CREATE INDEX IF NOT EXISTS projects_live_created_idx ON projects(created_at DESC, id DESC) WHERE archived_at IS NULL;
       CREATE INDEX IF NOT EXISTS resources_live_created_idx ON resources(created_at DESC, id DESC) WHERE archived_at IS NULL;
       INSERT INTO schema_migrations(version) VALUES('0.8.2-tombstones') ON CONFLICT (version) DO NOTHING;
+      ALTER TABLE contacts ADD COLUMN IF NOT EXISTS archived_at timestamptz;
+      ALTER TABLE tools ADD COLUMN IF NOT EXISTS archived_at timestamptz;
+      CREATE INDEX IF NOT EXISTS contacts_live_created_idx ON contacts(created_at DESC, id DESC) WHERE archived_at IS NULL;
+      CREATE INDEX IF NOT EXISTS tools_live_created_idx ON tools(created_at DESC, id DESC) WHERE archived_at IS NULL;
+      INSERT INTO schema_migrations(version) VALUES('0.8.3-contact-tool-tombstones') ON CONFLICT (version) DO NOTHING;
     `);
+    try { await pruneActivity(); } catch { /* hygiene pass is best-effort; never block startup on it */ }
   }
   ready = true;
 }
@@ -258,9 +276,102 @@ export async function handoff(taskId:string,fromAgent:string,toAgent:string,note
 }
 
 export async function addContact(name:string,value:string,kind:string,projectId?:string,createdBy?:string){if((projectId&&!(await projectExists(projectId)))||(createdBy&&!(await agentExists(createdBy))))return null;const c:Contact={id:id("contact"),projectId,name,value,kind,createdBy,createdAt:now()};if(pool)await pool.query("INSERT INTO contacts(id,project_id,name,value,kind,created_by) VALUES($1,$2,$3,$4,$5,$6)",[c.id,c.projectId??null,name,value,kind,createdBy??null]);else contacts.push(c);await log("contact.add",{contactId:c.id,...(projectId?{projectId}:{}),...(createdBy?{agentId:createdBy}:{})});return c;}
-export async function listContacts(projectId?:string){if(pool)return(await pool.query("SELECT id,project_id AS \"projectId\",name,value,kind,created_by AS \"createdBy\",created_at AS \"createdAt\" FROM contacts"+(projectId?" WHERE project_id=$1":"")+" ORDER BY created_at DESC, id DESC",projectId?[projectId]:[])).rows;return contacts.filter(c=>!projectId||c.projectId===projectId).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
+export async function listContacts(projectId?:string){if(pool)return(await pool.query("SELECT id,project_id AS \"projectId\",name,value,kind,created_by AS \"createdBy\",created_at AS \"createdAt\",archived_at AS \"archivedAt\" FROM contacts"+(projectId?" WHERE project_id=$1 AND archived_at IS NULL":" WHERE archived_at IS NULL")+" ORDER BY created_at DESC, id DESC",projectId?[projectId]:[])).rows.map(normalizeContact);return contacts.filter(c=>!c.archivedAt&&(!projectId||c.projectId===projectId)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
 export async function registerTool(name:string,description:string,endpoint?:string,projectId?:string,createdBy?:string){if((projectId&&!(await projectExists(projectId)))||(createdBy&&!(await agentExists(createdBy))))return null;const t:Tool={id:id("tool"),projectId,name,description,endpoint,createdBy,createdAt:now()};if(pool)await pool.query("INSERT INTO tools(id,project_id,name,description,endpoint,created_by) VALUES($1,$2,$3,$4,$5,$6)",[t.id,t.projectId??null,name,description,endpoint??null,createdBy??null]);else tools.push(t);await log("tool.register",{toolId:t.id,...(projectId?{projectId}:{}),...(createdBy?{agentId:createdBy}:{})});return t;}
-export async function listTools(projectId?:string){if(pool)return(await pool.query("SELECT id,project_id AS \"projectId\",name,description,endpoint,created_by AS \"createdBy\",created_at AS \"createdAt\" FROM tools"+(projectId?" WHERE project_id=$1":"")+" ORDER BY created_at DESC, id DESC",projectId?[projectId]:[])).rows;return tools.filter(t=>!projectId||t.projectId===projectId).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
+export async function listTools(projectId?:string){if(pool)return(await pool.query("SELECT id,project_id AS \"projectId\",name,description,endpoint,created_by AS \"createdBy\",created_at AS \"createdAt\",archived_at AS \"archivedAt\" FROM tools"+(projectId?" WHERE project_id=$1 AND archived_at IS NULL":" WHERE archived_at IS NULL")+" ORDER BY created_at DESC, id DESC",projectId?[projectId]:[])).rows.map(normalizeTool);return tools.filter(t=>!t.archivedAt&&(!projectId||t.projectId===projectId)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
+
+function normalizeContact(row: Record<string, unknown>): Contact {
+  return {
+    id: row.id as string,
+    projectId: (row.projectId as string | null) ?? undefined,
+    name: row.name as string,
+    value: row.value as string,
+    kind: row.kind as string,
+    createdBy: (row.createdBy as string | null) ?? undefined,
+    createdAt: new Date(row.createdAt as string | Date).toISOString(),
+    archivedAt: normalizeTimestamp(row.archivedAt),
+  };
+}
+
+function normalizeTool(row: Record<string, unknown>): Tool {
+  return {
+    id: row.id as string,
+    projectId: (row.projectId as string | null) ?? undefined,
+    name: row.name as string,
+    description: row.description as string,
+    endpoint: (row.endpoint as string | null) ?? undefined,
+    createdBy: (row.createdBy as string | null) ?? undefined,
+    createdAt: new Date(row.createdAt as string | Date).toISOString(),
+    archivedAt: normalizeTimestamp(row.archivedAt),
+  };
+}
+
+/** Ownership-or-unowned tombstone, mirroring archiveResource: creator, parent-project creator, or asAdmin may archive. A legacy row with no recorded creator has no owner to protect, so any registered agent may archive it. */
+export async function archiveContact(contactId: string, agentId: string, options?: ArchiveOptions) {
+  if (!(await agentExists(agentId))) return null;
+  if (pool) {
+    return withTransaction(async client => {
+      const existing = (await client.query("SELECT id,project_id AS \"projectId\",name,value,kind,created_by AS \"createdBy\",created_at AS \"createdAt\",archived_at AS \"archivedAt\" FROM contacts WHERE id=$1 FOR UPDATE", [contactId])).rows[0] as Record<string, unknown> | undefined;
+      if (!existing) return null;
+      const createdBy = (existing.createdBy as string | null) ?? undefined;
+      const projectId = (existing.projectId as string | null) ?? undefined;
+      let projectCreator: string | undefined;
+      if (projectId) {
+        const projectRow = (await client.query("SELECT created_by AS \"createdBy\" FROM projects WHERE id=$1", [projectId])).rows[0] as { createdBy?: string } | undefined;
+        projectCreator = projectRow?.createdBy;
+      }
+      if (createdBy && createdBy !== agentId && projectCreator !== agentId && !options?.asAdmin) return null;
+      if (existing.archivedAt) return normalizeContact(existing);
+      const row = (await client.query("UPDATE contacts SET archived_at=now() WHERE id=$1 RETURNING id,project_id AS \"projectId\",name,value,kind,created_by AS \"createdBy\",created_at AS \"createdAt\",archived_at AS \"archivedAt\"", [contactId])).rows[0];
+      const contact = normalizeContact(row);
+      await logWithClient(client, "contact.archive", { contactId, agentId, ...(contact.projectId ? { projectId: contact.projectId } : {}) });
+      return contact;
+    });
+  }
+  const contact = contacts.find(c => c.id === contactId);
+  if (!contact) return null;
+  const parent = contact.projectId ? projects.get(contact.projectId) : undefined;
+  if (contact.createdBy && contact.createdBy !== agentId && parent?.createdBy !== agentId && !options?.asAdmin) return null;
+  if (contact.archivedAt) return contact;
+  const previous = { ...contact };
+  contact.archivedAt = now();
+  try { await log("contact.archive", { contactId, agentId, ...(contact.projectId ? { projectId: contact.projectId } : {}) }); }
+  catch (error) { Object.assign(contact, previous); throw error; }
+  return contact;
+}
+
+export async function archiveTool(toolId: string, agentId: string, options?: ArchiveOptions) {
+  if (!(await agentExists(agentId))) return null;
+  if (pool) {
+    return withTransaction(async client => {
+      const existing = (await client.query("SELECT id,project_id AS \"projectId\",name,description,endpoint,created_by AS \"createdBy\",created_at AS \"createdAt\",archived_at AS \"archivedAt\" FROM tools WHERE id=$1 FOR UPDATE", [toolId])).rows[0] as Record<string, unknown> | undefined;
+      if (!existing) return null;
+      const createdBy = (existing.createdBy as string | null) ?? undefined;
+      const projectId = (existing.projectId as string | null) ?? undefined;
+      let projectCreator: string | undefined;
+      if (projectId) {
+        const projectRow = (await client.query("SELECT created_by AS \"createdBy\" FROM projects WHERE id=$1", [projectId])).rows[0] as { createdBy?: string } | undefined;
+        projectCreator = projectRow?.createdBy;
+      }
+      if (createdBy && createdBy !== agentId && projectCreator !== agentId && !options?.asAdmin) return null;
+      if (existing.archivedAt) return normalizeTool(existing);
+      const row = (await client.query("UPDATE tools SET archived_at=now() WHERE id=$1 RETURNING id,project_id AS \"projectId\",name,description,endpoint,created_by AS \"createdBy\",created_at AS \"createdAt\",archived_at AS \"archivedAt\"", [toolId])).rows[0];
+      const tool = normalizeTool(row);
+      await logWithClient(client, "tool.archive", { toolId, agentId, ...(tool.projectId ? { projectId: tool.projectId } : {}) });
+      return tool;
+    });
+  }
+  const tool = tools.find(t => t.id === toolId);
+  if (!tool) return null;
+  const parent = tool.projectId ? projects.get(tool.projectId) : undefined;
+  if (tool.createdBy && tool.createdBy !== agentId && parent?.createdBy !== agentId && !options?.asAdmin) return null;
+  if (tool.archivedAt) return tool;
+  const previous = { ...tool };
+  tool.archivedAt = now();
+  try { await log("tool.archive", { toolId, agentId, ...(tool.projectId ? { projectId: tool.projectId } : {}) }); }
+  catch (error) { Object.assign(tool, previous); throw error; }
+  return tool;
+}
 export async function listActivity(limit=50,projectId?:string){const safeLimit=Math.max(1,Math.min(limit,200));if(pool){const rows=await pool.query("SELECT id,type,at,data,project_id AS \"projectId\" FROM activity"+(projectId?" WHERE project_id=$2":"")+" ORDER BY at DESC, id DESC LIMIT $1",projectId?[safeLimit,projectId]:[safeLimit]);return rows.rows.map(row=>({id:row.id,type:row.type,at:new Date(row.at).toISOString(),...(row.data??{}),...(row.projectId?{projectId:row.projectId}:{})}));}const matches:ActivityEvent[]=[];for(let i=activity.length-1;i>=0&&matches.length<safeLimit;i--){const event=activity[i];if(!projectId||event.projectId===projectId)matches.push(event);}return matches;}
 
 export async function getCoordinationContext(projectId?:string):Promise<CoordinationContext|null>{
