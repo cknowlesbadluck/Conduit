@@ -195,7 +195,19 @@ export async function registerResource(input:{projectId?:string;name:string;desc
   if(pool)await pool.query("INSERT INTO resources(id,project_id,name,description,kind,endpoint,created_by) VALUES($1,$2,$3,$4,$5,$6,$7)",[r.id,r.projectId??null,r.name,r.description,r.kind,r.endpoint??null,r.createdBy]);else resources.set(r.id,r);
   await log("resource.register",{resourceId:r.id,agentId:r.createdBy,...(r.projectId?{projectId:r.projectId}:{})});return r;
 }
-export async function listResources(projectId?:string){if(pool){const where=projectId?" WHERE project_id=$1 AND archived_at IS NULL":" WHERE archived_at IS NULL";return(await pool.query("SELECT id,project_id AS \"projectId\",name,description,kind,endpoint,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\",archived_at AS \"archivedAt\" FROM resources"+where+" ORDER BY created_at DESC, id DESC",projectId?[projectId]:[])).rows.map(normalizeResource);}return[...resources.values()].filter(r=>!r.archivedAt&&(!projectId||r.projectId===projectId)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
+export async function listResources(projectId?: string) {
+  if (pool) {
+    const whereClause = projectId ? " WHERE project_id=$1 AND archived_at IS NULL" : " WHERE archived_at IS NULL";
+    const params = projectId ? [projectId] : [];
+    const sql = `SELECT id, project_id AS "projectId", name, description, kind, endpoint, created_by AS "createdBy", created_at AS "createdAt", updated_at AS "updatedAt", archived_at AS "archivedAt" FROM resources${whereClause} ORDER BY created_at DESC, id DESC`;
+    const result = await pool.query(sql, params);
+    return result.rows.map(normalizeResource);
+  }
+
+  return [...resources.values()]
+    .filter(r => !r.archivedAt && (!projectId || r.projectId === projectId))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
 
 export async function createTask(input:{title:string;description?:string;createdBy:string;projectId?:string}){if(!(await agentExists(input.createdBy))||(input.projectId&&!(await projectExists(input.projectId))))return null;const t:Task={id:id("task"),projectId:input.projectId,title:input.title,description:input.description??"",status:"open",createdBy:input.createdBy,createdAt:now(),updatedAt:now()};if(pool)await pool.query("INSERT INTO tasks(id,project_id,title,description,status,created_by) VALUES($1,$2,$3,$4,$5,$6)",[t.id,t.projectId??null,t.title,t.description,t.status,t.createdBy]);else tasks.set(t.id,t);await log("task.create",{taskId:t.id,agentId:t.createdBy,...(t.projectId?{projectId:t.projectId}:{})});return t;}
 
