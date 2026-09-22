@@ -24,12 +24,22 @@ export class SlidingWindowLimiter {
       timestamps = [];
       this.buckets.set(key, timestamps);
     } else {
+      // Performance Optimization: Re-insert key so JS Map iteration order reflects LRU (Least Recently Used) order.
+      this.buckets.delete(key);
+      this.buckets.set(key, timestamps);
+
       // Timestamps are inserted in non-decreasing order. Prune expired prefixes in place.
       let firstValid = 0;
       while (firstValid < timestamps.length && timestamps[firstValid] <= cutoff) {
         firstValid++;
       }
-      if (firstValid > 0) timestamps.splice(0, firstValid);
+      if (firstValid > 0) {
+        if (firstValid === timestamps.length) {
+          timestamps.length = 0; // O(1) fast-path when all timestamps are expired
+        } else {
+          timestamps.splice(0, firstValid);
+        }
+      }
     }
 
     if (timestamps.length >= this.options.limit) {
@@ -47,13 +57,20 @@ export class SlidingWindowLimiter {
   private evict(now: number) {
     if (this.buckets.size <= this.options.maxKeys) return;
     const cutoff = now - this.options.windowMs;
+
+    // Performance Optimization: Single-pass eviction using Map insertion order.
+    // Pass 1: Evict empty or expired buckets.
     for (const [key, timestamps] of this.buckets) {
-      if (timestamps.length === 0 || timestamps[timestamps.length - 1] <= cutoff) this.buckets.delete(key);
-      if (this.buckets.size <= this.options.maxKeys) break;
+      if (timestamps.length === 0 || timestamps[timestamps.length - 1] <= cutoff) {
+        this.buckets.delete(key);
+      }
+      if (this.buckets.size <= this.options.maxKeys) return;
     }
-    if (this.buckets.size > this.options.maxKeys) {
-      const oldest = [...this.buckets.entries()].sort((a, b) => (a[1][0] ?? 0) - (b[1][0] ?? 0));
-      for (const [key] of oldest.slice(0, this.buckets.size - this.options.maxKeys)) this.buckets.delete(key);
+
+    // Pass 2: If maxKeys is still exceeded, evict LRU keys in Map iterator order without sorting O(K log K).
+    for (const key of this.buckets.keys()) {
+      this.buckets.delete(key);
+      if (this.buckets.size <= this.options.maxKeys) break;
     }
   }
 }
