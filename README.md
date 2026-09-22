@@ -41,6 +41,8 @@ List/get tools advertise `readOnlyHint` and `idempotentHint`. Integration and MC
 
 Production external calls are deny-by-default. A grant binds an agent to a provider, HTTP method, and safe path pattern, optionally scoped to a project and expiry. Supported providers are `github`, `render`, `supabase`, and `mcp_bridge`.
 
+`pathPattern` is glob syntax (`**`), not regex. Patterns must start with `/`. A leading `^` or trailing `.*` is stored but never matches, so `integration_call` returns `capability_denied`. Example: `/repos/owner/repo/**`, not `^repos/owner/repo.*`. See `docs/references/auth-debugging.md`.
+
 Project creators or subjects listed in `CONDUIT_GRANT_ADMIN_SUBJECTS` govern project grants. Global grants require a configured grant administrator. Grant records are auditable and revocable; expired or revoked grants never authorize calls.
 
 A registered resource or tool is never an authorization grant. The existing MCP bridge SSRF protections remain authoritative even when a capability grant exists.
