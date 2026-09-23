@@ -107,7 +107,12 @@ export const CONDUIT_UI_JS = `
   function renderActivity(items) {
     const host = $("activity"); clear(host);
     if (!items.length) { host.appendChild(make("div", "empty", "No activity recorded.")); return; }
-    items.slice(0, 8).forEach((item) => { const row = make("div", "row"); row.appendChild(make("strong", null, item.type || "event")); row.appendChild(make("span", null, formatTime(item.at))); host.appendChild(row); });
+    items.slice(0, 8).forEach((item) => {
+      const row = make("div", "row");
+      row.appendChild(make("strong", null, item.type || "event"));
+      row.appendChild(make("span", null, formatTime(item.at)));
+      host.appendChild(row);
+    });
   }
 
   function render(data) {
