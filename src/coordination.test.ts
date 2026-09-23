@@ -201,3 +201,30 @@ test("owner-only contact and tool tombstones leave live lists; project-creator a
 test("pruneActivity is a safe no-op against the in-memory store", async () => {
   assert.equal(await pruneActivity(), 0);
 });
+
+test("addContact supports both positional parameters and single-object options argument", async () => {
+  await init();
+  const agent = await registerAgent({ id: "addcontact-agent", name: "Add Contact Agent" });
+  assert.ok(agent);
+
+  // Positional parameters
+  const c1 = await addContact("Positional Contact", "pos@example.com", "email", undefined, "addcontact-agent");
+  assert.ok(c1);
+  assert.equal(c1.name, "Positional Contact");
+  assert.equal(c1.value, "pos@example.com");
+  assert.equal(c1.kind, "email");
+  assert.equal(c1.createdBy, "addcontact-agent");
+
+  // Options object
+  const c2 = await addContact({
+    name: "Options Contact",
+    value: "opt@example.com",
+    kind: "email",
+    createdBy: "addcontact-agent",
+  });
+  assert.ok(c2);
+  assert.equal(c2.name, "Options Contact");
+  assert.equal(c2.value, "opt@example.com");
+  assert.equal(c2.kind, "email");
+  assert.equal(c2.createdBy, "addcontact-agent");
+});

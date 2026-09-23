@@ -275,7 +275,66 @@ export async function handoff(taskId:string,fromAgent:string,toAgent:string,note
   return{...t,handoffNote:note??""};
 }
 
-export async function addContact(name:string,value:string,kind:string,projectId?:string,createdBy?:string){if((projectId&&!(await projectExists(projectId)))||(createdBy&&!(await agentExists(createdBy))))return null;const c:Contact={id:id("contact"),projectId,name,value,kind,createdBy,createdAt:now()};if(pool)await pool.query("INSERT INTO contacts(id,project_id,name,value,kind,created_by) VALUES($1,$2,$3,$4,$5,$6)",[c.id,c.projectId??null,name,value,kind,createdBy??null]);else contacts.push(c);await log("contact.add",{contactId:c.id,...(projectId?{projectId}:{}),...(createdBy?{agentId:createdBy}:{})});return c;}
+export type AddContactInput = {
+  name: string;
+  value: string;
+  kind: string;
+  projectId?: string;
+  createdBy?: string;
+};
+
+export async function addContact(
+  inputOrName: AddContactInput | string,
+  value?: string,
+  kind?: string,
+  projectId?: string,
+  createdBy?: string,
+) {
+  let name: string;
+  if (typeof inputOrName === "object" && inputOrName !== null) {
+    name = inputOrName.name;
+    value = inputOrName.value;
+    kind = inputOrName.kind;
+    projectId = inputOrName.projectId;
+    createdBy = inputOrName.createdBy;
+  } else {
+    name = inputOrName;
+  }
+
+  if (
+    (projectId && !(await projectExists(projectId))) ||
+    (createdBy && !(await agentExists(createdBy)))
+  ) {
+    return null;
+  }
+
+  const c: Contact = {
+    id: id("contact"),
+    projectId,
+    name,
+    value: value!,
+    kind: kind!,
+    createdBy,
+    createdAt: now(),
+  };
+
+  if (pool) {
+    await pool.query(
+      "INSERT INTO contacts(id,project_id,name,value,kind,created_by) VALUES($1,$2,$3,$4,$5,$6)",
+      [c.id, c.projectId ?? null, name, value!, kind!, createdBy ?? null],
+    );
+  } else {
+    contacts.push(c);
+  }
+
+  await log("contact.add", {
+    contactId: c.id,
+    ...(projectId ? { projectId } : {}),
+    ...(createdBy ? { agentId: createdBy } : {}),
+  });
+
+  return c;
+}
 export async function listContacts(projectId?:string){if(pool)return(await pool.query("SELECT id,project_id AS \"projectId\",name,value,kind,created_by AS \"createdBy\",created_at AS \"createdAt\",archived_at AS \"archivedAt\" FROM contacts"+(projectId?" WHERE project_id=$1 AND archived_at IS NULL":" WHERE archived_at IS NULL")+" ORDER BY created_at DESC, id DESC",projectId?[projectId]:[])).rows.map(normalizeContact);return contacts.filter(c=>!c.archivedAt&&(!projectId||c.projectId===projectId)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
 export async function registerTool(name:string,description:string,endpoint?:string,projectId?:string,createdBy?:string){if((projectId&&!(await projectExists(projectId)))||(createdBy&&!(await agentExists(createdBy))))return null;const t:Tool={id:id("tool"),projectId,name,description,endpoint,createdBy,createdAt:now()};if(pool)await pool.query("INSERT INTO tools(id,project_id,name,description,endpoint,created_by) VALUES($1,$2,$3,$4,$5,$6)",[t.id,t.projectId??null,name,description,endpoint??null,createdBy??null]);else tools.push(t);await log("tool.register",{toolId:t.id,...(projectId?{projectId}:{}),...(createdBy?{agentId:createdBy}:{})});return t;}
 export async function listTools(projectId?:string){if(pool)return(await pool.query("SELECT id,project_id AS \"projectId\",name,description,endpoint,created_by AS \"createdBy\",created_at AS \"createdAt\",archived_at AS \"archivedAt\" FROM tools"+(projectId?" WHERE project_id=$1 AND archived_at IS NULL":" WHERE archived_at IS NULL")+" ORDER BY created_at DESC, id DESC",projectId?[projectId]:[])).rows.map(normalizeTool);return tools.filter(t=>!t.archivedAt&&(!projectId||t.projectId===projectId)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
