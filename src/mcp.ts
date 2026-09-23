@@ -19,6 +19,22 @@ import { registerPaginationTools } from "./pagination-tools.js";
 import { enforceExternalCapability } from "./external-policy.js";
 import { actorBindingKey, actorBindingLookupKeys } from "./actor-binding.js";
 
+/** Soft-gate for cross-project / GATE-style tasks. Returns a warning string when the convention is incomplete; never blocks creation. */
+export function assessTaskConvention(title: string, description?: string): string | undefined {
+  const t = title.trim();
+  const d = description ?? "";
+  const looksLikeGate =
+    /^GATE:/i.test(t) ||
+    /MASTER\s+ROADMAP/i.test(t) ||
+    /release\s+gate/i.test(t) ||
+    /cross-project/i.test(t);
+  if (!looksLikeGate) return undefined;
+  const hasDepends = /DEPENDS:\s*\S+/i.test(d);
+  const hasCriteria = /GATE-CRITERIA:\s*\S+/i.test(d);
+  if (hasDepends && hasCriteria) return undefined;
+  return "convention_warning: GATE-style or cross-project tasks should include DEPENDS: and GATE-CRITERIA: lines (see resource Cross-project release-gate convention). Task was still created.";
+}
+
 export type ToolExtra = { http?: { authInfo?: AuthInfo } };
 
 const json = (value: unknown) => ({
@@ -143,9 +159,12 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
     }
   });
 
-  server.registerTool("task_create", { description: "Create a coordination task. Uses the authenticated bound agent as creator.", inputSchema: z.object({ title: z.string().min(1).max(500), description: z.string().max(5000).optional(), createdBy: z.string().min(1).max(200).optional(), projectId: z.string().min(1).max(200).optional() }), annotations: writeSafe }, async (input, extra) => {
+  server.registerTool("task_create", { description: "Create a coordination task. Uses the authenticated bound agent as creator. GATE-style titles emit a soft convention_warning when DEPENDS:/GATE-CRITERIA: are missing; creation is never blocked.", inputSchema: z.object({ title: z.string().min(1).max(500), description: z.string().max(5000).optional(), createdBy: z.string().min(1).max(200).optional(), projectId: z.string().min(1).max(200).optional() }), annotations: writeSafe }, async (input, extra) => {
     if (writeScope) auth(extra, writeScope); const actor = await resolveBoundAgent(extra, input.createdBy); if (!actor) return rejected("agent_identity_not_bound");
-    const result = await createTask({ ...input, createdBy: actor }); return result ? json(result) : rejected(input.projectId ? "project_not_found_or_agent_unregistered" : "creator_not_registered");
+    const result = await createTask({ ...input, createdBy: actor });
+    if (!result) return rejected(input.projectId ? "project_not_found_or_agent_unregistered" : "creator_not_registered");
+    const warning = assessTaskConvention(input.title, input.description);
+    return json(warning ? { ...result, conventionWarning: warning } : result);
   });
 
   server.registerTool("task_get", { description: "Retrieve details of a single task by ID", inputSchema: z.object({ taskId: z.string().min(1) }), annotations: readOnly }, async ({ taskId }, extra) => {
