@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createDevelopmentAuthInfo, DEVELOPMENT_TOKEN_SUBJECT } from "./auth.js";
 import { actorSubject, oauthSubject, resolveBoundAgent, type ToolExtra } from "./mcp.js";
-import { registerAgent, getBoundAgentId } from "./store.js";
+import { registerAgent, getBoundAgentId, listSubjectsForAgent } from "./store.js";
 
 const extraFor = (subject?: string, clientId?: string): ToolExtra => {
   if (!subject) return {};
@@ -98,4 +98,12 @@ test("one logical agent may accept a second qualified subject", async () => {
   assert.ok(await registerAgent({ id: agentId, name: "Grok", actorSubject: "client-x::legacy-sub-grok" }));
   assert.equal(await getBoundAgentId("legacy-sub-grok"), agentId);
   assert.equal(await getBoundAgentId("client-x::legacy-sub-grok"), agentId);
+});
+
+test("listSubjectsForAgent returns every subject bound to a logical agent", async () => {
+  const agentId = "list-subjects-agent";
+  assert.ok(await registerAgent({ id: agentId, name: "List Subjects", actorSubject: "sub-a" }));
+  assert.ok(await registerAgent({ id: agentId, name: "List Subjects", actorSubject: "client-z::sub-a" }));
+  const subjects = await listSubjectsForAgent(agentId);
+  assert.deepEqual(subjects, ["client-z::sub-a", "sub-a"]);
 });
