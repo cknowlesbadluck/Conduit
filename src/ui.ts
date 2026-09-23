@@ -7,9 +7,22 @@ export const CONDUIT_UI_JS = `
 (() => {
   const $ = (id) => document.getElementById(id);
   const text = (value) => document.createTextNode(value == null ? "" : String(value));
-  const make = (tag, className, content) => { const node = document.createElement(tag); if (className) node.className = className; if (content !== undefined) node.appendChild(text(content)); return node; };
-  const clear = (node) => { while (node.firstChild) node.removeChild(node.firstChild); };
-  const formatTime = (value) => { if (!value) return "—"; const date = new Date(value); return Number.isNaN(date.valueOf()) ? value : date.toLocaleString(); };
+  const make = (tag, className, content) => {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (content !== undefined) node.appendChild(text(content));
+    return node;
+  };
+  const clear = (node) => {
+    while (node.firstChild) {
+      node.removeChild(node.firstChild);
+    }
+  };
+  const formatTime = (value) => {
+    if (!value) return "—";
+    const date = new Date(value);
+    return Number.isNaN(date.valueOf()) ? value : date.toLocaleString();
+  };
 
   function showDetails(connection) {
     const panel = $("details");
