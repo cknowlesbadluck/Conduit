@@ -203,13 +203,8 @@ export async function listTasks(options?: { status?: TaskStatus; projectId?: str
   const opts = typeof options === "string" || options === undefined ? { status: options, projectId: legacyProjectId } : options;
   const { status, projectId, claimedBy, createdBy } = opts;
   if (pool) {
-    const conditions: string[] = [];
-    const params: unknown[] = [];
-    if (status) { conditions.push(`status=$${params.length + 1}`); params.push(status); }
-    if (projectId) { conditions.push(`project_id=$${params.length + 1}`); params.push(projectId); }
-    if (claimedBy) { conditions.push(`claimed_by=$${params.length + 1}`); params.push(claimedBy); }
-    if (createdBy) { conditions.push(`created_by=$${params.length + 1}`); params.push(createdBy); }
-    const sql = `SELECT ${taskSelect} FROM tasks${conditions.length ? ` WHERE ${conditions.join(" AND ")}` : ""} ORDER BY created_at DESC, id DESC`;
+    const sql = `SELECT ${taskSelect} FROM tasks WHERE ($1::text IS NULL OR status=$1) AND ($2::text IS NULL OR project_id=$2) AND ($3::text IS NULL OR claimed_by=$3) AND ($4::text IS NULL OR created_by=$4) ORDER BY created_at DESC, id DESC`;
+    const params = [status ?? null, projectId ?? null, claimedBy ?? null, createdBy ?? null];
     const rows = (await pool.query(sql, params)).rows;
     return rows.map(normalizeTask);
   }
