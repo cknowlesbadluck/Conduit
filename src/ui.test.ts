@@ -35,6 +35,19 @@ test("root serves the schematic UI without external dependencies", async () => {
   });
 });
 
+test("ui.css serves formatted CSS stylesheet", async () => {
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/ui.css`);
+    const css = await response.text();
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type") ?? "", /text\/css/);
+    assert.match(css, /:root/);
+    assert.match(css, /color-scheme:\s*dark/);
+    assert.match(css, /\.shell/);
+    assert.match(css, /\.layout/);
+  });
+});
+
 test("status is JSON and existing health/ready endpoints remain available", async () => {
   await withServer(async (baseUrl) => {
     const [status, health, ready] = await Promise.all([
