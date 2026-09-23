@@ -372,7 +372,33 @@ export async function archiveTool(toolId: string, agentId: string, options?: Arc
   catch (error) { Object.assign(tool, previous); throw error; }
   return tool;
 }
-export async function listActivity(limit=50,projectId?:string){const safeLimit=Math.max(1,Math.min(limit,200));if(pool){const rows=await pool.query("SELECT id,type,at,data,project_id AS \"projectId\" FROM activity"+(projectId?" WHERE project_id=$2":"")+" ORDER BY at DESC, id DESC LIMIT $1",projectId?[safeLimit,projectId]:[safeLimit]);return rows.rows.map(row=>({id:row.id,type:row.type,at:new Date(row.at).toISOString(),...(row.data??{}),...(row.projectId?{projectId:row.projectId}:{})}));}const matches:ActivityEvent[]=[];for(let i=activity.length-1;i>=0&&matches.length<safeLimit;i--){const event=activity[i];if(!projectId||event.projectId===projectId)matches.push(event);}return matches;}
+export async function listActivity(limit = 50, projectId?: string) {
+  const safeLimit = Math.max(1, Math.min(limit, 200));
+
+  if (pool) {
+    const sql = `SELECT id, type, at, data, project_id AS "projectId" FROM activity${projectId ? " WHERE project_id=$2" : ""} ORDER BY at DESC, id DESC LIMIT $1`;
+    const params = projectId ? [safeLimit, projectId] : [safeLimit];
+    const rows = await pool.query(sql, params);
+
+    return rows.rows.map((row) => ({
+      id: row.id,
+      type: row.type,
+      at: new Date(row.at).toISOString(),
+      ...(row.data ?? {}),
+      ...(row.projectId ? { projectId: row.projectId } : {}),
+    }));
+  }
+
+  const matches: ActivityEvent[] = [];
+  for (let i = activity.length - 1; i >= 0 && matches.length < safeLimit; i--) {
+    const event = activity[i];
+    if (!projectId || event.projectId === projectId) {
+      matches.push(event);
+    }
+  }
+
+  return matches;
+}
 
 export async function getCoordinationContext(projectId?:string):Promise<CoordinationContext|null>{
   let project:Project|null=null;
