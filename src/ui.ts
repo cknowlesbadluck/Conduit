@@ -142,5 +142,82 @@ export const CONDUIT_UI_JS = `
 `;
 
 export function conduitUiHtml() {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Conduit</title><link rel="stylesheet" href="/ui.css"></head><body><main class="shell"><header class="header"><div><span class="brand">CONDUIT</span><span id="version" class="version"></span></div><div class="state"><span id="service-dot" class="dot"></span><span id="service-state">loading</span></div></header><div class="layout"><section class="panel schematic" aria-label="Conduit schematic"><div class="schematic-head"><span>system schematic</span><span>MCP transport</span></div><div class="diagram"><div id="agents" class="agents"><div class="empty">Loading connections…</div></div><div id="wire" class="wire" aria-hidden="true"></div><div class="core"><strong>CONDUIT</strong><small>MCP</small></div></div></section><aside id="details" class="panel details"><h2>Inspection</h2><div class="empty">Select a node.</div></aside><div class="sections"><section class="panel section"><h2>Connections</h2><div id="connections-summary" class="list"><div class="row"><strong>Loading</strong><span>Observed from server activity</span></div></div></section><section class="panel section"><h2>Tools</h2><div id="tools" class="list"><div class="empty">Loading…</div></div></section><section class="panel section"><h2>Tasks</h2><div id="tasks" class="list"><div class="empty">Loading…</div></div></section><section class="panel section"><h2>Activity</h2><div id="activity" class="list"><div class="empty">Loading…</div></div></section></div></div><div class="footer">Conduit operational view · read-only · <a href="/health">health</a> · <a href="/ready">ready</a> · <a href="/mcp">mcp</a></div></main><script src="/ui.js" defer></script></body></html>`;
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Conduit</title>
+    <link rel="stylesheet" href="/ui.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="header">
+        <div>
+          <span class="brand">CONDUIT</span>
+          <span id="version" class="version"></span>
+        </div>
+        <div class="state">
+          <span id="service-dot" class="dot"></span>
+          <span id="service-state">loading</span>
+        </div>
+      </header>
+      <div class="layout">
+        <section class="panel schematic" aria-label="Conduit schematic">
+          <div class="schematic-head">
+            <span>system schematic</span>
+            <span>MCP transport</span>
+          </div>
+          <div class="diagram">
+            <div id="agents" class="agents">
+              <div class="empty">Loading connections…</div>
+            </div>
+            <div id="wire" class="wire" aria-hidden="true"></div>
+            <div class="core">
+              <strong>CONDUIT</strong>
+              <small>MCP</small>
+            </div>
+          </div>
+        </section>
+        <aside id="details" class="panel details">
+          <h2>Inspection</h2>
+          <div class="empty">Select a node.</div>
+        </aside>
+        <div class="sections">
+          <section class="panel section">
+            <h2>Connections</h2>
+            <div id="connections-summary" class="list">
+              <div class="row">
+                <strong>Loading</strong>
+                <span>Observed from server activity</span>
+              </div>
+            </div>
+          </section>
+          <section class="panel section">
+            <h2>Tools</h2>
+            <div id="tools" class="list">
+              <div class="empty">Loading…</div>
+            </div>
+          </section>
+          <section class="panel section">
+            <h2>Tasks</h2>
+            <div id="tasks" class="list">
+              <div class="empty">Loading…</div>
+            </div>
+          </section>
+          <section class="panel section">
+            <h2>Activity</h2>
+            <div id="activity" class="list">
+              <div class="empty">Loading…</div>
+            </div>
+          </section>
+        </div>
+      </div>
+      <div class="footer">
+        Conduit operational view · read-only · <a href="/health">health</a> · <a href="/ready">ready</a> · <a href="/mcp">mcp</a>
+      </div>
+    </main>
+    <script src="/ui.js" defer></script>
+  </body>
+</html>`;
 }
