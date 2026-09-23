@@ -31,13 +31,35 @@ function normalizePath(path: string) {
   return path.startsWith("/") ? path : `/${path}`;
 }
 
+/**
+ * Glob path matching for capability grants (deny-by-default).
+ *
+ * Supported forms:
+ * - Exact path
+ * - Whole-segment wildcard: one path segment equal to "*"
+ * - Recursive prefix ending with "/**"
+ * - Trailing single-star prefix ending with "*" (not "/*"): path equals or starts with the literal prefix
+ *
+ * Regex-style patterns (leading "^", trailing ".*") never match.
+ */
 function matchPattern(pattern: string, value: string): boolean {
   const normalizedPattern = normalizePath(pattern);
   const normalizedValue = normalizePath(value);
+
+  // Recursive directory wildcard: ends with /**
   if (normalizedPattern.endsWith("/**")) {
     const prefix = normalizedPattern.slice(0, -3).replace(/\/$/, "");
     return normalizedValue === prefix || normalizedValue.startsWith(`${prefix}/`);
   }
+
+  // Trailing single-star prefix: ends with * but not /*
+  // Example grant: /v1/services/srv-xxx*  matches that service id and its subpaths
+  if (normalizedPattern.endsWith("*") && !normalizedPattern.endsWith("/*")) {
+    const prefix = normalizedPattern.slice(0, -1);
+    return normalizedValue === prefix || normalizedValue.startsWith(prefix);
+  }
+
+  // Segment-wise exact / single-segment *
   const patternParts = normalizedPattern.split("/").filter(Boolean);
   const valueParts = normalizedValue.split("/").filter(Boolean);
   if (patternParts.length !== valueParts.length) return false;

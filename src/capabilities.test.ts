@@ -46,3 +46,181 @@ test("capability assertion is deny-by-default", () => {
   assert.throws(() => assertCapability([], request()), /capability_denied/);
   assert.doesNotThrow(() => assertCapability([grant()], request()));
 });
+
+// --- Regression: ChatGPT → Render grant used trailing single-star prefix ---
+test("trailing single-star prefix matches exact service path (Render regression)", () => {
+  const g = grant({
+    provider: "render",
+    method: "GET",
+    pathPattern: "/v1/services/srv-dabgm3ks728c739rmt50*",
+  });
+  const req = request({
+    provider: "render",
+    method: "GET",
+    path: "/v1/services/srv-dabgm3ks728c739rmt50",
+  });
+  assert.equal(matchesCapability(g, req), true);
+});
+
+test("trailing single-star prefix matches subpaths under the same service id", () => {
+  const g = grant({
+    provider: "render",
+    method: "GET",
+    pathPattern: "/v1/services/srv-dabgm3ks728c739rmt50*",
+  });
+  assert.equal(
+    matchesCapability(g, request({
+      provider: "render",
+      method: "GET",
+      path: "/v1/services/srv-dabgm3ks728c739rmt50/deploys",
+    })),
+    true,
+  );
+});
+
+test("trailing single-star prefix does not authorize a different service id", () => {
+  const g = grant({
+    provider: "render",
+    method: "GET",
+    pathPattern: "/v1/services/srv-dabgm3ks728c739rmt50*",
+  });
+  assert.equal(
+    matchesCapability(g, request({
+      provider: "render",
+      method: "GET",
+      path: "/v1/services/srv-other-service-id",
+    })),
+    false,
+  );
+});
+
+test("GET grant does not authorize POST/PATCH/DELETE", () => {
+  const g = grant({
+    provider: "render",
+    method: "GET",
+    pathPattern: "/v1/services/srv-dabgm3ks728c739rmt50*",
+  });
+  for (const method of ["POST", "PATCH", "DELETE", "PUT"] as const) {
+    assert.equal(
+      matchesCapability(g, request({
+        provider: "render",
+        method,
+        path: "/v1/services/srv-dabgm3ks728c739rmt50",
+      })),
+      false,
+      `GET grant must not authorize ${method}`,
+    );
+  }
+});
+
+test("agent without matching grant remains denied", () => {
+  const g = grant({
+    agentId: "chatgpt",
+    provider: "render",
+    method: "GET",
+    pathPattern: "/v1/services/srv-dabgm3ks728c739rmt50*",
+  });
+  assert.equal(
+    matchesCapability(g, request({
+      agentId: "other-agent",
+      provider: "render",
+      method: "GET",
+      path: "/v1/services/srv-dabgm3ks728c739rmt50",
+    })),
+    false,
+  );
+});
+
+test("project-scoped grant does not match different projectId", () => {
+  const g = grant({
+    projectId: "proj_a",
+    provider: "render",
+    method: "GET",
+    pathPattern: "/v1/services/srv-dabgm3ks728c739rmt50*",
+  });
+  assert.equal(
+    matchesCapability(g, request({
+      provider: "render",
+      method: "GET",
+      path: "/v1/services/srv-dabgm3ks728c739rmt50",
+      projectId: "proj_b",
+    })),
+    false,
+  );
+  // null/global request against project-scoped grant is denied
+  assert.equal(
+    matchesCapability(g, request({
+      provider: "render",
+      method: "GET",
+      path: "/v1/services/srv-dabgm3ks728c739rmt50",
+    })),
+    false,
+  );
+});
+
+test("global (null project) grant matches any projectId or none", () => {
+  const g = grant({
+    // no projectId
+    provider: "render",
+    method: "GET",
+    pathPattern: "/v1/services/srv-dabgm3ks728c739rmt50*",
+  });
+  assert.equal(
+    matchesCapability(g, request({
+      provider: "render",
+      method: "GET",
+      path: "/v1/services/srv-dabgm3ks728c739rmt50",
+    })),
+    true,
+  );
+  assert.equal(
+    matchesCapability(g, request({
+      provider: "render",
+      method: "GET",
+      path: "/v1/services/srv-dabgm3ks728c739rmt50",
+      projectId: "any-project",
+    })),
+    true,
+  );
+});
+
+test("/** recursive form still preferred and works for Render service", () => {
+  const g = grant({
+    provider: "render",
+    method: "GET",
+    pathPattern: "/v1/services/srv-dabgm3ks728c739rmt50/**",
+  });
+  assert.equal(
+    matchesCapability(g, request({
+      provider: "render",
+      method: "GET",
+      path: "/v1/services/srv-dabgm3ks728c739rmt50",
+    })),
+    true,
+  );
+  assert.equal(
+    matchesCapability(g, request({
+      provider: "render",
+      method: "GET",
+      path: "/v1/services/srv-dabgm3ks728c739rmt50/env-vars",
+    })),
+    true,
+  );
+});
+
+test("regex-style trailing .* still does not match (documented non-glob)", () => {
+  const g = grant({
+    provider: "render",
+    method: "GET",
+    pathPattern: "/v1/services/srv-dabgm3ks728c739rmt50.*",
+  });
+  // ends with ".*" not single "*", so falls through to segment match which fails length/equality
+  assert.equal(
+    matchesCapability(g, request({
+      provider: "render",
+      method: "GET",
+      path: "/v1/services/srv-dabgm3ks728c739rmt50",
+    })),
+    false,
+  );
+});
