@@ -78,7 +78,10 @@ export function matchesCapability(grant: CapabilityGrant, request: CapabilityReq
 
 export function assertCapability(grants: CapabilityGrant[], request: CapabilityRequest): void {
   if (!grants.some((grant) => matchesCapability(grant, request))) {
-    throw new Error("capability_denied");
+    const project = request.projectId ? ` projectId=${request.projectId}` : "";
+    throw new Error(
+      `capability_denied agent=${request.agentId} provider=${request.provider} method=${request.method} path=${request.path}${project}. Grant a matching pathPattern: exact path, one-segment *, recursive prefix /**, or trailing single-star prefix.`,
+    );
   }
 }
 
