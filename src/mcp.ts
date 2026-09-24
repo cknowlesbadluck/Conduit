@@ -4,10 +4,11 @@ function sanitizeForLog(text: string): string {
 import { McpServer, type AuthInfo } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
-  registerAgent, getBoundAgentId, listSubjectsForAgent, createProject, registerResource,
+  registerAgent, getBoundAgentId, createProject, registerResource,
   getProject, archiveProject, archiveResource, createTask, getTask, claimTask, blockTask, releaseTask, completeTask, handoff, addContact, registerTool,
   archiveContact, archiveTool, pruneActivity,
 } from "./store.js";
+import { listSubjectsForAgent } from "./binding-subjects.js";
 import { getDevelopmentContext } from "./development.js";
 import { callIntegration, integrationMethods, integrationProviders, listIntegrations } from "./integrations.js";
 import { callMcpBridge } from "./mcp-bridge.js";
