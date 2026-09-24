@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createDevelopmentAuthInfo, DEVELOPMENT_TOKEN_SUBJECT } from "./auth.js";
 import { actorSubject, oauthSubject, resolveBoundAgent, type ToolExtra } from "./mcp.js";
 import { registerAgent, getBoundAgentId } from "./store.js";
+import { listSubjectsForAgent, rememberSubjectBinding } from "./binding-subjects.js";
 
 const extraFor = (subject?: string, clientId?: string): ToolExtra => {
   if (!subject) return {};
@@ -101,10 +102,11 @@ test("one logical agent may accept a second qualified subject", async () => {
 });
 
 test("listSubjectsForAgent returns every subject bound to a logical agent", async () => {
-  const { listSubjectsForAgent } = await import("./store.js");
   const agentId = "diag-shared-agent";
   assert.ok(await registerAgent({ id: agentId, name: "Diag", actorSubject: "diag-sub-a" }));
   assert.ok(await registerAgent({ id: agentId, name: "Diag", actorSubject: "client-diag::diag-sub-a" }));
+  rememberSubjectBinding(agentId, "diag-sub-a");
+  rememberSubjectBinding(agentId, "client-diag::diag-sub-a");
   const subjects = await listSubjectsForAgent(agentId);
   assert.deepEqual(subjects, ["client-diag::diag-sub-a", "diag-sub-a"]);
 });
