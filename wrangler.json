@@ -1,6 +1,9 @@
 {
   "name": "conduit",
-  "main": "src/index.ts",
+  "main": "dist/index.js",
+  "build": {
+    "command": "npm run build"
+  },
   "compatibility_date": "2024-09-23",
   "compatibility_flags": [
     "nodejs_compat"
