@@ -99,3 +99,12 @@ test("one logical agent may accept a second qualified subject", async () => {
   assert.equal(await getBoundAgentId("legacy-sub-grok"), agentId);
   assert.equal(await getBoundAgentId("client-x::legacy-sub-grok"), agentId);
 });
+
+test("listSubjectsForAgent returns every subject bound to a logical agent", async () => {
+  const { listSubjectsForAgent } = await import("./store.js");
+  const agentId = "diag-shared-agent";
+  assert.ok(await registerAgent({ id: agentId, name: "Diag", actorSubject: "diag-sub-a" }));
+  assert.ok(await registerAgent({ id: agentId, name: "Diag", actorSubject: "client-diag::diag-sub-a" }));
+  const subjects = await listSubjectsForAgent(agentId);
+  assert.deepEqual(subjects, ["client-diag::diag-sub-a", "diag-sub-a"]);
+});
