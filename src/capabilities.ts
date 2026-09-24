@@ -42,9 +42,8 @@ function normalizePath(path: string) {
  *
  * Regex-style patterns (leading "^", trailing ".*") never match.
  */
-function matchPattern(pattern: string, value: string): boolean {
+function matchPattern(pattern: string, normalizedValue: string): boolean {
   const normalizedPattern = normalizePath(pattern);
-  const normalizedValue = normalizePath(value);
 
   // Recursive directory wildcard: ends with /**
   if (normalizedPattern.endsWith("/**")) {
@@ -66,18 +65,43 @@ function matchPattern(pattern: string, value: string): boolean {
   return patternParts.every((part, index) => part === "*" || part === valueParts[index]);
 }
 
-export function matchesCapability(grant: CapabilityGrant, request: CapabilityRequest): boolean {
+type NormalizedRequest = {
+  method: string;
+  path: string;
+  now: number;
+};
+
+export function matchesCapability(
+  grant: CapabilityGrant,
+  request: CapabilityRequest,
+  normalizedReq?: NormalizedRequest,
+): boolean {
   if (grant.revokedAt) return false;
   if (grant.agentId !== request.agentId) return false;
   if (grant.provider !== request.provider) return false;
   if (grant.projectId && grant.projectId !== request.projectId) return false;
-  if (normalizeMethod(grant.method) !== "*" && normalizeMethod(grant.method) !== normalizeMethod(request.method)) return false;
-  if (grant.expiresAt && Date.parse(grant.expiresAt) <= Date.now()) return false;
-  return matchPattern(grant.pathPattern, request.path);
+
+  const reqMethod = normalizedReq?.method ?? normalizeMethod(request.method);
+  const grantMethod = normalizeMethod(grant.method);
+  if (grantMethod !== "*" && grantMethod !== reqMethod) return false;
+
+  const now = normalizedReq?.now ?? Date.now();
+  if (grant.expiresAt && Date.parse(grant.expiresAt) <= now) return false;
+
+  const reqPath = normalizedReq?.path ?? normalizePath(request.path);
+  return matchPattern(grant.pathPattern, reqPath);
 }
 
 export function assertCapability(grants: CapabilityGrant[], request: CapabilityRequest): void {
-  if (!grants.some((grant) => matchesCapability(grant, request))) {
+  // Performance Optimization: Pre-normalize request method, path, and timestamp once
+  // to avoid redundant string normalization, URL parsing, and Date.now() calls per grant.
+  const normalizedReq: NormalizedRequest = {
+    method: normalizeMethod(request.method),
+    path: normalizePath(request.path),
+    now: Date.now(),
+  };
+
+  if (!grants.some((grant) => matchesCapability(grant, request, normalizedReq))) {
     const project = request.projectId ? ` projectId=${request.projectId}` : "";
     throw new Error(
       `capability_denied agent=${request.agentId} provider=${request.provider} method=${request.method} path=${request.path}${project}. Grant a matching pathPattern: exact path, one-segment *, recursive prefix /**, or trailing single-star prefix.`,
