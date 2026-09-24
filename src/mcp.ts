@@ -4,7 +4,7 @@ function sanitizeForLog(text: string): string {
 import { McpServer, type AuthInfo } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
-  registerAgent, getBoundAgentId, createProject, registerResource,
+  registerAgent, getBoundAgentId, listSubjectsForAgent, createProject, registerResource,
   getProject, archiveProject, archiveResource, createTask, getTask, claimTask, blockTask, releaseTask, completeTask, handoff, addContact, registerTool,
   archiveContact, archiveTool, pruneActivity,
 } from "./store.js";
@@ -90,18 +90,30 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
   const readScope = authConfig?.readScope;
   const writeScope = authConfig?.writeScope;
 
-  server.registerTool("agent_identity", { description: "Return the authenticated actor, granted Conduit scopes, and bound logical agent id when one exists.", inputSchema: z.object({}), annotations: readOnly }, async (_input, extra) => {
+  server.registerTool("agent_identity", { description: "Return the authenticated actor, granted Conduit scopes, bound logical agent id, and binding collision diagnostics when a binding exists.", inputSchema: z.object({}), annotations: readOnly }, async (_input, extra) => {
     if (readScope) auth(extra, readScope);
     const info = extra.http?.authInfo;
-    return json({ clientId: info?.clientId ?? "unknown", scopes: info?.scopes ?? [], subject: typeof info?.extra?.sub === "string" ? info.extra.sub : undefined, name: typeof info?.extra?.name === "string" ? info.extra.name : undefined, email: typeof info?.extra?.email === "string" ? info.extra.email : undefined, boundAgentId: await boundAgent(extra), expiresAt: info?.expiresAt });
+    const clientId = typeof info?.clientId === "string" && info.clientId.length > 0 ? info.clientId : undefined;
+    const subject = typeof info?.extra?.sub === "string" ? info.extra.sub : undefined;
+    const boundAgentId = await boundAgent(extra);
+    const bindingKeys = actorBindingLookupKeys(clientId, subject);
+    const subjectsHoldingBoundAgent = boundAgentId ? await listSubjectsForAgent(boundAgentId) : [];
+    const bindingConflict = subjectsHoldingBoundAgent.length > 1;
+    return json({ clientId: info?.clientId ?? "unknown", scopes: info?.scopes ?? [], subject, name: typeof info?.extra?.name === "string" ? info.extra.name : undefined, email: typeof info?.extra?.email === "string" ? info.extra.email : undefined, boundAgentId, expiresAt: info?.expiresAt, bindingKeys, subjectsHoldingBoundAgent, bindingConflict });
   });
 
   server.registerTool("development_context", { description: "Return the canonical, project-agnostic purpose, scope, capabilities, and constraints of Conduit", inputSchema: z.object({}), annotations: readOnly }, async (_input, extra) => { if (readScope) auth(extra, readScope); return json(getDevelopmentContext()); });
 
   server.registerTool("agent_register", { description: "Register a logical agent identity and bind it to the authenticated actor. Subsequent writes use this bound identity.", inputSchema: z.object({ id: z.string().min(1).max(200), name: z.string().min(1).max(200), description: z.string().max(2000).optional() }), annotations: writeIdempotent }, async ({ id, name, description }, extra) => {
     if (writeScope) auth(extra, writeScope); const actor = actorSubject(extra); const existing = actor ? await getBoundAgentId(actor) : undefined;
-    if (actor && existing && existing !== id) return rejected("agent_identity_already_bound", { boundAgentId: existing, requestedAgentId: id });
-    const result = await registerAgent({ id, name, description, actorSubject: actor }); return result ? json(result) : rejected("agent_identity_conflict", { agentId: id });
+    if (actor && existing && existing !== id) {
+      const holders = await listSubjectsForAgent(existing);
+      return rejected("agent_identity_already_bound", { boundAgentId: existing, requestedAgentId: id, subjectsHoldingBoundAgent: holders, hint: "This actor is already bound. Do not steal another host binding. Use the existing boundAgentId or wait until it is released." });
+    }
+    const result = await registerAgent({ id, name, description, actorSubject: actor });
+    if (result) return json(result);
+    const holders = await listSubjectsForAgent(id);
+    return rejected("agent_identity_conflict", { agentId: id, subjectsHoldingBoundAgent: holders, hint: "Requested agent id is held by another actor binding. Register a distinct logical agent only if agent_identity shows unbound." });
   });
 
   server.registerTool("project_create", { description: "Create a project coordination domain for shared development work", inputSchema: z.object({ name: z.string().min(1).max(200), description: z.string().max(2000).optional(), createdBy: z.string().min(1).max(200).optional() }), annotations: writeSafe }, async ({ name, description, createdBy }, extra) => {
@@ -137,7 +149,7 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
       const result = await callIntegration({ provider, method, path, body });
       console.info(JSON.stringify({ type: "integration.call", provider, method, path: sanitizeForLog(result.path), status: result.status, ok: result.ok, projectId: projectId ?? null, actor: actorSubject(extra) ?? null }));
       return json(result);
-    } catch (error) { const message = error instanceof Error ? error.message : "integration_call_failed"; console.warn(JSON.stringify({ type: "integration.call.failed", provider, method, path, projectId: projectId ?? null, actor: actorSubject(extra) ?? null, error: message })); return rejected(message === "capability_denied" ? "capability_denied" : "integration_call_failed", { message }); }
+    } catch (error) { const message = error instanceof Error ? error.message : "integration_call_failed"; console.warn(JSON.stringify({ type: "integration.call.failed", provider, method, path, projectId: projectId ?? null, actor: actorSubject(extra) ?? null, error: message })); return rejected(message.startsWith("capability_denied") ? "capability_denied" : "integration_call_failed", { message }); }
   });
 
   server.registerTool("mcp_bridge_call", { description: "Forward one JSON-RPC request to a remote HTTPS MCP endpoint. Discovery/list methods require read scope; tools/call and other methods require write scope. Private, loopback, and link-local targets are rejected, DNS is pinned after validation, and redirects are not followed.", inputSchema: z.object({ endpoint: z.string().url(), method: z.string().min(1).max(200), id: z.union([z.string(), z.number(), z.null()]).optional(), params: z.unknown().optional(), projectId: z.string().min(1).max(200).optional() }), annotations: openWorldWrite }, async ({ endpoint, method, id, params, projectId }, extra) => {
@@ -155,7 +167,7 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
       let origin: string | null = null;
       try { origin = new URL(endpoint).origin; } catch { origin = null; }
       console.warn(JSON.stringify({ type: "mcp.bridge.call.failed", endpoint: origin, method, projectId: projectId ?? null, actor: actorSubject(extra) ?? null, error: message }));
-      return rejected(message === "capability_denied" ? "capability_denied" : "mcp_bridge_call_failed", { message });
+      return rejected(message.startsWith("capability_denied") ? "capability_denied" : "mcp_bridge_call_failed", { message });
     }
   });
 
