@@ -1,10 +1,9 @@
 import { z } from "zod";
 import type { AuthInfo, McpServer } from "@modelcontextprotocol/server";
-import { getCoordinationContext, listActivity, listAgents, listContacts, listProjects, listResources, listTasks, listTools } from "./store.js";
+import { getProject, listActivityPage, listAgentsPage, listContactsPage, listProjectsPage, listResourcesPage, listTasksPage, listToolsPage } from "./store.js";
 import { getDevelopmentContext } from "./development.js";
 import { errorResult } from "./errors.js";
 import { requireScope, type ConduitAuthConfig } from "./auth.js";
-import { paginate } from "./pagination.js";
 
 type ToolExtra = { http?: { authInfo?: AuthInfo } };
 
@@ -14,44 +13,45 @@ const auth = (extra: ToolExtra, scope: string) => requireScope(extra.http?.authI
 
 export function registerPaginationTools(server: McpServer, authConfig?: ConduitAuthConfig) {
   const readScope = authConfig?.readScope;
-  const schema = z.object({ limit: z.number().int().min(1).max(200).optional(), cursor: z.string().max(200).optional() });
+  const schema = z.object({ limit: z.number().int().min(1).max(200).optional(), cursor: z.string().max(2000).optional() });
 
-  server.registerTool("agents_list", { description: "List registered agents with bounded cursor pagination", inputSchema: schema, annotations: readOnly }, async ({ limit, cursor }, extra) => { if (readScope) auth(extra, readScope); return json(paginate(await listAgents(), { limit, cursor })); });
-  server.registerTool("projects_list", { description: "List Conduit projects with bounded cursor pagination", inputSchema: schema, annotations: readOnly }, async ({ limit, cursor }, extra) => { if (readScope) auth(extra, readScope); return json(paginate(await listProjects(), { limit, cursor })); });
-  server.registerTool("resources_list", { description: "List shared development resources with bounded cursor pagination", inputSchema: schema.extend({ projectId: z.string().min(1).optional() }), annotations: readOnly }, async ({ limit, cursor, projectId }, extra) => { if (readScope) auth(extra, readScope); return json(paginate(await listResources(projectId), { limit, cursor })); });
-  server.registerTool("task_list", { description: "List tasks with filters and bounded cursor pagination", inputSchema: schema.extend({ status: z.enum(["open", "claimed", "blocked", "completed"]).optional(), projectId: z.string().min(1).optional(), claimedBy: z.string().min(1).optional(), createdBy: z.string().min(1).optional() }), annotations: readOnly }, async ({ status, projectId, claimedBy, createdBy, limit, cursor }, extra) => { if (readScope) auth(extra, readScope); return json(paginate(await listTasks({ status, projectId, claimedBy, createdBy }), { limit, cursor })); });
-  server.registerTool("contacts_list", { description: "List shared contacts with bounded cursor pagination", inputSchema: schema.extend({ projectId: z.string().min(1).optional() }), annotations: readOnly }, async ({ projectId, limit, cursor }, extra) => { if (readScope) auth(extra, readScope); return json(paginate(await listContacts(projectId), { limit, cursor })); });
-  server.registerTool("tools_list", { description: "List shared tools and endpoints with bounded cursor pagination", inputSchema: schema.extend({ projectId: z.string().min(1).optional() }), annotations: readOnly }, async ({ projectId, limit, cursor }, extra) => { if (readScope) auth(extra, readScope); return json(paginate(await listTools(projectId), { limit, cursor })); });
-  server.registerTool("activity_list", { description: "List recent Conduit activity with bounded cursor pagination", inputSchema: schema.extend({ projectId: z.string().min(1).optional() }), annotations: readOnly }, async ({ projectId, limit, cursor }, extra) => { if (readScope) auth(extra, readScope); return json(paginate(await listActivity(200, projectId), { limit, cursor })); });
+  server.registerTool("agents_list", { description: "List registered agents with bounded cursor pagination", inputSchema: schema, annotations: readOnly }, async (input, extra) => { if (readScope) auth(extra, readScope); return json(await listAgentsPage(input)); });
+  server.registerTool("projects_list", { description: "List Conduit projects with bounded cursor pagination", inputSchema: schema, annotations: readOnly }, async (input, extra) => { if (readScope) auth(extra, readScope); return json(await listProjectsPage(input)); });
+  server.registerTool("resources_list", { description: "List shared development resources with bounded cursor pagination", inputSchema: schema.extend({ projectId: z.string().min(1).optional() }), annotations: readOnly }, async (input, extra) => { if (readScope) auth(extra, readScope); return json(await listResourcesPage(input)); });
+  server.registerTool("task_list", { description: "List tasks with filters and bounded cursor pagination", inputSchema: schema.extend({ status: z.enum(["open", "claimed", "blocked", "completed"]).optional(), projectId: z.string().min(1).optional(), claimedBy: z.string().min(1).optional(), createdBy: z.string().min(1).optional() }), annotations: readOnly }, async (input, extra) => { if (readScope) auth(extra, readScope); return json(await listTasksPage(input)); });
+  server.registerTool("contacts_list", { description: "List shared contacts with bounded cursor pagination", inputSchema: schema.extend({ projectId: z.string().min(1).optional() }), annotations: readOnly }, async (input, extra) => { if (readScope) auth(extra, readScope); return json(await listContactsPage(input)); });
+  server.registerTool("tools_list", { description: "List shared tools and endpoints with bounded cursor pagination", inputSchema: schema.extend({ projectId: z.string().min(1).optional() }), annotations: readOnly }, async (input, extra) => { if (readScope) auth(extra, readScope); return json(await listToolsPage(input)); });
+  server.registerTool("activity_list", { description: "List recent Conduit activity with bounded cursor pagination", inputSchema: schema.extend({ projectId: z.string().min(1).optional() }), annotations: readOnly }, async (input, extra) => { if (readScope) auth(extra, readScope); return json(await listActivityPage(input)); });
 
   const contextSchema = schema.extend({
     projectId: z.string().min(1).optional(),
     cursors: z.object({
-      agents: z.string().max(200).optional(),
-      tasks: z.string().max(200).optional(),
-      contacts: z.string().max(200).optional(),
-      tools: z.string().max(200).optional(),
-      resources: z.string().max(200).optional(),
-      activity: z.string().max(200).optional(),
-      projects: z.string().max(200).optional(),
+      agents: z.string().max(2000).optional(),
+      tasks: z.string().max(2000).optional(),
+      contacts: z.string().max(2000).optional(),
+      tools: z.string().max(2000).optional(),
+      resources: z.string().max(2000).optional(),
+      activity: z.string().max(2000).optional(),
+      projects: z.string().max(2000).optional(),
     }).optional(),
   });
 
   server.registerTool("conduit_context", { description: "Return a bounded snapshot of Conduit coordination state with per-section cursors", inputSchema: contextSchema, annotations: readOnly }, async ({ projectId, limit, cursor, cursors }, extra) => {
     if (readScope) auth(extra, readScope);
-    const coordination = await getCoordinationContext(projectId);
-    if (!coordination) return errorResult("project_not_found", { projectId });
+    const project = projectId ? await getProject(projectId) : null;
+    if (projectId && !project) return errorResult("project_not_found", { projectId });
+    const sectionCursor = <T extends keyof NonNullable<typeof cursors>>(name: T) => cursors?.[name];
+    const [agents, tasks, contacts, tools, resources, activity, projects] = await Promise.all([
+      listAgentsPage({ limit, cursor: sectionCursor("agents") }), listTasksPage({ projectId, limit, cursor: sectionCursor("tasks") }),
+      listContactsPage({ projectId, limit, cursor: sectionCursor("contacts") }), listToolsPage({ projectId, limit, cursor: sectionCursor("tools") }),
+      listResourcesPage({ projectId, limit, cursor: sectionCursor("resources") }), listActivityPage({ projectId, limit, cursor: sectionCursor("activity") }),
+      projectId ? Promise.resolve({ items: [] }) : listProjectsPage({ limit, cursor: sectionCursor("projects") }),
+    ]);
     return json({
       conduit: getDevelopmentContext(),
       coordination: {
-        ...coordination,
-        agents: paginate(coordination.agents, { limit, cursor: cursors?.agents ?? cursor }),
-        tasks: paginate(coordination.tasks, { limit, cursor: cursors?.tasks ?? cursor }),
-        contacts: paginate(coordination.contacts, { limit, cursor: cursors?.contacts ?? cursor }),
-        tools: paginate(coordination.tools, { limit, cursor: cursors?.tools ?? cursor }),
-        resources: paginate(coordination.resources, { limit, cursor: cursors?.resources ?? cursor }),
-        activity: paginate(coordination.activity, { limit, cursor: cursors?.activity ?? cursor }),
-        projects: paginate(coordination.projects, { limit, cursor: cursors?.projects ?? cursor }),
+        service: "Conduit", generatedAt: new Date().toISOString(), project,
+        agents, tasks, contacts, tools, resources, activity, projects,
       },
     });
   });
