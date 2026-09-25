@@ -18,8 +18,9 @@ const boundAgentSubjects = new Map<string, Set<string>>();
 const projects = new Map<string, Project>();
 const resources = new Map<string, Resource>();
 const tasks = new Map<string, Task>();
-const contacts: Contact[] = [];
-const tools: Tool[] = [];
+// Performance Optimization: Use Map for O(1) key lookups during archive operations instead of O(N) array scans.
+const contacts = new Map<string, Contact>();
+const tools = new Map<string, Tool>();
 const activity: ActivityEvent[] = [];
 const useDatabase = Boolean(process.env.DATABASE_URL) && process.env.CONDUIT_TEST_MEMORY !== "true";
 const sslRejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === "true";
@@ -275,10 +276,10 @@ export async function handoff(taskId:string,fromAgent:string,toAgent:string,note
   return{...t,handoffNote:note??""};
 }
 
-export async function addContact(name:string,value:string,kind:string,projectId?:string,createdBy?:string){if((projectId&&!(await projectExists(projectId)))||(createdBy&&!(await agentExists(createdBy))))return null;const c:Contact={id:id("contact"),projectId,name,value,kind,createdBy,createdAt:now()};if(pool)await pool.query("INSERT INTO contacts(id,project_id,name,value,kind,created_by) VALUES($1,$2,$3,$4,$5,$6)",[c.id,c.projectId??null,name,value,kind,createdBy??null]);else contacts.push(c);await log("contact.add",{contactId:c.id,...(projectId?{projectId}:{}),...(createdBy?{agentId:createdBy}:{})});return c;}
-export async function listContacts(projectId?:string){if(pool)return(await pool.query("SELECT id,project_id AS \"projectId\",name,value,kind,created_by AS \"createdBy\",created_at AS \"createdAt\",archived_at AS \"archivedAt\" FROM contacts"+(projectId?" WHERE project_id=$1 AND archived_at IS NULL":" WHERE archived_at IS NULL")+" ORDER BY created_at DESC, id DESC",projectId?[projectId]:[])).rows.map(normalizeContact);return contacts.filter(c=>!c.archivedAt&&(!projectId||c.projectId===projectId)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
-export async function registerTool(name:string,description:string,endpoint?:string,projectId?:string,createdBy?:string){if((projectId&&!(await projectExists(projectId)))||(createdBy&&!(await agentExists(createdBy))))return null;const t:Tool={id:id("tool"),projectId,name,description,endpoint,createdBy,createdAt:now()};if(pool)await pool.query("INSERT INTO tools(id,project_id,name,description,endpoint,created_by) VALUES($1,$2,$3,$4,$5,$6)",[t.id,t.projectId??null,name,description,endpoint??null,createdBy??null]);else tools.push(t);await log("tool.register",{toolId:t.id,...(projectId?{projectId}:{}),...(createdBy?{agentId:createdBy}:{})});return t;}
-export async function listTools(projectId?:string){if(pool)return(await pool.query("SELECT id,project_id AS \"projectId\",name,description,endpoint,created_by AS \"createdBy\",created_at AS \"createdAt\",archived_at AS \"archivedAt\" FROM tools"+(projectId?" WHERE project_id=$1 AND archived_at IS NULL":" WHERE archived_at IS NULL")+" ORDER BY created_at DESC, id DESC",projectId?[projectId]:[])).rows.map(normalizeTool);return tools.filter(t=>!t.archivedAt&&(!projectId||t.projectId===projectId)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
+export async function addContact(name:string,value:string,kind:string,projectId?:string,createdBy?:string){if((projectId&&!(await projectExists(projectId)))||(createdBy&&!(await agentExists(createdBy))))return null;const c:Contact={id:id("contact"),projectId,name,value,kind,createdBy,createdAt:now()};if(pool)await pool.query("INSERT INTO contacts(id,project_id,name,value,kind,created_by) VALUES($1,$2,$3,$4,$5,$6)",[c.id,c.projectId??null,name,value,kind,createdBy??null]);else contacts.set(c.id,c);await log("contact.add",{contactId:c.id,...(projectId?{projectId}:{}),...(createdBy?{agentId:createdBy}:{})});return c;}
+export async function listContacts(projectId?:string){if(pool)return(await pool.query("SELECT id,project_id AS \"projectId\",name,value,kind,created_by AS \"createdBy\",created_at AS \"createdAt\",archived_at AS \"archivedAt\" FROM contacts"+(projectId?" WHERE project_id=$1 AND archived_at IS NULL":" WHERE archived_at IS NULL")+" ORDER BY created_at DESC, id DESC",projectId?[projectId]:[])).rows.map(normalizeContact);return [...contacts.values()].filter(c=>!c.archivedAt&&(!projectId||c.projectId===projectId)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
+export async function registerTool(name:string,description:string,endpoint?:string,projectId?:string,createdBy?:string){if((projectId&&!(await projectExists(projectId)))||(createdBy&&!(await agentExists(createdBy))))return null;const t:Tool={id:id("tool"),projectId,name,description,endpoint,createdBy,createdAt:now()};if(pool)await pool.query("INSERT INTO tools(id,project_id,name,description,endpoint,created_by) VALUES($1,$2,$3,$4,$5,$6)",[t.id,t.projectId??null,name,description,endpoint??null,createdBy??null]);else tools.set(t.id,t);await log("tool.register",{toolId:t.id,...(projectId?{projectId}:{}),...(createdBy?{agentId:createdBy}:{})});return t;}
+export async function listTools(projectId?:string){if(pool)return(await pool.query("SELECT id,project_id AS \"projectId\",name,description,endpoint,created_by AS \"createdBy\",created_at AS \"createdAt\",archived_at AS \"archivedAt\" FROM tools"+(projectId?" WHERE project_id=$1 AND archived_at IS NULL":" WHERE archived_at IS NULL")+" ORDER BY created_at DESC, id DESC",projectId?[projectId]:[])).rows.map(normalizeTool);return [...tools.values()].filter(t=>!t.archivedAt&&(!projectId||t.projectId===projectId)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
 
 function normalizeContact(row: Record<string, unknown>): Contact {
   return {
@@ -328,7 +329,8 @@ export async function archiveContact(contactId: string, agentId: string, options
       return contact;
     });
   }
-  const contact = contacts.find(c => c.id === contactId);
+  // Performance Optimization: Direct O(1) Map lookup instead of O(N) Array.find scan
+  const contact = contacts.get(contactId);
   if (!contact) return null;
   const parent = contact.projectId ? projects.get(contact.projectId) : undefined;
   if (contact.createdBy && contact.createdBy !== agentId && parent?.createdBy !== agentId && !options?.asAdmin) return null;
@@ -361,7 +363,8 @@ export async function archiveTool(toolId: string, agentId: string, options?: Arc
       return tool;
     });
   }
-  const tool = tools.find(t => t.id === toolId);
+  // Performance Optimization: Direct O(1) Map lookup instead of O(N) Array.find scan
+  const tool = tools.get(toolId);
   if (!tool) return null;
   const parent = tool.projectId ? projects.get(tool.projectId) : undefined;
   if (tool.createdBy && tool.createdBy !== agentId && parent?.createdBy !== agentId && !options?.asAdmin) return null;
@@ -544,7 +547,7 @@ export async function countTasks() {
 
 export async function countTools() {
   if (pool) return Number((await pool.query("SELECT COUNT(*)::int AS n FROM tools")).rows[0].n);
-  return tools.length;
+  return tools.size;
 }
 
 export async function countActivity() {
