@@ -1,14 +1,5 @@
-# 10-Phase Portfolio Roadmap — 2026-09-25 12:07 EDT
+# Portfolio 10-phase roadmap (Conduit view)
 
-Conduit work sits in Phase 5 and Phase 9.
-
-Phase 5 approaches:
-1. Close #119/#120 if Codex will not fix CI.
-2. Rebase, keep auto-DDL until a runner is wired, make SSE tests pass.
-3. Flag-gated SSE admission only.
-
-Do not merge red. Live must stay green.
-
-Innovation: task decay — auto-release claims older than 48h except `blocked`.
-
-Portfolio sequence 0–10 is the same as Resonance/Quicksilver copies. Default portfolio move is Resonance Phase 1, not more Conduit runtime.
+Conduit-owned phase: **5 freeze on red drafts**.
+Do not absorb Resonance or Quicksilver identity.
+Optional later: green #120 migration runner, then green #119 SSE manager, then project-scoped grants. Not this hour.
