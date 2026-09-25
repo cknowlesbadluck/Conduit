@@ -1,15 +1,12 @@
-# 10-Phase Portfolio Roadmap — 2026-09-25 14:09 EDT
+# Portfolio 10-phase roadmap — 2026-09-25 15:07 EDT
 
-0. Freeze main. Do not merge red drafts.
-1. Resonance host unlock (`SUPABASE_SERVICE_ROLE_KEY` on resonancenexus).
-2. Durable GitHub evidence.
-3. Quicksilver device HG.
-4. Quicksilver M1-T3.
-5. Repair/close Conduit #119/#120; merge #125 only if required CI is green.
-6. Resonance iOS against ready host.
-7. Second adapter.
-8. Chamber durability.
-9. Archive dead repos; project-scope grants.
-10. Release evidence + documented Render build.
-
-Conduit default: stay on Phase 0/5. Live service is the healthy one. Do not destabilize it for pagination or migrations while checks are red.
+1. Ready-or-refuse on Resonance main — DONE this hour.
+2. Owner env on resonancenexus — SERVICE_ROLE. Exit ready 200.
+3. Durable GitHub vertical slice on Resonance.
+4. Quicksilver device HG CHR-55.
+5. Quicksilver next code slice after HG.
+6. Keep Conduit #119/#120 draft until green on current main and migrate runner is wired.
+7. Merge Conduit #125 only after required GitHub checks green.
+8. Resonance iOS I1 against ready host.
+9. Chamber lifecycle.
+10. Release surface + prune stale docs branches once a delete-ref tool exists.
