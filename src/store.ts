@@ -38,6 +38,12 @@ const id = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
 
 export function isReady() { return ready; }
 
+/** Drain the database pool during process shutdown. A memory store has nothing to dispose. */
+export async function dispose() {
+  ready = false;
+  if (pool) await pool.end();
+}
+
 const ACTIVITY_RETENTION_LIMIT = Math.max(200, Number(process.env.CONDUIT_ACTIVITY_RETENTION) || 5000);
 
 async function log(type: string, data: Record<string, string>) {

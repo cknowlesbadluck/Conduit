@@ -2,7 +2,7 @@ import express from "express";
 import { getOAuthProtectedResourceMetadataUrl, hostHeaderValidation, mcpAuthMetadataRouter, originValidation, requireBearerAuth } from "@modelcontextprotocol/express";
 import { toNodeHandler } from "@modelcontextprotocol/node";
 import { createMcpHandler } from "@modelcontextprotocol/server";
-import { init, isReady } from "./store.js";
+import { dispose, init, isReady } from "./store.js";
 import { checkPersistence } from "./db-ready.js";
 import { initCapabilityStore } from "./capability-store.js";
 import { buildProtectedResourceMetadata, createDevelopmentAuthInfo, createTokenVerifier, DEVELOPMENT_ANONYMOUS_SUBJECT, DEVELOPMENT_TOKEN_SUBJECT, loadAuthConfig, requireScope } from "./auth.js";
@@ -13,6 +13,7 @@ import { timingSafeEqual } from "node:crypto";
 import { replayRecentEvents, subscribeEvents } from "./events.js";
 import { getPublicConduitStatus } from "./status.js";
 import { conduitUiHtml, CONDUIT_UI_CSS, CONDUIT_UI_JS } from "./ui.js";
+import { EVENT_STREAM_CAPACITY_ERROR, EventStreamManager } from "./event-stream-manager.js";
 
 const app = express();
 app.disable("x-powered-by");
@@ -69,19 +70,26 @@ async function boot() {
   await init();
   await initCapabilityStore();
   const authConfig = await loadAuthConfig();
+  const eventStreams = new EventStreamManager(Number(process.env.CONDUIT_MAX_EVENT_SUBSCRIBERS ?? 100));
   const eventHandler = async (req: express.Request, res: express.Response) => {
+    const admission = eventStreams.admit(req, res);
+    if (!admission) { res.status(503).json(EVENT_STREAM_CAPACITY_ERROR); return; }
     const projectId = typeof req.query.projectId === "string" ? req.query.projectId : undefined;
     res.status(200);
     res.set({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive", "X-Accel-Buffering": "no" });
     res.flushHeaders?.();
     const seen = new Set<string>();
     const emit = (event: Record<string, string>) => { if (seen.has(event.id)) return; seen.add(event.id); if (seen.size > 200) seen.delete(seen.values().next().value as string); res.write(`id: ${event.id}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`); };
-    for (const event of await replayRecentEvents(projectId)) emit(event);
-    const unsubscribe = subscribeEvents({ projectId }, emit);
-    const poll = setInterval(async () => { try { for (const event of await replayRecentEvents(projectId)) emit(event); } catch { /* connection remains alive */ } }, 2000);
-    const heartbeat = setInterval(() => res.write(`: heartbeat ${Date.now()}\n\n`), 15000);
-    const cleanup = () => { clearInterval(poll); clearInterval(heartbeat); unsubscribe(); };
-    req.on("close", cleanup);
+    try {
+      for (const event of await replayRecentEvents(projectId)) emit(event);
+      admission.addCleanup(subscribeEvents({ projectId }, emit));
+      admission.addTimer(setInterval(async () => { try { for (const event of await replayRecentEvents(projectId)) emit(event); } catch { /* connection remains alive */ } }, 2000));
+      admission.addTimer(setInterval(() => res.write(`: heartbeat ${Date.now()}\n\n`), 15000));
+    } catch (error) {
+      admission.cleanup();
+      if (!res.writableEnded) res.end();
+      throw error;
+    }
   };
   const eventAuthMiddleware = authConfig
     ? async (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -131,7 +139,12 @@ async function boot() {
     console.error("No MCP OAuth authentication configured; /mcp is disabled");
   }
   const server = app.listen(port, "0.0.0.0", () => console.log(`Conduit listening on ${port}`));
-  const shutdown = async () => { server.close(); process.exit(0); };
+  const shutdown = async () => {
+    eventStreams.shutdown();
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await dispose();
+    process.exit(0);
+  };
   process.once("SIGTERM", shutdown); process.once("SIGINT", shutdown);
 }
 
