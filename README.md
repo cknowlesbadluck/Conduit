@@ -66,6 +66,15 @@ List tools accept `limit` + opaque `cursor` and return `{ items, nextCursor? }`.
 The MCP endpoint is `/mcp`.
 The service also exposes `/health`, `/ready`, and authenticated `/events`.
 
+## Database migrations
+
+Schema changes are explicit and are never applied during service startup. Before
+deploying a database-backed instance, run `npm run migrate`. Use
+`npm run migrate:status` for a read-only check; it exits unsuccessfully when the
+database is behind the version required by this release. Migration SQL is kept in
+order under `migrations/`, and the migration runner rejects versions it does not
+recognize rather than silently changing an unexpected schema.
+
 ## Deployment
 
 Deployed on Render as a web service. See service `srv-dabgm3ks728c739rmt50` and endpoint `https://conduit-feco.onrender.com/mcp`.
