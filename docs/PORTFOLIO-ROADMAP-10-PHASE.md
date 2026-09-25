@@ -1,4 +1,4 @@
-# 10-Phase Portfolio Roadmap — 2026-09-25 11:00 EDT
+# 10-Phase Portfolio Roadmap — 2026-09-25 12:07 EDT
 
 Conduit work sits in Phase 5 and Phase 9.
 
@@ -11,4 +11,4 @@ Do not merge red. Live must stay green.
 
 Innovation: task decay — auto-release claims older than 48h except `blocked`.
 
-See Resonance/Quicksilver copies for the full 0–10 sequence.
+Portfolio sequence 0–10 is the same as Resonance/Quicksilver copies. Default portfolio move is Resonance Phase 1, not more Conduit runtime.
