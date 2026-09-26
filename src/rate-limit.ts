@@ -52,8 +52,21 @@ export class SlidingWindowLimiter {
       if (this.buckets.size <= this.options.maxKeys) break;
     }
     if (this.buckets.size > this.options.maxKeys) {
-      const oldest = [...this.buckets.entries()].sort((a, b) => (a[1][0] ?? 0) - (b[1][0] ?? 0));
-      for (const [key] of oldest.slice(0, this.buckets.size - this.options.maxKeys)) this.buckets.delete(key);
+      // Performance Optimization: Avoid O(K log K) array sorting across all maxKeys entries on every eviction.
+      // Instead, find and evict the excess keys using linear scan(s) in O(K) time per evicted key.
+      const excess = this.buckets.size - this.options.maxKeys;
+      for (let i = 0; i < excess; i++) {
+        let oldestKey: string | null = null;
+        let oldestTimestamp = Infinity;
+        for (const [key, timestamps] of this.buckets) {
+          const firstTimestamp = timestamps[0] ?? 0;
+          if (firstTimestamp < oldestTimestamp) {
+            oldestTimestamp = firstTimestamp;
+            oldestKey = key;
+          }
+        }
+        if (oldestKey) this.buckets.delete(oldestKey);
+      }
     }
   }
 }
