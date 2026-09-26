@@ -175,3 +175,34 @@ test("black-box MCP HTTP authentication path challenges then accepts a test veri
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 });
+
+test("GET /diagnostics returns JSON without secrets", async () => {
+  await init();
+  const app = createConduitApp({ anonymous: true });
+  const server = createServer(app);
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    const response = await fetch(`${baseUrl}/diagnostics`);
+    assert.equal(response.status, 200);
+    const body = await response.json() as {
+      resource: string;
+      checks: Record<string, { ok: boolean }>;
+      scopeParity: { ok: boolean };
+      discovery: { cimd: boolean; dcr: boolean };
+    };
+    assert.equal(typeof body.resource, "string");
+    assert.equal(body.checks.health.ok, true);
+    assert.equal(typeof body.scopeParity.ok, "boolean");
+    assert.equal(typeof body.discovery.cimd, "boolean");
+    const serialized = JSON.stringify(body).toLowerCase();
+    assert.equal(serialized.includes("bearer "), false);
+    assert.equal(serialized.includes("password"), false);
+    assert.equal(serialized.includes("client_secret"), false);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
