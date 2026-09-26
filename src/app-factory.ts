@@ -10,6 +10,7 @@ import { MCP_RATE_LIMITER, TOOL_RATE_LIMITER } from "./rate-limit.js";
 import { getPublicConduitStatus } from "./status.js";
 import { checkPersistence } from "./db-ready.js";
 import { isReady } from "./store.js";
+import { runDiagnostics } from "./diagnostics.js";
 import { conduitUiHtml, CONDUIT_UI_CSS, CONDUIT_UI_JS } from "./ui.js";
 
 export interface ConduitAppOptions {
@@ -39,6 +40,13 @@ function unauthorizedBearer(res: Response, metadataUrl?: string) {
   res.status(401).json({ error: "unauthorized" });
 }
 
+function requestOrigin(req: Request): string | undefined {
+  const host = req.get("host");
+  if (!host) return undefined;
+  const proto = req.get("x-forwarded-proto")?.split(",")[0]?.trim() || req.protocol || "http";
+  return `${proto}://${host}`;
+}
+
 export function createConduitApp(options: ConduitAppOptions = {}) {
   const app = express();
   app.disable("x-powered-by");
@@ -65,6 +73,15 @@ export function createConduitApp(options: ConduitAppOptions = {}) {
     }
   });
   app.get("/health", (_req, res) => res.json({ status: "ok", service: "conduit" }));
+
+  app.get("/diagnostics", async (req, res, next) => {
+    try {
+      const diagnostics = await runDiagnostics(options.authConfig, requestOrigin(req));
+      res.json(diagnostics);
+    } catch (error) {
+      next(error);
+    }
+  });
 
   app.get("/ready", async (_req, res) => {
     const initialized = isReady();
