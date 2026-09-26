@@ -1,4 +1,5 @@
 import pg from "pg";
+import { cursorCodec, cursorOrder, pageLimit, type CursorCollection, type Page } from "./pagination.js";
 
 const { Pool } = pg;
 
@@ -11,6 +12,8 @@ export type Contact = { id: string; projectId?: string; name: string; value: str
 export type Tool = { id: string; projectId?: string; name: string; description: string; endpoint?: string; createdBy?: string; createdAt: string; archivedAt?: string };
 export type ActivityEvent = Record<string, string>;
 export type CoordinationContext = { service: string; generatedAt: string; project: Project | null; projects: Project[]; agents: Agent[]; tasks: Task[]; contacts: Contact[]; tools: Tool[]; resources: Resource[]; activity: ActivityEvent[] };
+export type PageOptions = { limit?: number; cursor?: string };
+export type TaskPageOptions = PageOptions & { status?: TaskStatus; projectId?: string; claimedBy?: string; createdBy?: string };
 
 const agents = new Map<string, Agent>();
 const agentBindings = new Map<string, string>();
@@ -133,6 +136,15 @@ export async function init() {
       CREATE INDEX IF NOT EXISTS contacts_live_created_idx ON contacts(created_at DESC, id DESC) WHERE archived_at IS NULL;
       CREATE INDEX IF NOT EXISTS tools_live_created_idx ON tools(created_at DESC, id DESC) WHERE archived_at IS NULL;
       INSERT INTO schema_migrations(version) VALUES('0.8.3-contact-tool-tombstones') ON CONFLICT (version) DO NOTHING;
+      CREATE INDEX IF NOT EXISTS agents_created_keyset_idx ON agents(created_at DESC, id DESC);
+      CREATE INDEX IF NOT EXISTS tasks_created_keyset_idx ON tasks(created_at DESC, id DESC);
+      CREATE INDEX IF NOT EXISTS tasks_project_created_keyset_idx ON tasks(project_id, created_at DESC, id DESC);
+      CREATE INDEX IF NOT EXISTS resources_project_created_keyset_idx ON resources(project_id, created_at DESC, id DESC) WHERE archived_at IS NULL;
+      CREATE INDEX IF NOT EXISTS contacts_project_created_keyset_idx ON contacts(project_id, created_at DESC, id DESC) WHERE archived_at IS NULL;
+      CREATE INDEX IF NOT EXISTS tools_project_created_keyset_idx ON tools(project_id, created_at DESC, id DESC) WHERE archived_at IS NULL;
+      CREATE INDEX IF NOT EXISTS activity_project_at_keyset_idx ON activity(project_id, at DESC, id DESC);
+      CREATE INDEX IF NOT EXISTS activity_at_keyset_idx ON activity(at DESC, id DESC);
+      INSERT INTO schema_migrations(version) VALUES('0.8.4-keyset-pagination') ON CONFLICT (version) DO NOTHING;
     `);
     try { await pruneActivity(); } catch { /* hygiene pass is best-effort; never block startup on it */ }
   }
@@ -533,6 +545,91 @@ export async function releaseTask(taskId: string, agentId: string) {
   try { await log("task.release", { taskId, agentId, ...(t.projectId ? { projectId: t.projectId } : {}) }); }
   catch (error) { Object.assign(t, previous); throw error; }
   return t;
+}
+
+type KeysetRow = { id: string; createdAt?: string; at?: string };
+type PageSpec<T extends KeysetRow> = {
+  collection: CursorCollection;
+  projectId?: string;
+  filters?: Record<string, string>;
+  limit?: number;
+  cursor?: string;
+  sql: string;
+  conditions?: Array<[string, unknown]>;
+  normalize: (row: Record<string, unknown>) => T;
+  memory: Iterable<T>;
+};
+
+const rowTime = (row: KeysetRow) => row.createdAt ?? row.at!;
+const descending = (a: KeysetRow, b: KeysetRow) => rowTime(b).localeCompare(rowTime(a)) || b.id.localeCompare(a.id);
+const isAfterCursor = (row: KeysetRow, time: string, cursorId: string) => rowTime(row) < time || (rowTime(row) === time && row.id < cursorId);
+
+async function keysetPage<T extends KeysetRow>(spec: PageSpec<T>): Promise<Page<T>> {
+  const limit = pageLimit(spec.limit);
+  const expected = { collection: spec.collection, projectId: spec.projectId, filters: spec.filters };
+  const decoded = spec.cursor ? cursorCodec.decode(spec.cursor, expected) : undefined;
+  let candidates: T[];
+  if (pool) {
+    const conditions = spec.conditions ?? [];
+    const params: unknown[] = [];
+    const clauses = conditions.map(([sql, value]) => {
+      if (!sql.includes("?")) return sql;
+      params.push(value);
+      return sql.replace("?", `$${params.length}`);
+    });
+    if (decoded) {
+      params.push(decoded.sort.time, decoded.sort.id);
+      clauses.push(`(${cursorOrder(spec.collection).field === "at" ? "at" : "created_at"}, id) < ($${params.length - 1}, $${params.length})`);
+    }
+    params.push(limit + 1);
+    const query = `${spec.sql}${clauses.length ? ` WHERE ${clauses.join(" AND ")}` : ""} ORDER BY ${cursorOrder(spec.collection).field === "at" ? "at" : "created_at"} DESC, id DESC LIMIT $${params.length}`;
+    candidates = (await pool.query(query, params)).rows.map(spec.normalize);
+  } else {
+    candidates = [];
+    for (const row of spec.memory) {
+      if (!decoded || isAfterCursor(row, decoded.sort.time, decoded.sort.id)) candidates.push(row);
+    }
+    candidates.sort(descending);
+    candidates = candidates.slice(0, limit + 1);
+  }
+  const hasMore = candidates.length > limit;
+  const items = candidates.slice(0, limit);
+  const last = items.at(-1);
+  return { items, ...(hasMore && last ? { nextCursor: cursorCodec.encode({ version: 1, collection: spec.collection, projectId: spec.projectId ?? null, filters: spec.filters ?? {}, order: cursorOrder(spec.collection), sort: { time: rowTime(last), id: last.id } }) } : {}) };
+}
+
+const agentSelect = `SELECT id,name,description,created_at AS "createdAt" FROM agents`;
+const projectSelect = `SELECT id,name,description,created_by AS "createdBy",created_at AS "createdAt",updated_at AS "updatedAt",archived_at AS "archivedAt" FROM projects`;
+const resourceSelect = `SELECT id,project_id AS "projectId",name,description,kind,endpoint,created_by AS "createdBy",created_at AS "createdAt",updated_at AS "updatedAt",archived_at AS "archivedAt" FROM resources`;
+const contactSelect = `SELECT id,project_id AS "projectId",name,value,kind,created_by AS "createdBy",created_at AS "createdAt",archived_at AS "archivedAt" FROM contacts`;
+const toolSelect = `SELECT id,project_id AS "projectId",name,description,endpoint,created_by AS "createdBy",created_at AS "createdAt",archived_at AS "archivedAt" FROM tools`;
+
+export const listAgentsPage = (options: PageOptions = {}) => keysetPage<Agent>({ ...options, collection: "agents", sql: agentSelect, normalize: row => ({ id: row.id as string, name: row.name as string, description: (row.description as string | null) ?? undefined, createdAt: new Date(row.createdAt as string | Date).toISOString() }), memory: agents.values() });
+export const listProjectsPage = (options: PageOptions = {}) => keysetPage<Project>({ ...options, collection: "projects", sql: projectSelect, conditions: [["archived_at IS NULL", undefined]], normalize: normalizeProject, memory: [...projects.values()].filter(row => !row.archivedAt), filters: { archived: "false" } });
+
+async function scopedPage<T extends KeysetRow>(spec: Omit<PageSpec<T>, "conditions">) {
+  const projectCondition = spec.projectId ? [["project_id=?", spec.projectId] as [string, unknown]] : [];
+  return keysetPage({ ...spec, conditions: [["archived_at IS NULL", undefined], ...projectCondition] });
+}
+
+export const listResourcesPage = (options: PageOptions & { projectId?: string } = {}) => scopedPage<Resource>({ ...options, collection: "resources", sql: resourceSelect, normalize: normalizeResource, memory: [...resources.values()].filter(row => !row.archivedAt && (!options.projectId || row.projectId === options.projectId)) });
+export const listContactsPage = (options: PageOptions & { projectId?: string } = {}) => scopedPage<Contact>({ ...options, collection: "contacts", sql: contactSelect, normalize: normalizeContact, memory: [...contacts.values()].filter(row => !row.archivedAt && (!options.projectId || row.projectId === options.projectId)) });
+export const listToolsPage = (options: PageOptions & { projectId?: string } = {}) => scopedPage<Tool>({ ...options, collection: "tools", sql: toolSelect, normalize: normalizeTool, memory: [...tools.values()].filter(row => !row.archivedAt && (!options.projectId || row.projectId === options.projectId)) });
+
+export function listTasksPage(options: TaskPageOptions = {}) {
+  const filters = Object.fromEntries(Object.entries({ status: options.status, claimedBy: options.claimedBy, createdBy: options.createdBy }).filter((entry): entry is [string, string] => Boolean(entry[1])));
+  const conditions: Array<[string, unknown]> = [];
+  if (options.projectId) conditions.push(["project_id=?", options.projectId]);
+  if (options.status) conditions.push(["status=?", options.status]);
+  if (options.claimedBy) conditions.push(["claimed_by=?", options.claimedBy]);
+  if (options.createdBy) conditions.push(["created_by=?", options.createdBy]);
+  const memory = [...tasks.values()].filter(row => (!options.projectId || row.projectId === options.projectId) && (!options.status || row.status === options.status) && (!options.claimedBy || row.claimedBy === options.claimedBy) && (!options.createdBy || row.createdBy === options.createdBy));
+  return keysetPage<Task>({ ...options, collection: "tasks", filters, sql: `SELECT ${taskSelect} FROM tasks`, conditions, normalize: normalizeTask, memory });
+}
+
+export function listActivityPage(options: PageOptions & { projectId?: string } = {}) {
+  const memory = activity.filter(row => !options.projectId || row.projectId === options.projectId);
+  return keysetPage<ActivityEvent & { id: string; at: string }>({ ...options, collection: "activity", sql: `SELECT id,type,at,data,project_id AS "projectId" FROM activity`, conditions: options.projectId ? [["project_id=?", options.projectId]] : [], normalize: row => ({ id: row.id as string, type: row.type as string, at: new Date(row.at as string | Date).toISOString(), ...((row.data as Record<string, string>) ?? {}), ...((row.projectId as string | null) ? { projectId: row.projectId as string } : {}) }), memory: memory as Array<ActivityEvent & { id: string; at: string }> });
 }
 
 export async function countAgents() {
