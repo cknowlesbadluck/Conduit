@@ -1,6 +1,10 @@
 export const CONDUIT_UI_CSS = `
-:root{color-scheme:dark;--bg:#0b0d10;--panel:#11151a;--line:#303840;--text:#e7edf2;--muted:#8d98a3;--active:#69d7a5;--danger:#e27676;--radius:6px}
-*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font:14px/1.45 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace}body{padding:20px}button{font:inherit;color:inherit}a{color:inherit}.shell{max-width:1180px;margin:0 auto}.header{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding:0 0 14px;margin-bottom:16px}.brand{font-weight:700;letter-spacing:.12em}.version{color:var(--muted);font-size:12px;margin-left:10px}.state{display:inline-flex;align-items:center;gap:8px;color:var(--muted);text-transform:uppercase;font-size:12px}.dot{width:7px;height:7px;border-radius:50%;background:var(--muted)}.dot.active{background:var(--active);box-shadow:0 0 8px color-mix(in srgb,var(--active) 65%,transparent)}.layout{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:14px}.panel{border:1px solid var(--line);background:var(--panel);border-radius:var(--radius)}.schematic{min-height:390px;padding:22px;position:relative;overflow:hidden}.schematic-head{display:flex;justify-content:space-between;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em}.diagram{min-height:320px;display:flex;align-items:center;justify-content:center;gap:36px;position:relative}.core{border:1px solid var(--line);padding:18px 24px;min-width:180px;text-align:center;background:#0d1115;position:relative;z-index:2}.core.active{border-color:var(--active);background:#0d1513}.core small{display:block;color:var(--muted);font-size:11px;margin-top:4px}.agents{display:flex;flex-direction:column;gap:10px;min-width:190px}.agent{display:grid;grid-template-columns:12px 1fr;gap:9px;align-items:center;border:1px solid var(--line);background:#0e1216;padding:10px 12px;text-align:left;cursor:pointer}.agent:hover,.agent:focus-visible{border-color:#59646e;outline:none}.agent.connected{border-color:#456d5c}.agent .pin{width:7px;height:7px;border-radius:50%;background:var(--muted)}.agent.connected .pin{background:var(--active)}.agent strong{display:block;font-size:13px}.agent span{display:block;color:var(--muted);font-size:11px;margin-top:2px}.wire{height:1px;width:36px;background:var(--line)}.wire.active{background:var(--active);box-shadow:0 0 7px color-mix(in srgb,var(--active) 35%,transparent)}.empty{border:1px dashed var(--line);padding:14px;color:var(--muted);font-size:12px}.details{padding:16px}.details h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 14px}.kv{display:grid;grid-template-columns:1fr;gap:10px}.kv div{border-top:1px solid var(--line);padding-top:9px}.kv label{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;margin-bottom:3px}.kv strong{font-weight:500;overflow-wrap:anywhere}.sections{grid-column:1/-1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.section{padding:14px;min-height:160px}.section h2{margin:0 0 12px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}.list{display:flex;flex-direction:column;gap:7px}.row{border-top:1px solid var(--line);padding-top:7px}.row:first-child{border-top:0;padding-top:0}.row strong{display:block;font-size:12px;font-weight:500}.row span{display:block;color:var(--muted);font-size:10px;overflow-wrap:anywhere}.footer{color:var(--muted);font-size:10px;padding-top:12px}.error{color:var(--danger)}@media(max-width:860px){body{padding:12px}.layout{grid-template-columns:1fr}.sections{grid-column:auto;grid-template-columns:1fr 1fr}.diagram{gap:10px}.wire{width:18px}}@media(max-width:560px){.header{align-items:flex-start;gap:12px}.diagram{min-height:270px;flex-direction:column}.wire{width:1px;height:24px}.agents{width:100%;min-width:0}.core{order:0}.agents{order:1}.sections{grid-template-columns:1fr}.schematic{min-height:0}.details{min-height:0}}
+:root{color-scheme:dark;--ink:#f4f1e8;--muted:#8d918c;--dim:#555b57;--bg:#090b0a;--panel:#101311;--panel-2:#141815;--line:#282e2a;--line-hot:#556b5d;--signal:#b9f6cb;--signal-strong:#75e39a;--amber:#e6c679;--danger:#ef8a82;--radius:2px}
+*{box-sizing:border-box}html{min-height:100%;background:var(--bg)}body{margin:0;min-height:100vh;color:var(--ink);font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;background:radial-gradient(circle at 68% -20%,rgba(117,227,154,.08),transparent 36%),linear-gradient(rgba(255,255,255,.018) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.018) 1px,transparent 1px),var(--bg);background-size:auto,32px 32px,32px 32px}button{font:inherit;color:inherit}a{color:inherit;text-decoration:none}.shell{width:min(1240px,calc(100% - 48px));margin:0 auto;padding:24px 0 30px}.eyebrow,.panel-label,.metric-label{text-transform:uppercase;letter-spacing:.14em;font-size:10px;color:var(--muted)}.masthead{display:flex;align-items:center;justify-content:space-between;padding:0 0 18px;border-bottom:1px solid var(--line)}.identity{display:flex;align-items:center;gap:13px}.mark{display:grid;place-items:center;width:34px;height:34px;border:1px solid var(--line-hot);color:var(--signal);font-size:18px}.brand{font-size:13px;font-weight:700;letter-spacing:.2em}.version{display:block;color:var(--muted);font-size:10px;margin-top:2px;letter-spacing:.08em}.state{display:flex;align-items:center;gap:10px;text-transform:uppercase;font-size:10px;letter-spacing:.14em;color:var(--muted)}.dot{width:7px;height:7px;border-radius:50%;background:var(--dim)}.dot.active{background:var(--signal-strong);box-shadow:0 0 0 4px rgba(117,227,154,.08),0 0 18px rgba(117,227,154,.65)}
+.hero{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(300px,.55fr);gap:16px;padding:52px 0 18px}.intro{min-height:250px;display:flex;flex-direction:column;justify-content:flex-end;padding-right:8%}.intro h1{font:400 clamp(38px,6vw,76px)/.98 Georgia,"Times New Roman",serif;letter-spacing:-.045em;margin:15px 0 22px;max-width:850px}.intro h1 em{color:var(--signal);font-style:italic}.intro-copy{display:flex;align-items:flex-start;gap:20px;max-width:680px;color:var(--muted);font-size:13px}.intro-copy:before{content:"";width:48px;height:1px;background:var(--signal-strong);margin-top:10px;flex:0 0 auto}.snapshot{border:1px solid var(--line);background:rgba(16,19,17,.82);padding:18px;display:flex;flex-direction:column;justify-content:space-between;min-height:250px}.snapshot-head{display:flex;justify-content:space-between}.snapshot-time{font-size:10px;color:var(--muted)}.metric-primary{padding:30px 0 25px}.metric-primary strong{font:400 74px/1 Georgia,serif}.metric-primary span{color:var(--muted);margin-left:8px}.availability{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--line)}.availability div{padding-top:13px}.availability div+div{border-left:1px solid var(--line);padding-left:16px}.availability strong{display:block;font-size:16px;font-weight:500;margin-top:3px}
+.panel{border:1px solid var(--line);background:rgba(16,19,17,.9)}.topology{position:relative;min-height:365px;padding:18px;overflow:hidden}.topology-head{display:flex;align-items:center;justify-content:space-between}.legend{display:flex;gap:16px;color:var(--muted);font-size:9px;text-transform:uppercase}.legend i{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--dim);margin-right:6px}.legend i.live{background:var(--signal-strong)}.diagram{min-height:305px;display:grid;grid-template-columns:minmax(120px,1fr) minmax(28px,70px) 150px minmax(28px,70px) minmax(120px,1fr);align-items:center;gap:0}.agents{display:flex;flex-direction:column;gap:8px}.agent,.empty{border:1px solid var(--line);background:var(--panel-2);padding:12px}.agent{display:grid;grid-template-columns:8px 1fr;gap:10px;text-align:left;cursor:pointer}.agent:hover,.agent:focus-visible{border-color:var(--line-hot);outline:none}.agent .pin{width:6px;height:6px;border-radius:50%;background:var(--dim);margin-top:6px}.agent.connected .pin{background:var(--signal-strong)}.agent strong,.row strong{display:block;font-size:12px;font-weight:500}.agent span,.row span,.empty{color:var(--muted);font-size:10px}.agent strong{color:var(--ink)}.agent.selected{border-color:var(--signal-strong)}.wire{height:1px;background:var(--line);position:relative}.wire:after{content:"";position:absolute;width:5px;height:5px;border-radius:50%;background:var(--dim);top:-2px;right:0}.wire.active{background:linear-gradient(90deg,var(--line),var(--signal-strong))}.wire.active:after{background:var(--signal-strong);box-shadow:0 0 10px var(--signal-strong);animation:signal 2.4s ease-in-out infinite}.core{position:relative;z-index:1;border:1px solid var(--line-hot);background:#0d120f;padding:24px 14px;text-align:center}.core:before,.core:after{content:"";position:absolute;width:7px;height:7px;border:1px solid var(--line-hot);background:var(--bg);top:-4px}.core:before{left:-4px}.core:after{right:-4px}.core strong{font-family:Georgia,serif;font-size:19px;font-weight:400;letter-spacing:.12em}.core small{display:block;color:var(--signal);font-size:9px;letter-spacing:.16em;margin-top:5px}.core.active{border-color:var(--signal-strong);box-shadow:inset 0 0 34px rgba(117,227,154,.04)}.output-node{margin-left:0;border:1px solid var(--line);padding:14px;background:var(--panel-2)}.output-node span{display:block;color:var(--muted);font-size:10px}.output-node strong{display:block;margin-top:4px;font-size:12px;font-weight:500}.details{min-height:365px;padding:18px;display:flex;flex-direction:column}.details h2{font:400 26px/1.1 Georgia,serif;margin:20px 0 28px}.kv{display:grid;gap:0}.kv div{border-top:1px solid var(--line);padding:11px 0}.kv label{display:block;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.12em}.kv strong{display:block;font-size:12px;font-weight:500;margin-top:4px;overflow-wrap:anywhere}.privacy-note{margin-top:auto;padding-top:18px;color:var(--muted);font-size:10px}.privacy-note:before{content:"◇";color:var(--signal);margin-right:8px}
+.workspace{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(280px,.55fr);gap:16px}.rail{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-column:1/-1;border:1px solid var(--line);background:var(--panel)}.metric{padding:17px 18px;min-height:98px}.metric+.metric{border-left:1px solid var(--line)}.metric-value{font:400 32px/1 Georgia,serif;margin-top:15px}.metric-meta{color:var(--muted);font-size:9px;margin-top:4px}.routes{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr 1fr;border:1px solid var(--line);margin-top:0}.route{padding:15px 18px;display:flex;align-items:center;justify-content:space-between;transition:background .2s}.route+.route{border-left:1px solid var(--line)}.route:hover,.route:focus-visible{background:var(--panel-2);outline:1px solid var(--line-hot);outline-offset:-1px}.route span{font-size:11px}.route small{color:var(--muted);font-size:9px;text-transform:uppercase}.footer{display:flex;justify-content:space-between;gap:20px;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.09em;padding-top:14px}.error{color:var(--danger)}
+@keyframes signal{0%,100%{opacity:.35;transform:scale(.8)}50%{opacity:1;transform:scale(1.4)}}@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;scroll-behavior:auto!important}}@media(max-width:850px){.shell{width:min(100% - 28px,720px)}.hero,.workspace{grid-template-columns:1fr}.hero{padding-top:34px}.intro{min-height:220px}.snapshot{min-height:210px}.topology,.details{min-height:auto}.diagram{grid-template-columns:minmax(110px,1fr) 40px 140px 40px minmax(110px,1fr)}.rail{grid-template-columns:1fr 1fr}.metric:nth-child(3){border-left:0;border-top:1px solid var(--line)}.metric:nth-child(4){border-top:1px solid var(--line)}.routes{grid-template-columns:1fr}.route+.route{border-left:0;border-top:1px solid var(--line)}}@media(max-width:540px){.shell{width:calc(100% - 20px);padding-top:14px}.masthead{padding-bottom:12px}.intro{padding-right:0}.intro h1{font-size:42px}.intro-copy:before{width:24px}.diagram{grid-template-columns:1fr;gap:14px;padding:24px 0}.wire{width:1px;height:24px;justify-self:center}.output-node{width:100%}.legend{display:none}.rail{grid-template-columns:1fr 1fr}.metric{padding:14px;min-height:90px}.metric-value{font-size:28px}.footer{flex-direction:column}.state{letter-spacing:.08em}}
 `;
 
 export const CONDUIT_UI_JS = `
@@ -9,138 +13,54 @@ export const CONDUIT_UI_JS = `
   const text = (value) => document.createTextNode(value == null ? "" : String(value));
   const make = (tag, className, content) => { const node = document.createElement(tag); if (className) node.className = className; if (content !== undefined) node.appendChild(text(content)); return node; };
   const clear = (node) => { while (node.firstChild) node.removeChild(node.firstChild); };
-  const formatTime = (value) => { if (!value) return "—"; const date = new Date(value); return Number.isNaN(date.valueOf()) ? value : date.toLocaleString(); };
+  const formatTime = (value) => { if (!value) return "Never"; const date = new Date(value); return Number.isNaN(date.valueOf()) ? value : date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" }); };
+  const setText = (id, value) => { const node = $(id); if (node) node.textContent = String(value); };
 
-  function showDetails(connection) {
-    const panel = $("details");
-    clear(panel);
-    panel.appendChild(make("h2", null, "Inspection"));
+  function showDetails(connection, selected) {
+    document.querySelectorAll(".agent").forEach((node) => node.classList.toggle("selected", node === selected));
+    const panel = $("details"); clear(panel);
+    panel.appendChild(make("span", "panel-label", "Node inspection"));
+    panel.appendChild(make("h2", null, connection.label));
     const grid = make("div", "kv");
-    const values = [["Node", connection.label], ["Identifier", connection.id], ["State", connection.status], ["Last activity", formatTime(connection.lastActivity)]];
-    values.forEach(([label, value]) => { const item = document.createElement("div"); item.appendChild(make("label", null, label)); item.appendChild(make("strong", null, value)); grid.appendChild(item); });
-    panel.appendChild(grid);
+    [["Identifier", connection.id], ["Transport state", connection.status], ["Last activity", formatTime(connection.lastActivity)]].forEach(([label, value]) => { const item = document.createElement("div"); item.appendChild(make("label", null, label)); item.appendChild(make("strong", null, value)); grid.appendChild(item); });
+    panel.appendChild(grid); panel.appendChild(make("p", "privacy-note", "Read-only operational metadata"));
   }
 
   function renderCounts(counts) {
     const values = counts || {};
-    const agents = Number(values.agents || 0);
-    const connected = Number(values.connected || 0);
-    const tools = Number(values.tools || 0);
-    const tasks = Number(values.tasks || 0);
-    const activity = Number(values.activity || 0);
-    const wire = $("wire");
-    const core = document.querySelector(".core");
-    wire.className = "wire" + (connected ? " active" : "");
-    core.className = "core" + (connected ? " active" : "");
-    const host = $("agents");
-    clear(host);
-    host.appendChild(make("div", "empty", agents ? (connected + " connected / " + agents + " registered") : "No agents registered."));
-    const summary = $("connections-summary");
-    clear(summary);
-    const summaryRow = make("div", "row");
-    summaryRow.appendChild(make("strong", null, agents ? (connected + " connected / " + agents + " registered") : "No agents registered"));
-    summaryRow.appendChild(make("span", null, "Public projection — counts only"));
-    summary.appendChild(summaryRow);
-    function countList(id, n, noun) {
-      const el = $(id); clear(el);
-      const row = make("div", "row");
-      row.appendChild(make("strong", null, n + " " + noun));
-      row.appendChild(make("span", null, "Identifiers omitted from public /status"));
-      el.appendChild(row);
-    }
-    countList("tools", tools, tools === 1 ? "tool" : "tools");
-    countList("tasks", tasks, tasks === 1 ? "task" : "tasks");
-    countList("activity", activity, activity === 1 ? "event" : "events");
-    const details = $("details");
-    clear(details);
-    details.appendChild(make("h2", null, "Inspection"));
-    const grid = make("div", "kv");
-    [["Projection", "public counts"], ["Agents", String(agents)], ["Connected", String(connected)], ["Tools", String(tools)], ["Tasks", String(tasks)], ["Activity", String(activity)]].forEach(([label, value]) => {
-      const item = document.createElement("div");
-      item.appendChild(make("label", null, label));
-      item.appendChild(make("strong", null, value));
-      grid.appendChild(item);
-    });
-    details.appendChild(grid);
+    const agents = Number(values.agents || 0), connected = Number(values.connected || 0), tools = Number(values.tools || 0), tasks = Number(values.tasks || 0), activity = Number(values.activity || 0);
+    $("wire").className = "wire" + (connected ? " active" : "");
+    document.querySelector(".core").className = "core" + (connected ? " active" : "");
+    const host = $("agents"); clear(host); host.appendChild(make("div", "empty", agents ? connected + " active · " + agents + " registered" : "Awaiting first agent"));
+    setText("agent-count", agents); setText("connection-count", agents); setText("connected-count", connected); setText("tool-count", tools); setText("task-count", tasks); setText("activity-count", activity);
+    setText("network-copy", agents ? connected + " of " + agents + " nodes live" : "No nodes registered");
+    const panel = $("details"); clear(panel); panel.appendChild(make("span", "panel-label", "Public projection")); panel.appendChild(make("h2", null, "System totals"));
+    const grid = make("div", "kv"); [["Agents", agents], ["Connected", connected], ["Tools", tools], ["Tasks", tasks], ["Activity events", activity]].forEach(([label,value]) => { const item=document.createElement("div"); item.appendChild(make("label",null,label)); item.appendChild(make("strong",null,value)); grid.appendChild(item); }); panel.appendChild(grid); panel.appendChild(make("p", "privacy-note", "Identifiers omitted from public /status"));
   }
 
   function renderConnections(connections) {
-    const host = $("agents");
-    const summary = $("connections-summary");
-    const wire = $("wire");
-    const core = document.querySelector(".core");
-    clear(host);
-    clear(summary);
-    const connected = connections.filter((connection) => connection.status === "connected").length;
-    wire.className = "wire" + (connected ? " active" : "");
-    core.className = "core" + (connected ? " active" : "");
-    const summaryRow = make("div", "row");
-    summaryRow.appendChild(make("strong", null, connections.length ? (connected + " connected / " + connections.length + " observed") : "No agents observed"));
-    summaryRow.appendChild(make("span", null, "Derived from server activity"));
-    summary.appendChild(summaryRow);
-    if (!connections.length) { host.appendChild(make("div", "empty", "No agent connections observed.")); return; }
-    connections.forEach((connection) => {
-      const item = make("button", "agent" + (connection.status === "connected" ? " connected" : ""));
-      item.type = "button";
-      item.appendChild(make("span", "pin"));
-      const copy = document.createElement("span");
-      copy.appendChild(make("strong", null, connection.label));
-      copy.appendChild(make("span", null, connection.status));
-      item.appendChild(copy);
-      item.addEventListener("click", () => showDetails(connection));
-      host.appendChild(item);
-    });
-    showDetails(connections[0]);
-  }
-
-  function renderList(id, items, nameKey, secondaryKey) {
-    const host = $(id); clear(host);
-    if (!items.length) { host.appendChild(make("div", "empty", "None observed.")); return; }
-    items.slice(0, 8).forEach((item) => {
-      const row = make("div", "row");
-      row.appendChild(make("strong", null, item[nameKey] ?? "Unnamed"));
-      if (secondaryKey) row.appendChild(make("span", null, item[secondaryKey] ?? ""));
-      host.appendChild(row);
-    });
-  }
-
-  function renderActivity(items) {
-    const host = $("activity"); clear(host);
-    if (!items.length) { host.appendChild(make("div", "empty", "No activity recorded.")); return; }
-    items.slice(0, 8).forEach((item) => { const row = make("div", "row"); row.appendChild(make("strong", null, item.type || "event")); row.appendChild(make("span", null, formatTime(item.at))); host.appendChild(row); });
+    const host=$("agents"); clear(host); const connected=connections.filter((item)=>item.status==="connected").length;
+    $("wire").className="wire"+(connected?" active":""); document.querySelector(".core").className="core"+(connected?" active":"");
+    setText("agent-count",connections.length); setText("connection-count",connections.length); setText("connected-count",connected); setText("network-copy",connected+" of "+connections.length+" nodes live");
+    if(!connections.length){host.appendChild(make("div","empty","Awaiting first agent"));return;}
+    connections.forEach((connection,index)=>{const item=make("button","agent"+(connection.status==="connected"?" connected":""));item.type="button";item.appendChild(make("span","pin"));const copy=make("span");copy.appendChild(make("strong",null,connection.label));copy.appendChild(make("span",null,connection.status));item.appendChild(copy);item.addEventListener("click",()=>showDetails(connection,item));host.appendChild(item);if(index===0)showDetails(connection,item);});
   }
 
   function render(data) {
-    $("version").textContent = data.version || "";
-    $("service-state").textContent = data.status || "unknown";
-    $("service-dot").className = "dot" + (data.status === "online" ? " active" : "");
-    if (data.counts) {
-      renderCounts(data.counts);
-      return;
-    }
-    renderConnections(data.connections || []);
-    renderList("tools", data.tools || [], "name", "description");
-    renderList("tasks", data.tasks || [], "title", "status");
-    renderActivity(data.activity || []);
+    setText("version",data.version?"VERSION "+data.version:""); setText("service-state",data.status||"unknown");
+    $("service-dot").className="dot"+(data.status==="online"?" active":"");
+    if (data.counts) { renderCounts(data.counts); } else { renderConnections(data.connections||[]); setText("tool-count",(data.tools||[]).length); setText("task-count",(data.tasks||[]).length); setText("activity-count",(data.activity||[]).length); }
+    setText("updated",new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"}));
   }
 
   async function load() {
-    try {
-      const response = await fetch("/status", { headers: { "Accept": "application/json" }, cache: "no-store" });
-      if (!response.ok) throw new Error("status endpoint returned " + response.status);
-      render(await response.json());
-    } catch (error) {
-      $("service-state").textContent = "degraded";
-      $("service-dot").className = "dot";
-      const details = $("details"); clear(details); details.appendChild(make("h2", null, "Inspection")); details.appendChild(make("div", "error", error instanceof Error ? error.message : "Unable to load status."));
-    }
+    try { const response=await fetch("/status",{headers:{Accept:"application/json"},cache:"no-store"}); if(!response.ok)throw new Error("status endpoint returned "+response.status); render(await response.json()); }
+    catch(error){setText("service-state","degraded"); $("service-dot").className="dot"; const panel=$("details");clear(panel);panel.appendChild(make("span","panel-label","Connection error"));panel.appendChild(make("h2","error","Signal interrupted"));panel.appendChild(make("p","error",error instanceof Error?error.message:"Unable to load status."));}
   }
-
-  load();
-  window.setInterval(load, 15000);
+  load(); window.setInterval(load,15000);
 })();
 `;
 
 export function conduitUiHtml() {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Conduit</title><link rel="stylesheet" href="/ui.css"></head><body><main class="shell"><header class="header"><div><span class="brand">CONDUIT</span><span id="version" class="version"></span></div><div class="state"><span id="service-dot" class="dot"></span><span id="service-state">loading</span></div></header><div class="layout"><section class="panel schematic" aria-label="Conduit schematic"><div class="schematic-head"><span>system schematic</span><span>MCP transport</span></div><div class="diagram"><div id="agents" class="agents"><div class="empty">Loading connections…</div></div><div id="wire" class="wire" aria-hidden="true"></div><div class="core"><strong>CONDUIT</strong><small>MCP</small></div></div></section><aside id="details" class="panel details"><h2>Inspection</h2><div class="empty">Select a node.</div></aside><div class="sections"><section class="panel section"><h2>Connections</h2><div id="connections-summary" class="list"><div class="row"><strong>Loading</strong><span>Observed from server activity</span></div></div></section><section class="panel section"><h2>Tools</h2><div id="tools" class="list"><div class="empty">Loading…</div></div></section><section class="panel section"><h2>Tasks</h2><div id="tasks" class="list"><div class="empty">Loading…</div></div></section><section class="panel section"><h2>Activity</h2><div id="activity" class="list"><div class="empty">Loading…</div></div></section></div></div><div class="footer">Conduit operational view · read-only · <a href="/health">health</a> · <a href="/ready">ready</a> · <a href="/mcp">mcp</a></div></main><script src="/ui.js" defer></script></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#090b0a"><meta name="description" content="Conduit operational view for secure AI agent coordination."><title>Conduit — Agent Coordination Layer</title><link rel="stylesheet" href="/ui.css"></head><body><main class="shell"><header class="masthead"><div class="identity"><div class="mark" aria-hidden="true">◇</div><div><div class="brand">CONDUIT</div><span id="version" class="version">VERSION —</span></div></div><div class="state" role="status" aria-live="polite"><span id="service-dot" class="dot"></span><span id="service-state">connecting</span></div></header><section class="hero"><div class="intro"><span class="eyebrow">Coordination infrastructure / MCP</span><h1>One channel.<br><em>Many minds.</em></h1><div class="intro-copy">A governed relay where AI agents discover context, coordinate work, and invoke trusted capabilities.</div></div><aside class="snapshot" aria-label="Network snapshot"><div class="snapshot-head"><span class="panel-label">Network snapshot</span><span class="snapshot-time">Updated <span id="updated">—</span></span></div><div class="metric-primary"><strong id="connected-count">—</strong><span>connected</span></div><div class="availability"><div><span class="metric-label">Registered</span><strong id="agent-count">—</strong></div><div><span class="metric-label">Protocol</span><strong>MCP / HTTP</strong></div></div></aside></section><div class="workspace"><section class="panel topology" aria-label="Conduit network topology"><div class="topology-head"><span class="panel-label">Live topology</span><div class="legend"><span><i class="live"></i>connected</span><span><i></i>idle</span></div></div><div class="diagram"><div id="agents" class="agents"><div class="empty">Reading network…</div></div><div id="wire" class="wire" aria-hidden="true"></div><div class="core"><strong>CONDUIT</strong><small>CONTROL PLANE</small></div><div class="wire" aria-hidden="true"></div><div class="output-node"><span>Secure transport</span><strong id="network-copy">Discovering nodes</strong></div></div></section><aside id="details" class="panel details"><span class="panel-label">Node inspection</span><h2>Reading signal</h2><div class="empty">Operational metadata is loading.</div></aside><section class="rail" aria-label="Coordination totals"><div class="metric"><div class="metric-label">Connections</div><div id="connection-count" class="metric-value">—</div><div class="metric-meta">identity-bound nodes</div></div><div class="metric"><div class="metric-label">Tools</div><div id="tool-count" class="metric-value">—</div><div class="metric-meta">governed capabilities</div></div><div class="metric"><div class="metric-label">Tasks</div><div id="task-count" class="metric-value">—</div><div class="metric-meta">coordination records</div></div><div class="metric"><div class="metric-label">Activity</div><div id="activity-count" class="metric-value">—</div><div class="metric-meta">audited events</div></div></section><nav class="routes" aria-label="Service endpoints"><a class="route" href="/health"><span>/health</span><small>liveness →</small></a><a class="route" href="/ready"><span>/ready</span><small>persistence →</small></a><a class="route" href="/mcp"><span>/mcp</span><small>transport →</small></a></nav></div><footer class="footer"><span>Conduit operational view · read-only</span><span>Refresh cycle · 15 seconds</span></footer></main><script src="/ui.js" defer></script></body></html>`;
 }

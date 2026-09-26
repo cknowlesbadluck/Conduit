@@ -32,6 +32,13 @@ test("root serves the schematic UI without external dependencies", async () => {
     assert.match(html, /Tools/);
     assert.match(html, /Tasks/);
     assert.match(html, /Activity/);
+    assert.match(html, /One channel/);
+    assert.match(html, /aria-live="polite"/);
+    assert.match(html, /aria-label="Conduit network topology"/);
+    assert.match(html, /name="theme-color"/);
+    assert.match(html, /href="\/health"/);
+    assert.match(html, /href="\/ready"/);
+    assert.match(html, /href="\/mcp"/);
   });
 });
 
@@ -73,4 +80,5 @@ test("public UI script prefers counts over empty coordination arrays", async () 
   assert.match(CONDUIT_UI_JS, /if \(data\.counts\)/);
   assert.match(CONDUIT_UI_JS, /Public projection/);
   assert.match(CONDUIT_UI_JS, /Identifiers omitted from public \/status/);
+  assert.match(CONDUIT_UI_JS, /setInterval\(load,15000\)/);
 });
