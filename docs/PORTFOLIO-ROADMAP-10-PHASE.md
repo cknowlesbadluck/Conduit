@@ -1,4 +1,4 @@
-# Portfolio 10-phase roadmap — 2026-09-25 18:03 EDT
+# Portfolio 10-phase roadmap — 2026-09-26 03:00 EDT
 
 Conduit-owned slices: 6 and 7. Everything else is sibling-project work.
 
