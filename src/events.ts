@@ -4,7 +4,6 @@ type Listener = (event: ActivityEvent) => void;
 type Filter = { projectId?: string };
 
 const listeners = new Set<{ filter: Filter; listener: Listener }>();
-const MAX_SUBSCRIBERS = Number(process.env.CONDUIT_MAX_EVENT_SUBSCRIBERS ?? 100);
 
 export function publishEvent(event: ActivityEvent) {
   for (const subscription of [...listeners]) {
@@ -14,7 +13,6 @@ export function publishEvent(event: ActivityEvent) {
 }
 
 export function subscribeEvents(filter: Filter, listener: Listener) {
-  if (listeners.size >= MAX_SUBSCRIBERS) throw new Error("event_subscriber_limit_reached");
   const subscription = { filter, listener };
   listeners.add(subscription);
   return () => listeners.delete(subscription);
