@@ -40,6 +40,13 @@ function unauthorizedBearer(res: Response, metadataUrl?: string) {
   res.status(401).json({ error: "unauthorized" });
 }
 
+function requestOrigin(req: Request): string | undefined {
+  const host = req.get("host");
+  if (!host) return undefined;
+  const proto = req.get("x-forwarded-proto")?.split(",")[0]?.trim() || req.protocol || "http";
+  return `${proto}://${host}`;
+}
+
 export function createConduitApp(options: ConduitAppOptions = {}) {
   const app = express();
   app.disable("x-powered-by");
@@ -67,9 +74,9 @@ export function createConduitApp(options: ConduitAppOptions = {}) {
   });
   app.get("/health", (_req, res) => res.json({ status: "ok", service: "conduit" }));
 
-  app.get("/diagnostics", async (_req, res, next) => {
+  app.get("/diagnostics", async (req, res, next) => {
     try {
-      const diagnostics = await runDiagnostics(options.authConfig);
+      const diagnostics = await runDiagnostics(options.authConfig, requestOrigin(req));
       res.json(diagnostics);
     } catch (error) {
       next(error);
