@@ -1,14 +1,12 @@
-# Portfolio 10-phase roadmap — 2026-09-26 08:05 EDT
+# Portfolio 10-phase roadmap — 2026-09-26 09:00 EDT
 
-Conduit-owned slices: 6 and 7. Everything else is sibling-project work.
-
-1. Resonance ready-or-refuse — DONE on Resonance main.
-2. Owner sets Resonance SERVICE_ROLE on resonancenexus. Confirmed still missing at 08:05.
-3. Resonance durable GitHub slice.
-4. Quicksilver device HG from `68ce1b43` or later.
-5. Quicksilver post-HG slice. P-T3 shipped. P-T4 stays behind M3.5-T4.
-6. Conduit freeze + repair #119/#120 off current main `f0eb7bf9`. Do not merge red.
-7. Conduit #125 after rebase onto current main + required checks.
-8. Resonance iOS I1 (blocked on phase 2). SideStore #116/#117 closed.
-9. Resonance Chamber lifecycle.
-10. Release surface + owner branch prune (no delete-ref here).
+1. Ready-or-refuse on Resonance main — DONE. Live still 503.
+2. Owner SERVICE_ROLE on resonancenexus — OPEN. Confirmed missing at 09:00.
+3. Live GitHub adapter evidence — blocked by phase 2 + owner tokens.
+4. Quicksilver device HG CHR-55 — OPEN. Simulator is not acceptance.
+5. Quicksilver next code after HG — gated.
+6. Freeze Conduit #119/#120. Recut off `5659a495` only.
+7. Conduit #125 keyset pagination — DONE (merged 2026-09-26T12:09:14Z).
+8. Resonance iOS I1 — blocked by phase 2.
+9. Chamber lifecycle — blocked by phase 2.
+10. Release surface + owner branch prune.
