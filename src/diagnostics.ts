@@ -72,7 +72,7 @@ export async function runDiagnostics(authConfig?: ConduitAuthConfig, baseUrl?: s
   const resource = authConfig?.resourceUrl ?? `${process.env.PUBLIC_URL ?? "http://localhost:3000"}/mcp`;
   const configuredBase = baseUrl ?? new URL(resource).origin;
   const expectedOrigin = new URL(resource).origin;
-  if (new URL(configuredBase).origin !== expectedOrigin) throw new Error("diagnostics_target_must_match_conduit_origin");
+  if (authConfig && new URL(configuredBase).origin !== expectedOrigin) throw new Error("diagnostics_target_must_match_conduit_origin");
 
   const checks: ConduitDiagnostics["checks"] = {};
   const health = await safeFetch(`${configuredBase}/health`);
