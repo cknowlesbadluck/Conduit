@@ -10,6 +10,7 @@ import { MCP_RATE_LIMITER, TOOL_RATE_LIMITER } from "./rate-limit.js";
 import { getPublicConduitStatus } from "./status.js";
 import { checkPersistence } from "./db-ready.js";
 import { isReady } from "./store.js";
+import { runDiagnostics } from "./diagnostics.js";
 import { conduitUiHtml, CONDUIT_UI_CSS, CONDUIT_UI_JS } from "./ui.js";
 
 export interface ConduitAppOptions {
@@ -65,6 +66,15 @@ export function createConduitApp(options: ConduitAppOptions = {}) {
     }
   });
   app.get("/health", (_req, res) => res.json({ status: "ok", service: "conduit" }));
+
+  app.get("/diagnostics", async (_req, res, next) => {
+    try {
+      const diagnostics = await runDiagnostics(options.authConfig);
+      res.json(diagnostics);
+    } catch (error) {
+      next(error);
+    }
+  });
 
   app.get("/ready", async (_req, res) => {
     const initialized = isReady();
