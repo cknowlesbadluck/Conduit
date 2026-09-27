@@ -12,6 +12,7 @@ import { MCP_RATE_LIMITER, TOOL_RATE_LIMITER } from "./rate-limit.js";
 import { timingSafeEqual } from "node:crypto";
 import { replayRecentEvents, subscribeEvents } from "./events.js";
 import { getPublicConduitStatus } from "./status.js";
+import { runDiagnostics } from "./diagnostics.js";
 import { conduitUiHtml, CONDUIT_UI_CSS, CONDUIT_UI_JS } from "./ui.js";
 
 const app = express();
@@ -34,6 +35,7 @@ if (allowedOriginHostnames.length) app.use(originValidation(allowedOriginHostnam
 app.use((req, res, next) => { applyCors(req, res); if (req.method === "OPTIONS") { res.sendStatus(204); return; } next(); });
 const port = Number(process.env.PORT || 3000);
 const allowAnonymous = process.env.CONDUIT_ALLOW_ANONYMOUS === "true" && process.env.NODE_ENV !== "production";
+function requestOrigin(req: express.Request): string | undefined { const host = req.get("host"); if (!host) return undefined; const proto = req.get("x-forwarded-proto")?.split(",")[0]?.trim() || req.protocol || "http"; return `${proto}://${host}`; }
 function protectedResourceMetadataResponse(res: express.Response, metadata: ReturnType<typeof buildProtectedResourceMetadata>) { res.type("application/json").json(metadata); }
 function unauthorizedBearer(res: express.Response, metadataUrl?: string) { const resourceMetadata = metadataUrl ? `, resource_metadata="${metadataUrl}"` : ""; res.set("WWW-Authenticate", `Bearer realm="${SERVICE_NAME}", error="invalid_token"${resourceMetadata}`); res.status(401).json({ error: "unauthorized" }); }
 function timingSafeTokenMatch(expected: string, supplied: string | undefined) { if (!supplied) return false; const left = Buffer.from(expected, "utf8"); const right = Buffer.from(supplied, "utf8"); return left.length === right.length && timingSafeEqual(left, right); }
@@ -69,6 +71,13 @@ async function boot() {
   await init();
   await initCapabilityStore();
   const authConfig = await loadAuthConfig();
+  app.get("/diagnostics", async (req, res, next) => {
+    try {
+      res.json(await runDiagnostics(authConfig ?? undefined, requestOrigin(req)));
+    } catch (error) {
+      next(error);
+    }
+  });
   const eventHandler = async (req: express.Request, res: express.Response) => {
     const projectId = typeof req.query.projectId === "string" ? req.query.projectId : undefined;
     res.status(200);
@@ -152,6 +161,10 @@ export const fetchHandler = async (request: Request): Promise<Response> => {
   }
   if (url.pathname === "/status") {
     return new Response(JSON.stringify({ service: SERVICE_NAME, version: VERSION, status: "online", connections: [], tools: [], tasks: [], activity: [], counts: { agents: 0, connected: 0, tools: 0, tasks: 0, activity: 0 } }), { status: 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+  }
+  if (url.pathname === "/diagnostics") {
+    const diagnostics = await runDiagnostics(undefined, url.origin);
+    return new Response(JSON.stringify(diagnostics), { status: 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
   }
   if (url.pathname === "/health") {
     return new Response(JSON.stringify({ status: "ok", service: "conduit" }), {
