@@ -11,7 +11,27 @@ import { runDiagnostics } from "./diagnostics.js";
 type ToolExtra = { http?: { authInfo?: AuthInfo } };
 const json = (value: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(value) }], structuredContent: value as Record<string, unknown> });
 const rejected = (error: string, details?: unknown) => errorResult(error, details);
-const admins = () => new Set((process.env.CONDUIT_GRANT_ADMIN_SUBJECTS ?? "").split(",").map((value) => value.trim()).filter(Boolean));
+
+// Performance Optimization: Cache parsed grant admin subjects Set until CONDUIT_GRANT_ADMIN_SUBJECTS changes.
+// Prevents re-parsing env string and instantiating a new Set on every .has() lookup inside isGrantAdmin().
+let cachedAdminSubjectsEnv: string | undefined;
+let cachedAdminSet: Set<string> | undefined;
+
+function getGrantAdminSet(): Set<string> {
+  const envSubjects = process.env.CONDUIT_GRANT_ADMIN_SUBJECTS ?? "";
+  if (cachedAdminSet && cachedAdminSubjectsEnv === envSubjects) {
+    return cachedAdminSet;
+  }
+  cachedAdminSubjectsEnv = envSubjects;
+  cachedAdminSet = new Set(
+    envSubjects
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
+  return cachedAdminSet;
+}
+
 const actorSubject = (extra: ToolExtra) => {
   const info = extra.http?.authInfo;
   if (!info) return undefined;
@@ -35,7 +55,8 @@ export function isGrantAdmin(extra: ToolExtra) {
   const sub = typeof info?.extra?.sub === "string" ? info.extra.sub : undefined;
   const clientId = typeof info?.clientId === "string" ? info.clientId : undefined;
   const keys = actorBindingLookupKeys(clientId, sub);
-  return keys.some((key) => admins().has(key)) || Boolean(sub && admins().has(sub)) || Boolean(clientId && admins().has(clientId));
+  const adminSet = getGrantAdminSet();
+  return keys.some((key) => adminSet.has(key)) || Boolean(sub && adminSet.has(sub)) || Boolean(clientId && adminSet.has(clientId));
 }
 
 async function canGovern(extra: ToolExtra, projectId?: string) {

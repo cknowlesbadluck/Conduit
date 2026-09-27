@@ -46,6 +46,10 @@ function matchPattern(pattern: string, value: string): boolean {
   const normalizedPattern = normalizePath(pattern);
   const normalizedValue = normalizePath(value);
 
+  // Performance Optimization: Direct O(1) equality check for exact path matches
+  // avoids regex/suffix scans and array allocations from .split("/").filter(Boolean).
+  if (normalizedPattern === normalizedValue) return true;
+
   // Recursive directory wildcard: ends with /**
   if (normalizedPattern.endsWith("/**")) {
     const prefix = normalizedPattern.slice(0, -3).replace(/\/$/, "");
