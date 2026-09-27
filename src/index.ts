@@ -73,7 +73,7 @@ async function boot() {
   const authConfig = await loadAuthConfig();
   app.get("/diagnostics", async (req, res, next) => {
     try {
-      res.json(await runDiagnostics(authConfig, requestOrigin(req)));
+      res.json(await runDiagnostics(authConfig ?? undefined, requestOrigin(req)));
     } catch (error) {
       next(error);
     }
