@@ -47,16 +47,23 @@ function isSensitiveKey(key: string) {
   return SECRET_KEY.test(key);
 }
 
+// Performance Optimization: Fast-path URL redaction by checking for "?" before running
+// global RegExp SECRET_VALUE match, since SECRET_VALUE requires a query string delimiter (\?).
 function sanitizeValue(value: string) {
+  if (!value.includes("?")) return value;
   return value.replace(SECRET_VALUE, "[REDACTED_URL]");
 }
 
+// Performance Optimization: Single-pass Object.keys loop avoids 3 intermediate array allocations
+// per activity event (previously Object.entries -> filter -> map -> Object.fromEntries).
 function sanitizeActivity(event: Record<string, string>) {
-  return Object.fromEntries(
-    Object.entries(event)
-      .filter(([key]) => !isSensitiveKey(key))
-      .map(([key, value]) => [key, sanitizeValue(value)]),
-  );
+  const sanitized: Record<string, string> = {};
+  for (const key of Object.keys(event)) {
+    if (!isSensitiveKey(key)) {
+      sanitized[key] = sanitizeValue(event[key]);
+    }
+  }
+  return sanitized;
 }
 
 function activityMatchesAgent(event: Record<string, string>, agentId: string) {
@@ -71,8 +78,6 @@ export async function getConduitStatus(): Promise<ConduitStatus> {
     listTools(),
     listActivity(50),
   ]);
-
-  const recentActivity = activity.map(sanitizeActivity);
 
   // Performance Optimization: Build a lookup map of agentId -> latest activity event in O(M) time.
   // Since activity is ordered newest-first (DESC), the first event encountered for an agent is their latest.
@@ -101,6 +106,9 @@ export async function getConduitStatus(): Promise<ConduitStatus> {
 
   const safeTools: StatusTool[] = tools.map(({ endpoint: _endpoint, ...tool }) => tool);
   const safeTasks: StatusTask[] = tasks.slice(0, 25).map(({ description: _description, createdBy: _createdBy, ...task }) => task);
+  // Performance Optimization: Slice activity to 25 items BEFORE mapping sanitizeActivity
+  // to avoid sanitizing items that are immediately discarded.
+  const recentActivity = activity.slice(0, 25).map(sanitizeActivity);
 
   return {
     service: SERVICE_NAME,
@@ -109,7 +117,7 @@ export async function getConduitStatus(): Promise<ConduitStatus> {
     connections,
     tools: safeTools,
     tasks: safeTasks,
-    activity: recentActivity.slice(0, 25),
+    activity: recentActivity,
   };
 }
 
@@ -134,7 +142,11 @@ export async function getPublicConduitStatus(): Promise<ConduitPublicStatus> {
       if (actorId && typeof actorId === "string") activeAgentIds.add(actorId);
     }
   }
-  const connected = agentList.filter((agent) => activeAgentIds.has(agent.id)).length;
+  // Performance Optimization: Count connected agents in single loop without allocating filtered array.
+  let connected = 0;
+  for (const agent of agentList) {
+    if (activeAgentIds.has(agent.id)) connected++;
+  }
   return {
     service: SERVICE_NAME,
     version: VERSION,
