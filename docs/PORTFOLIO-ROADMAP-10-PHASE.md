@@ -1,10 +1,10 @@
-# Portfolio 10-phase roadmap — 2026-09-28 14:00 EDT
+# Portfolio 10-phase roadmap — 2026-09-28 18:00 EDT
 
 1. Ready-or-refuse on Resonance — DONE on main. Live 503.
 2. SERVICE_ROLE exists on resonancenexus production context. Exit `/api/ready` 200 still unmet. Redeploy from GitHub.
 3. Durable GitHub adapter evidence. Needs live `GITHUB_TOKEN` + `GITHUB_WEBHOOK_SECRET`.
 4. Quicksilver device HG from `652d1070`.
-5. M2-T1 DONE (#188). Next QS slice: M2-T2 / M2-T3 or CHR-12.
+5. M2-T1 DONE (#188). M2-T2 opened this hour. Next QS slice after green CI: M2-T3.
 6. Conduit freeze on #119/#120. Repair off current main (`4838170a`) only. Do not merge red.
 7. Keyset pagination DONE (#125). HTTP `/diagnostics` DONE live 200 after #143. #144 memoize and #149 sanitization are on main.
 8. Resonance iOS I1 blocked by phase 2 exit.
