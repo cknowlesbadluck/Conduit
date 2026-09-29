@@ -32,6 +32,9 @@ test("integration paths reject absolute URLs, traversal, and protocol-like paths
     await assert.rejects(() => callIntegration({ provider: "github", method: "GET", path: "https://evil.example" }), /integration_path_must_start_with_slash/);
     await assert.rejects(() => callIntegration({ provider: "github", method: "GET", path: "//evil.example" }), /integration_path_invalid/);
     await assert.rejects(() => callIntegration({ provider: "github", method: "GET", path: "/../secret" }), /integration_path_invalid/);
+    await assert.rejects(() => callIntegration({ provider: "github", method: "GET", path: "/repos/safe/../private" }), /integration_path_invalid/);
+    await assert.rejects(() => callIntegration({ provider: "github", method: "GET", path: "/repos/safe/%2e%2e/private" }), /integration_path_invalid/);
+    await assert.rejects(() => callIntegration({ provider: "github", method: "GET", path: "/repos/%zz" }), /integration_path_invalid/);
     await assert.rejects(() => callIntegration({ provider: "github", method: "GET", path: "/api\\secret" }), /integration_path_invalid/);
   } finally {
     if (previous === undefined) delete process.env.GITHUB_TOKEN; else process.env.GITHUB_TOKEN = previous;
