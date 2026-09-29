@@ -180,10 +180,13 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
     return json(warning ? { ...result, conventionWarning: warning } : result);
   });
 
-  server.registerTool("task_get", { description: "Retrieve details of a single task by ID", inputSchema: z.object({ taskId: z.string().min(1) }), annotations: readOnly }, async ({ taskId }, extra) => {
+  server.registerTool("task_get", { description: "Retrieve details of a single task by ID. When projectId is supplied, only a task in that project is returned.", inputSchema: z.object({ taskId: z.string().min(1), projectId: z.string().min(1).max(200).optional() }), annotations: readOnly }, async ({ taskId, projectId }, extra) => {
     if (readScope) auth(extra, readScope);
     const result = await getTask(taskId);
-    return result ? json(result) : rejected("task_not_found", { taskId });
+    // Project context: a task outside the requested project is reported exactly like a
+    // missing task so callers cannot probe task ids across projects.
+    if (!result || (projectId !== undefined && result.projectId !== projectId)) return rejected("task_not_found", { taskId, ...(projectId !== undefined ? { projectId } : {}) });
+    return json(result);
   });
 
   server.registerTool("task_block", { description: "Mark a claimed task as blocked with an optional reason", inputSchema: z.object({ taskId: z.string().min(1), agentId: z.string().min(1).optional(), reason: z.string().max(2000).optional() }), annotations: writeSafe }, async ({ taskId, agentId, reason }, extra) => {
