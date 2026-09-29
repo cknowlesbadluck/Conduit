@@ -1,4 +1,4 @@
-# Portfolio 10-phase roadmap — 2026-09-29 11:00 EDT
+# Portfolio 10-phase roadmap — 2026-09-29 14:00 EDT
 
 1. Ready-or-refuse on Resonance — DONE on main. Live 503.
 2. SERVICE_ROLE exists on resonancenexus production context. Production process is still `6ab8ea11`. `main--` also 503. Exit `/api/ready` 200 still unmet. Redeploy production from GitHub.
