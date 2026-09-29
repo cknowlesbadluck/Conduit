@@ -75,3 +75,11 @@ export const EXTERNAL_RATE_LIMITER = new SlidingWindowLimiter({
   windowMs: Number(process.env.CONDUIT_EXTERNAL_RATE_WINDOW_MS ?? 60_000),
   maxKeys: Number(process.env.CONDUIT_RATE_MAX_KEYS ?? 10_000),
 });
+
+// /diagnostics is unauthenticated and fans out to ~8 outbound fetches per call,
+// so it gets a much tighter budget than MCP traffic.
+export const DIAGNOSTICS_RATE_LIMITER = new SlidingWindowLimiter({
+  limit: Number(process.env.CONDUIT_DIAGNOSTICS_RATE_LIMIT ?? 10),
+  windowMs: Number(process.env.CONDUIT_DIAGNOSTICS_RATE_WINDOW_MS ?? 60_000),
+  maxKeys: Number(process.env.CONDUIT_RATE_MAX_KEYS ?? 10_000),
+});

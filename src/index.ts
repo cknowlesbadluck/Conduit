@@ -13,6 +13,7 @@ import { timingSafeEqual } from "node:crypto";
 import { replayRecentEvents, subscribeEvents } from "./events.js";
 import { getPublicConduitStatus } from "./status.js";
 import { runDiagnostics } from "./diagnostics.js";
+import { createDiagnosticsHandler } from "./diagnostics-route.js";
 import { conduitUiHtml, CONDUIT_UI_CSS, CONDUIT_UI_JS } from "./ui.js";
 
 const app = express();
@@ -35,7 +36,6 @@ if (allowedOriginHostnames.length) app.use(originValidation(allowedOriginHostnam
 app.use((req, res, next) => { applyCors(req, res); if (req.method === "OPTIONS") { res.sendStatus(204); return; } next(); });
 const port = Number(process.env.PORT || 3000);
 const allowAnonymous = process.env.CONDUIT_ALLOW_ANONYMOUS === "true" && process.env.NODE_ENV !== "production";
-function requestOrigin(req: express.Request): string | undefined { const host = req.get("host"); if (!host) return undefined; const proto = req.get("x-forwarded-proto")?.split(",")[0]?.trim() || req.protocol || "http"; return `${proto}://${host}`; }
 function protectedResourceMetadataResponse(res: express.Response, metadata: ReturnType<typeof buildProtectedResourceMetadata>) { res.type("application/json").json(metadata); }
 function unauthorizedBearer(res: express.Response, metadataUrl?: string) { const resourceMetadata = metadataUrl ? `, resource_metadata="${metadataUrl}"` : ""; res.set("WWW-Authenticate", `Bearer realm="${SERVICE_NAME}", error="invalid_token"${resourceMetadata}`); res.status(401).json({ error: "unauthorized" }); }
 function timingSafeTokenMatch(expected: string, supplied: string | undefined) { if (!supplied) return false; const left = Buffer.from(expected, "utf8"); const right = Buffer.from(supplied, "utf8"); return left.length === right.length && timingSafeEqual(left, right); }
@@ -71,13 +71,10 @@ async function boot() {
   await init();
   await initCapabilityStore();
   const authConfig = await loadAuthConfig();
-  app.get("/diagnostics", async (req, res, next) => {
-    try {
-      res.json(await runDiagnostics(authConfig ?? undefined, requestOrigin(req)));
-    } catch (error) {
-      next(error);
-    }
-  });
+  app.get("/diagnostics", createDiagnosticsHandler(authConfig ?? undefined));
+  // Build the token verifier (and its cached remote JWKS) once and share it between
+  // /events and /mcp instead of re-creating it on every /events request.
+  const tokenVerifier = authConfig ? createTokenVerifier(authConfig) : undefined;
   const eventHandler = async (req: express.Request, res: express.Response) => {
     const projectId = typeof req.query.projectId === "string" ? req.query.projectId : undefined;
     res.status(200);
@@ -98,7 +95,7 @@ async function boot() {
         const token = req.header("authorization")?.replace(/^Bearer\s+/i, "");
         if (!token) { unauthorizedBearer(res, resourceMetadataUrl); return; }
         try {
-          const authInfo = await createTokenVerifier(authConfig).verifyAccessToken(token);
+          const authInfo = await tokenVerifier!.verifyAccessToken(token);
           requireScope(authInfo, authConfig.readScope);
           req.auth = authInfo;
           next();
@@ -122,7 +119,7 @@ async function boot() {
     app.use(mcpAuthMetadataRouter({ oauthMetadata: authConfig.metadata, resourceServerUrl: new URL(authConfig.resourceUrl) }));
     const handler = createMcpHandler(() => createConduitServer(authConfig));
     const nodeHandler = toNodeHandler(handler, { onerror: console.error });
-    app.all("/mcp", requireBearerAuth({ verifier: createTokenVerifier(authConfig), resourceMetadataUrl }), rateLimitMcp, (req, res) => nodeHandler(req, res, req.body));
+    app.all("/mcp", requireBearerAuth({ verifier: tokenVerifier!, resourceMetadataUrl }), rateLimitMcp, (req, res) => nodeHandler(req, res, req.body));
     console.log(`Conduit OAuth enabled for ${authConfig.resourceUrl}`);
   } else if (process.env.CONDUIT_TOKEN && process.env.NODE_ENV !== "production") {
     const token = process.env.CONDUIT_TOKEN;

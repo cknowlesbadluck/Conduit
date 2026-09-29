@@ -68,6 +68,50 @@ export function buildDiagnosticsFromMetadata(input: {
   } satisfies ConduitDiagnostics;
 }
 
+const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
+
+function effectivePort(url: URL): string {
+  if (url.port) return url.port;
+  return url.protocol === "https:" ? "443" : "80";
+}
+
+/**
+ * Choose the origin that HTTP `/diagnostics` probes.
+ *
+ * The request's Host header is attacker-controlled, so it is never trusted when a
+ * canonical origin is configured (OAuth resource URL, then PUBLIC_URL). Without one
+ * (local development) the Host must be a loopback name on the port the server is
+ * actually listening on — otherwise `Host: public-name:6379` would turn diagnostics
+ * into a port probe.
+ */
+export function resolveDiagnosticsTarget(input: {
+  authConfig?: ConduitAuthConfig;
+  publicUrl?: string;
+  requestHost?: string;
+  requestProto?: string;
+  localPort?: number;
+}): string {
+  if (input.authConfig) return new URL(input.authConfig.resourceUrl).origin;
+  const publicUrl = input.publicUrl?.trim();
+  if (publicUrl) return new URL(publicUrl).origin;
+  if (!input.requestHost) throw new Error("diagnostics_target_not_allowed");
+  const proto = input.requestProto === "https" ? "https" : "http";
+  let candidate: URL;
+  try {
+    candidate = new URL(`${proto}://${input.requestHost}`);
+  } catch {
+    throw new Error("diagnostics_target_not_allowed");
+  }
+  if (candidate.username || candidate.password || candidate.pathname !== "/" || candidate.search) {
+    throw new Error("diagnostics_target_not_allowed");
+  }
+  if (!LOOPBACK_HOSTNAMES.has(candidate.hostname)) throw new Error("diagnostics_target_not_allowed");
+  if (input.localPort === undefined || effectivePort(candidate) !== String(input.localPort)) {
+    throw new Error("diagnostics_target_not_allowed");
+  }
+  return candidate.origin;
+}
+
 export async function runDiagnostics(authConfig?: ConduitAuthConfig, baseUrl?: string): Promise<ConduitDiagnostics> {
   const resource = authConfig?.resourceUrl ?? `${process.env.PUBLIC_URL ?? "http://localhost:3000"}/mcp`;
   const configuredBase = baseUrl ?? new URL(resource).origin;
