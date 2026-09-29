@@ -9,3 +9,7 @@
 ## 2025-03-09 - Fast-pathing URL redaction and single-pass status sanitization
 **Learning:** `sanitizeActivity` in status projections was creating 3 intermediate arrays per event (`Object.entries` -> `.filter()` -> `.map()` -> `Object.fromEntries`) and running global RegExp matching on every property string. Fast-pathing URL checks by verifying string presence of query delimiters (`?`) before regex execution and using a single-pass `Object.keys` loop eliminates array allocations and skips unnecessary regex evaluations.
 **Action:** When sanitizing objects or matching string patterns across large payload lists, fast-path mandatory token/delimiter presence checks before evaluating expensive RegExp matches, and use direct loop building instead of chaining array transformations.
+
+## 2025-03-09 - Direct Set iteration in pub/sub event distribution
+**Learning:** `publishEvent` in `src/events.ts` was creating a shallow array copy (`[...listeners]`) on every published event. Iterating directly over the subscriber `Set` eliminates array creation and garbage collection overhead per event without changing iteration safety or notification behavior.
+**Action:** Iterate directly over `Set` instances in event dispatching loops rather than spreading into intermediate arrays.
