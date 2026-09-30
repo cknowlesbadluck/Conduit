@@ -1,4 +1,4 @@
-# Portfolio 10-phase roadmap — 2026-09-29 21:00 EDT
+# Portfolio 10-phase roadmap — 2026-09-30 01:00 EDT
 
 1. Ready-or-refuse on Resonance — DONE on main. Live 503.
 2. SERVICE_ROLE exists on resonancenexus production context. Production process is still `6ab8ea11`. Exit `/api/ready` 200 still unmet. Redeploy production from GitHub.
@@ -10,3 +10,9 @@
 8. Resonance iOS I1 blocked by phase 2 exit.
 9. Chamber lifecycle blocked by phase 2.
 10. Release surface + owner prune of leftover Conduit branches (`docs/hygiene-*`, `codex/*`, `bolt/*`, `counsel/*`, `release/0.8.0`). No delete-ref tool on this connector.
+
+## Innovation (blocked on owner env)
+
+- #155 TLS-verify-by-default is the correct next Conduit hardening. Merge only after Render Postgres CA is set.
+- Ready-identity stamp on Resonance `/api/ready` so Conduit hygiene can stop guessing dashboard vs process.
+- Hygiene freeze until CHR-54 or CHR-55 moves.
