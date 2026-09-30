@@ -44,16 +44,36 @@ export class SlidingWindowLimiter {
     this.buckets.clear();
   }
 
+  // Performance Optimization: Perform single-pass O(K) eviction sweep.
+  // Immediately prunes expired buckets on the fly while tracking the oldest active key in
+  // a single iteration over this.buckets. Avoids O(K log K) sorting and intermediate array/tuple
+  // allocations from [...this.buckets.entries()].sort(...) when capacity maxKeys is exceeded.
   private evict(now: number) {
     if (this.buckets.size <= this.options.maxKeys) return;
     const cutoff = now - this.options.windowMs;
-    for (const [key, timestamps] of this.buckets) {
-      if (timestamps.length === 0 || timestamps[timestamps.length - 1] <= cutoff) this.buckets.delete(key);
-      if (this.buckets.size <= this.options.maxKeys) break;
-    }
-    if (this.buckets.size > this.options.maxKeys) {
-      const oldest = [...this.buckets.entries()].sort((a, b) => (a[1][0] ?? 0) - (b[1][0] ?? 0));
-      for (const [key] of oldest.slice(0, this.buckets.size - this.options.maxKeys)) this.buckets.delete(key);
+
+    while (this.buckets.size > this.options.maxKeys) {
+      let oldestKey: string | undefined;
+      let oldestTime = Infinity;
+
+      for (const [key, timestamps] of this.buckets) {
+        if (timestamps.length === 0 || timestamps[timestamps.length - 1] <= cutoff) {
+          this.buckets.delete(key);
+          if (this.buckets.size <= this.options.maxKeys) return;
+        } else {
+          const time = timestamps[0] ?? 0;
+          if (time < oldestTime) {
+            oldestTime = time;
+            oldestKey = key;
+          }
+        }
+      }
+
+      if (this.buckets.size > this.options.maxKeys && oldestKey) {
+        this.buckets.delete(oldestKey);
+      } else {
+        break;
+      }
     }
   }
 }
