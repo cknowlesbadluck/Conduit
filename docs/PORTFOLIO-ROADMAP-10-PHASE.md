@@ -1,12 +1,12 @@
-# Portfolio 10-phase roadmap — 2026-09-28 07:00 EDT
+# Portfolio 10-phase roadmap — 2026-09-30 12:00 EDT
 
-1. Ready-or-refuse on Resonance — DONE on main. Live 503.
-2. Owner SERVICE_ROLE on resonancenexus. Exit `/api/ready` 200.
-3. Durable GitHub adapter evidence.
-4. Quicksilver device HG from `efe70f8a`.
-5. Next QS code slice after HG (M2-T1 or CHR-12). M1-T12, #185 Codex P2 docs, and #184 23:00 hygiene are on main.
-6. Conduit freeze on #119/#120. Repair off current main (`ddf0ed34`) only. #149 stays open until generated d.ts is removed.
-7. Keyset pagination DONE (#125). HTTP `/diagnostics` DONE live 200 after #143. #144 memoize is on main.
+1. Stabilize entropy. Close superseded hygiene stamps. #156 landed.
+2. Owner GitHub-backed production redeploy of Resonance current main. Exit `/api/ready` 200.
+3. Land Resonance #133/#131 after rebase.
+4. Durable GitHub adapter evidence.
+5. Quicksilver device HG from `4f9660ff`.
+6. Repair QS #195 / rebase or close #193. Do not merge red.
+7. Conduit freeze on #119/#120. Rebase #152. Hold #155. Leave stale `docs/hygiene-1200` until owner prune.
 8. Resonance iOS I1 blocked by phase 2.
 9. Chamber lifecycle blocked by phase 2.
-10. Release surface + owner prune of leftover Conduit branches (`docs/hygiene-*`, `codex/*`, `bolt/*`, `release/0.8.0`). No delete-ref tool on this connector.
+10. Release surface + owner prune leftover Conduit branches. No delete-ref tool on this connector.
