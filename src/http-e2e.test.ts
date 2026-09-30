@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { createConduitApp } from "./app-factory.js";
 import { MCP_PROTOCOL_VERSION, SERVICE_NAME } from "./version.js";
-import { init } from "./store.js";
+import { init, registerAgent, createProject, createTask } from "./store.js";
+import { request as httpRequest } from "node:http";
+import { DIAGNOSTICS_RATE_LIMITER } from "./rate-limit.js";
 import type { ConduitAuthConfig } from "./auth.js";
 import type { AuthInfo } from "@modelcontextprotocol/server";
 
@@ -202,6 +204,98 @@ test("GET /diagnostics returns JSON without secrets", async () => {
     assert.equal(serialized.includes("bearer "), false);
     assert.equal(serialized.includes("password"), false);
     assert.equal(serialized.includes("client_secret"), false);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+function rawGet(port: number, path: string, host: string): Promise<{ status: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    const req = httpRequest({ host: "127.0.0.1", port, path, method: "GET", headers: { Host: host } }, (res) => {
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => { body += chunk; });
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, body }));
+    });
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+test("GET /diagnostics rejects a Host header pointing at another port", async () => {
+  await init();
+  DIAGNOSTICS_RATE_LIMITER.clear();
+  const app = createConduitApp({ anonymous: true });
+  const server = createServer(app);
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const response = await rawGet(address.port, "/diagnostics", "127.0.0.1:6379");
+    assert.equal(response.status, 400);
+    assert.match(response.body, /diagnostics_target_not_allowed/);
+  } finally {
+    DIAGNOSTICS_RATE_LIMITER.clear();
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("GET /diagnostics is rate limited", async () => {
+  await init();
+  DIAGNOSTICS_RATE_LIMITER.clear();
+  const app = createConduitApp({ anonymous: true });
+  const server = createServer(app);
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    // Exhaust the budget with cheap rejected-target calls (the limiter runs first).
+    let lastStatus = 0;
+    for (let i = 0; i < 11; i += 1) lastStatus = (await rawGet(address.port, "/diagnostics", "127.0.0.1:1")).status;
+    assert.equal(lastStatus, 429);
+  } finally {
+    DIAGNOSTICS_RATE_LIMITER.clear();
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("task_get enforces an explicit project context", async () => {
+  await init();
+  await registerAgent({ id: "task-scope-agent", name: "Task Scope Agent" });
+  const projectA = await createProject({ name: "Task scope A", createdBy: "task-scope-agent" });
+  const projectB = await createProject({ name: "Task scope B", createdBy: "task-scope-agent" });
+  assert.ok(projectA && projectB);
+  const task = await createTask({ title: "Scoped task", createdBy: "task-scope-agent", projectId: projectA.id });
+  assert.ok(task);
+
+  const app = createConduitApp({ anonymous: true });
+  const server = createServer(app);
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    const callTaskGet = async (args: Record<string, unknown>, id: number) => {
+      const response = await fetch(`${baseUrl}/mcp`, {
+        method: "POST",
+        headers: mcpHeaders(),
+        body: JSON.stringify({ jsonrpc: "2.0", id, method: "tools/call", params: { name: "task_get", arguments: args } }),
+      });
+      assert.equal(response.status, 200);
+      return (await readMcpResponse(response)).result as { isError?: boolean; structuredContent?: { id?: string } };
+    };
+
+    const unscoped = await callTaskGet({ taskId: task.id }, 1);
+    assert.notEqual(unscoped.isError, true);
+    assert.equal(unscoped.structuredContent?.id, task.id);
+
+    const sameProject = await callTaskGet({ taskId: task.id, projectId: projectA.id }, 2);
+    assert.notEqual(sameProject.isError, true);
+    assert.equal(sameProject.structuredContent?.id, task.id);
+
+    const otherProject = await callTaskGet({ taskId: task.id, projectId: projectB.id }, 3);
+    assert.equal(otherProject.isError, true);
+    assert.equal(otherProject.structuredContent?.id, undefined);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
