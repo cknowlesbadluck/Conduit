@@ -1,23 +1,23 @@
 import pg from "pg";
+import { createPgPool, databaseConfigured } from "./db-pool.js";
 
 const PROBE_TIMEOUT_MS = 2000;
 
 let probePool: pg.Pool | undefined;
 
 function persistenceConfigured(): boolean {
-  return Boolean(process.env.DATABASE_URL) && process.env.CONDUIT_TEST_MEMORY !== "true";
+  return databaseConfigured();
 }
 
 function getProbePool(): pg.Pool {
   if (!probePool) {
-    probePool = new pg.Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DATABASE_SSL === "false" ? false : { rejectUnauthorized: false },
+    probePool = createPgPool({
       max: 1,
       connectionTimeoutMillis: PROBE_TIMEOUT_MS,
       idleTimeoutMillis: 10_000,
-    });
+    }) ?? undefined;
   }
+  if (!probePool) throw new Error("persistence_not_configured");
   return probePool;
 }
 
