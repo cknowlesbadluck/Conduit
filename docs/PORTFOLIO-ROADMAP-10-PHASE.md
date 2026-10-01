@@ -1,12 +1,12 @@
-# Portfolio 10-phase roadmap — 2026-09-28 07:00 EDT
+# Portfolio 10-phase roadmap — 2026-10-01 06:00 EDT
 
-1. Ready-or-refuse on Resonance — DONE on main. Live 503.
-2. Owner SERVICE_ROLE on resonancenexus. Exit `/api/ready` 200.
-3. Durable GitHub adapter evidence.
-4. Quicksilver device HG from `efe70f8a`.
-5. Next QS code slice after HG (M2-T1 or CHR-12). M1-T12, #185 Codex P2 docs, and #184 23:00 hygiene are on main.
-6. Conduit freeze on #119/#120. Repair off current main (`ddf0ed34`) only. #149 stays open until generated d.ts is removed.
-7. Keyset pagination DONE (#125). HTTP `/diagnostics` DONE live 200 after #143. #144 memoize is on main.
-8. Resonance iOS I1 blocked by phase 2.
-9. Chamber lifecycle blocked by phase 2.
-10. Release surface + owner prune of leftover Conduit branches (`docs/hygiene-*`, `codex/*`, `bolt/*`, `release/0.8.0`). No delete-ref tool on this connector.
+1. Freeze the production truth. Conduit `/ready` 200 on postgres. Resonance `/api/ready` 503 until SERVICE_ROLE. Do not invent secrets.
+2. Owner sets `SUPABASE_SERVICE_ROLE_KEY` on resonancenexus only. Exit: `/api/ready` 200 without echoing the key. CHR-54.
+3. Turn on Conduit TLS verify. Set `DATABASE_SSL_REJECT_UNAUTHORIZED=true` on Render, prove `/ready` still 200, then merge the verify-default follow-up. #155 stays closed until that probe.
+4. Set `CONDUIT_CURSOR_SECRET` (>=16) and reject unsigned cursors in production. Code is in; secret is owner-side.
+5. Quicksilver device HG. Archive an IPA from current main on iPhone 16e. CHR-55. Simulator CI is not HG.
+6. Land on-device conversation retrieval. MemoryQuery text overlap is the first slice; next is wiring it into the ask path, not another docs hour.
+7. Repair or close red Conduit drafts #119 and #120 off current main. Do not merge red.
+8. Resonance iOS cockpit: merge the buildable XcodeGen target only after phase 2, then wire intent approval. CHR-39.
+9. Chamber lifecycle with lease and evidence. Blocked by phase 2. No Quicksilver types in Resonance core.
+10. Prune leftover branches and archive `cknowlesbadluck/Quicksilver` plus archived `mcp`. One source of truth per product.

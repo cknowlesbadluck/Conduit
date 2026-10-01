@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 export type Page<T> = { items: T[]; nextCursor?: string };
 
 export type CursorCollection = "agents" | "projects" | "resources" | "tasks" | "contacts" | "tools" | "activity";
@@ -9,7 +10,9 @@ export type CursorPayload = {
   filters: Record<string, string>;
   order: CursorOrder;
   sort: { time: string; id: string };
+  mac?: string;
 };
+
 
 const orders: Record<CursorCollection, CursorOrder> = {
   agents: { field: "createdAt", direction: "desc", tieBreaker: "id" },
@@ -28,9 +31,30 @@ const sameRecord = (a: Record<string, string>, b: Record<string, string>) => {
 };
 
 /** Opaque, versioned keyset cursor codec. Decode validates that a cursor belongs to this exact query. */
+function cursorSecret() {
+  const secret = process.env.CONDUIT_CURSOR_SECRET;
+  return secret && secret.length >= 16 ? secret : undefined;
+}
+
+function signBody(body: Omit<CursorPayload, "mac">, secret: string) {
+  return createHmac("sha256", secret).update(JSON.stringify(body)).digest("base64url");
+}
+
+function macMatches(expected: string, actual: string) {
+  const a = Buffer.from(expected);
+  const b = Buffer.from(actual);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/** Opaque, versioned keyset cursor codec. Decode validates that a cursor belongs to this exact query.
+ *  When CONDUIT_CURSOR_SECRET is set (>=16 chars), cursors are HMAC-signed and unsigned cursors are rejected.
+ *  Without the secret, encoding stays compatible with existing unsigned cursors. */
 export const cursorCodec = {
   encode(payload: CursorPayload): string {
-    return Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+    const { mac: _ignored, ...body } = payload;
+    const secret = cursorSecret();
+    const signed = secret ? { ...body, mac: signBody(body, secret) } : body;
+    return Buffer.from(JSON.stringify(signed), "utf8").toString("base64url");
   },
   decode(cursor: string, expected: { collection: CursorCollection; projectId?: string; filters?: Record<string, string> }): CursorPayload {
     try {
@@ -42,6 +66,18 @@ export const cursorCodec = {
         || value.order.field !== order.field || value.order.direction !== "desc" || value.order.tieBreaker !== "id"
         || !value.sort || typeof value.sort.time !== "string" || !Number.isFinite(Date.parse(value.sort.time))
         || typeof value.sort.id !== "string" || !value.sort.id) throw new Error("invalid_cursor");
+      const secret = cursorSecret();
+      if (secret) {
+        const body: Omit<CursorPayload, "mac"> = {
+          version: 1,
+          collection: value.collection as CursorCollection,
+          projectId: value.projectId ?? null,
+          filters: value.filters as Record<string, string>,
+          order: value.order as CursorOrder,
+          sort: value.sort as { time: string; id: string },
+        };
+        if (!value.mac || !macMatches(signBody(body, secret), value.mac)) throw new Error("invalid_cursor");
+      }
       return value as CursorPayload;
     } catch (error) {
       if (error instanceof Error && error.message === "invalid_cursor") throw error;
