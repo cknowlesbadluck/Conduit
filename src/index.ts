@@ -141,7 +141,11 @@ async function boot() {
   process.once("SIGTERM", shutdown); process.once("SIGINT", shutdown);
 }
 
-if (typeof process !== "undefined" && process.versions?.node && !process.env.CLOUDFLARE_WORKER) {
+const isCloudflareWorker = Boolean(
+  process.env.CLOUDFLARE_WORKER === "true" || (globalThis as Record<string, unknown>).WebSocketPair,
+);
+
+if (typeof process !== "undefined" && process.versions?.node && !isCloudflareWorker) {
   boot().catch((error) => { console.error("Conduit startup failed", error); process.exit(1); });
 }
 
