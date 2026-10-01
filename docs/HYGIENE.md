@@ -1,3 +1,10 @@
-Update `docs/AUDIT-2026-09-25.md` and `docs/PORTFOLIO-ROADMAP-10-PHASE.md` in place. Do not add hourly `PORTFOLIO-AUDIT-*-HHMM.md` files.
-Last in-place refresh: 2026-09-28 07:00 EDT.
-Freeze: #119 and #120 stay draft red. Do not merge #149 until `worker-configuration.d.ts` is dropped.
+# Conduit hygiene — 2026-10-01 03:00 EDT
+
+Live `GET /health` 200. `GET /ready` 200 version 0.8.0 persistence postgres.
+MCP diagnostics: health, protected resource, authorization server, JWKS, scope parity, CIMD/DCR all ok.
+Bound agent `grok`. bindingConflict false. `activity_prune` removed 0 rows.
+
+Do not merge #119 or #120. They stay draft and red against an older base.
+Do not merge #155 until Render TLS env is set.
+Do not hard-code Resonance or Quicksilver into Conduit core.
+Main remains `b582429b`.
