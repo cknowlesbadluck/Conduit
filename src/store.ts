@@ -1,5 +1,6 @@
 import pg from "pg";
 import { cursorCodec, cursorOrder, pageLimit, type CursorCollection, type Page } from "./pagination.js";
+import { postgresSsl } from "./postgres-ssl.js";
 
 const { Pool } = pg;
 
@@ -26,10 +27,7 @@ const contacts = new Map<string, Contact>();
 const tools = new Map<string, Tool>();
 const activity: ActivityEvent[] = [];
 const useDatabase = Boolean(process.env.DATABASE_URL) && process.env.CONDUIT_TEST_MEMORY !== "true";
-const sslRejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === "true";
-const sslOption = process.env.DATABASE_SSL === "false"
-  ? false
-  : { rejectUnauthorized: sslRejectUnauthorized };
+const sslOption = postgresSsl();
 
 const pool = useDatabase
   ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: sslOption, max: 5 })

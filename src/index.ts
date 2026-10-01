@@ -4,6 +4,7 @@ import { toNodeHandler } from "@modelcontextprotocol/node";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { init, isReady } from "./store.js";
 import { checkPersistence } from "./db-ready.js";
+import { postgresTlsReport } from "./postgres-ssl.js";
 import { initCapabilityStore } from "./capability-store.js";
 import { buildProtectedResourceMetadata, createDevelopmentAuthInfo, createTokenVerifier, DEVELOPMENT_ANONYMOUS_SUBJECT, DEVELOPMENT_TOKEN_SUBJECT, loadAuthConfig, requireScope } from "./auth.js";
 import { createConduitServer } from "./mcp.js";
@@ -61,6 +62,7 @@ app.get("/ready", async (_req, res) => {
   const ready = initialized && persistenceOk;
   res.status(ready ? 200 : 503).json({
     status: ready ? "ready" : (initialized ? "degraded" : "initializing"),
+    tls: postgresTlsReport(),
     service: "conduit",
     version: VERSION,
     persistence: process.env.DATABASE_URL && process.env.CONDUIT_TEST_MEMORY !== "true" ? "postgres" : "memory",

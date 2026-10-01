@@ -1,3 +1,4 @@
+import { postgresSsl } from "./postgres-ssl.js";
 import pg from "pg";
 // Performance Optimization: Use store's exported agentExists to execute direct O(1) PK/Map check
 // instead of fetching and sorting all agents via listAgents().
@@ -9,7 +10,7 @@ const useDatabase = Boolean(process.env.DATABASE_URL) && process.env.CONDUIT_TES
 const pool = useDatabase
   ? new Pool({
       connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DATABASE_SSL === "false" ? false : { rejectUnauthorized: false },
+      ssl: postgresSsl(),
       max: 3,
     })
   : null;

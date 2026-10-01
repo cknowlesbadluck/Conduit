@@ -1,8 +1,8 @@
 import pg from "pg";
+import { postgresSsl } from "./postgres-ssl.js";
 
 const useDatabase = Boolean(process.env.DATABASE_URL) && process.env.CONDUIT_TEST_MEMORY !== "true";
-const sslRejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === "true";
-const sslOption = process.env.DATABASE_SSL === "false" ? false : { rejectUnauthorized: sslRejectUnauthorized };
+const sslOption = postgresSsl();
 const pool = useDatabase ? new pg.Pool({ connectionString: process.env.DATABASE_URL, ssl: sslOption, max: 2 }) : null;
 
 /** In-memory fallback used when CONDUIT_TEST_MEMORY=true. registerAgent in store.ts also maintains boundAgentSubjects; this map is filled by rememberSubjectBinding. */
