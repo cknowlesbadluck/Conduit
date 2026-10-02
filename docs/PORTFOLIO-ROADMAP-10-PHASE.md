@@ -1,12 +1,16 @@
-# Portfolio 10-phase roadmap — 2026-09-28 07:00 EDT
+# Portfolio 10-phase roadmap — 2026-10-02 01:00 EDT
 
-1. Ready-or-refuse on Resonance — DONE on main. Live 503.
-2. Owner SERVICE_ROLE on resonancenexus. Exit `/api/ready` 200.
-3. Durable GitHub adapter evidence.
-4. Quicksilver device HG from `efe70f8a`.
-5. Next QS code slice after HG (M2-T1 or CHR-12). M1-T12, #185 Codex P2 docs, and #184 23:00 hygiene are on main.
-6. Conduit freeze on #119/#120. Repair off current main (`ddf0ed34`) only. #149 stays open until generated d.ts is removed.
-7. Keyset pagination DONE (#125). HTTP `/diagnostics` DONE live 200 after #143. #144 memoize is on main.
-8. Resonance iOS I1 blocked by phase 2.
-9. Chamber lifecycle blocked by phase 2.
-10. Release surface + owner prune of leftover Conduit branches (`docs/hygiene-*`, `codex/*`, `bolt/*`, `release/0.8.0`). No delete-ref tool on this connector.
+Evidence from this pass. Live probes at 2026-10-02T05:01Z.
+
+1. Live `/health` and `/ready` are 200. Persistence is postgres. Version is 0.8.0. Diagnostics scope parity is ok. Bound agent is grok. No binding conflict.
+2. `grok` and `grok-xai` remain a prefix split. This branch classifies that split as advisory. Do not rebind. Do not delete either agent.
+3. #119 and #120 stay draft red. Do not merge.
+4. #155 and #162 stay unmerged until the Render Postgres TLS env is set. Do not flip TLS verify on a deploy that will fail closed.
+5. #161 stays open until its required checks are green. Do not merge a red Workers build.
+6. Resonance `/api/ready` is 503, missing exactly `SUPABASE_SERVICE_ROLE_KEY`. That is an owner gate on resonancenexus. Conduit must not store the secret.
+7. QuicksilverV1 device HG is CHR-55. Conduit does not install IPAs.
+8. Activity retention prune stays the hygiene tool. Do not add a second audit log.
+9. Hourly PORTFOLIO-AUDIT files stay forbidden. Update this file in place.
+10. Post-freeze hardening: TLS verify, signed cursors, then close #119/#120 if the ordered migrations are still needed after main.
+
+Binding constraints: Render TLS env, owner Netlify secret, physical iPhone. None are Conduit code defects.

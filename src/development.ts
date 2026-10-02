@@ -1,3 +1,5 @@
+import { classifyAgentIds, type AgentHygiene } from "./agent-hygiene.js";
+
 export type DevelopmentContext = {
   purpose: string;
   status: "active";
@@ -24,6 +26,11 @@ export function getDevelopmentContext(): DevelopmentContext {
       "Do not require a Mac or local developer machine for coordination workflows.",
       "Conduit coordinates work; it does not become part of the application being developed.",
       "Project-specific context belongs in project/resource records, not in Conduit's core identity.",
+      "Prefix-split logical agents are advisory. Do not rebind or delete them from this context.",
     ],
   };
+}
+
+export function agentHygiene(ids: readonly string[]): AgentHygiene {
+  return classifyAgentIds(ids);
 }
