@@ -19,6 +19,7 @@ export type ProbeFacts = {
   resonanceReadyStatus: number;
   resonanceMissing?: string[];
   resonanceHasOwnerAction: boolean;
+  resonanceHostClass?: "public_gate" | "alias" | "invalid";
 };
 
 export type OpenPull = {
@@ -46,7 +47,7 @@ export type BudgetDecision = {
   revision: typeof ENTROPY_BUDGET_REVISION;
   allowNetNewFeature: boolean;
   allowDocsRefresh: boolean;
-  nextAction: "prune" | "owner_gate" | "land_green_slice" | "advance";
+  nextAction: "prune" | "owner_gate" | "hold_deploy" | "land_green_slice" | "advance";
   blockedPhase: PhaseId;
   reasons: string[];
 };
@@ -70,8 +71,9 @@ function conduitAligned(probe: ProbeFacts): boolean {
 export function blockedPhase(probe: ProbeFacts, pulls: OpenPull[]): PhaseId {
   const featureCount = pulls.filter((pull) => pull.kind === "feature" || pull.kind === "harden").length;
   if (featureCount > FEATURE_CAP || pulls.some((pull) => pull.repo === "Quicksilver")) return "P0_entropy_budget";
-  if (missingServiceRole(probe) || !probe.resonanceHasOwnerAction) return "P1_owner_gates";
-  if (probe.resonanceReadyStatus !== 200) return "P2_resonance_deploy_parity";
+  if (missingServiceRole(probe)) return "P1_owner_gates";
+  if (probe.resonanceHostClass === "alias" || probe.resonanceHostClass === "invalid") return "P2_resonance_deploy_parity";
+  if (!probe.resonanceHasOwnerAction || probe.resonanceReadyStatus !== 200) return "P2_resonance_deploy_parity";
   if (pulls.some((pull) => pull.doNotMerge || pull.draft)) return "P3_land_or_close";
   if (!conduitAligned(probe)) return "P3_land_or_close";
   return "P4_device_acceptance";
@@ -86,6 +88,7 @@ export function classifyEntropyBudget(probe: ProbeFacts, pulls: OpenPull[]): Bud
 
   if (!conduitAligned(probe)) reasons.push("conduit_surface_not_aligned");
   if (missingServiceRole(probe)) reasons.push("owner_missing_SUPABASE_SERVICE_ROLE_KEY");
+  if (probe.resonanceHostClass === "alias" || probe.resonanceHostClass === "invalid") reasons.push("resonance_host_is_not_public_gate");
   if (!probe.resonanceHasOwnerAction) reasons.push("resonance_ready_omits_ownerActionRequired");
   if (zombieLegacy) reasons.push("legacy_quicksilver_pulls_still_open");
   if (featureCount > FEATURE_CAP) reasons.push(`open_feature_or_harden_count_${featureCount}_over_${FEATURE_CAP}`);
@@ -96,11 +99,16 @@ export function classifyEntropyBudget(probe: ProbeFacts, pulls: OpenPull[]): Bud
   const allowDocsRefresh = !docsAlreadyOpen && !zombieLegacy;
   const nextAction = zombieLegacy || featureCount > FEATURE_CAP
     ? "prune"
-    : missingServiceRole(probe) || !probe.resonanceHasOwnerAction
+    : missingServiceRole(probe)
       ? "owner_gate"
-      : pulls.some((pull) => !pull.doNotMerge && !pull.draft)
-        ? "land_green_slice"
-        : "advance";
+      : probe.resonanceHostClass === "alias"
+        || probe.resonanceHostClass === "invalid"
+        || !probe.resonanceHasOwnerAction
+        || probe.resonanceReadyStatus !== 200
+        ? "hold_deploy"
+        : pulls.some((pull) => !pull.doNotMerge && !pull.draft)
+          ? "land_green_slice"
+          : "advance";
 
   return {
     revision: ENTROPY_BUDGET_REVISION,
