@@ -61,8 +61,8 @@ export function readyBody(input: {
 
 /** Classify a live health/ready pair. A 200 without the stamp is not aligned. */
 export function classifySurfaceSplit(
-  health: { version?: unknown; contractRevision?: unknown },
-  ready: { version?: unknown; contractRevision?: unknown },
+  health: { version?: unknown; contractRevision?: unknown; [key: string]: unknown },
+  ready: { version?: unknown; contractRevision?: unknown; [key: string]: unknown },
 ): SurfaceSplit {
   const healthRevision = health.contractRevision;
   const readyRevision = ready.contractRevision;
