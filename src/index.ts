@@ -181,6 +181,6 @@ export const fetchHandler = async (request: Request): Promise<Response> => {
   });
 };
 
-export default {
+export default Object.assign(app, {
   fetch: fetchHandler,
-};
+});
