@@ -33,11 +33,26 @@ export type HostVerdict =
 export type PortfolioVerdict = {
   conduit: HostVerdict;
   resonance: HostVerdict;
-  quicksilver: "device_gate";
+  quicksilver: "device_gate" | "device_observed";
   portfolio: "open" | "blocked_owner" | "blocked_conduit" | "blocked_resonance";
   deployLag: boolean;
   ownerActionRequiredFieldPresent: boolean;
   ownerAction: string | null;
+};
+
+export type EntropyInput = {
+  openRoadmapPullRequests: number;
+  legacyRepoArchived: boolean;
+  deviceHgObserved: boolean;
+  simulatorGreen: boolean;
+  redRequiredCiOpen: boolean;
+};
+
+export type ActionSplit = {
+  ownerActions: string[];
+  agentActions: string[];
+  nonProof: string[];
+  portfolio: PortfolioVerdict["portfolio"];
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -104,7 +119,10 @@ export function classifyResonance(probe: Probe): {
   return { verdict: "unexpected", deployLag, ownerActionRequiredFieldPresent: ownerFieldPresent };
 }
 
-export function classifyPortfolioGate(input: PortfolioProbes): PortfolioVerdict {
+export function classifyPortfolioGate(
+  input: PortfolioProbes,
+  deviceHgObserved = false,
+): PortfolioVerdict {
   const conduit = classifyConduit(input.conduitHealth, input.conduitReady);
   const resonance = classifyResonance(input.resonanceReady);
   let portfolio: PortfolioVerdict["portfolio"] = "open";
@@ -122,10 +140,50 @@ export function classifyPortfolioGate(input: PortfolioProbes): PortfolioVerdict 
   return {
     conduit,
     resonance: resonance.verdict,
-    quicksilver: "device_gate",
+    quicksilver: deviceHgObserved ? "device_observed" : "device_gate",
     portfolio,
     deployLag: resonance.deployLag,
     ownerActionRequiredFieldPresent: resonance.ownerActionRequiredFieldPresent,
     ownerAction,
+  };
+}
+
+export function splitPortfolioActions(verdict: PortfolioVerdict, entropy: EntropyInput): ActionSplit {
+  const ownerActions: string[] = [];
+  const agentActions: string[] = [];
+  const nonProof: string[] = [
+    "A classifier unit test is not production proof.",
+    "A GitHub deployment status is not the public ready body.",
+  ];
+
+  if (verdict.ownerAction) ownerActions.push(verdict.ownerAction);
+  if (!entropy.legacyRepoArchived) {
+    ownerActions.push("Archive cknowlesbadluck/Quicksilver from the owner account. Agent archive returns 403.");
+  }
+  if (!entropy.deviceHgObserved) {
+    ownerActions.push("Run CHR-55 archive IPA on iPhone 16e. This host cannot observe that gate.");
+  }
+  if (entropy.simulatorGreen || verdict.quicksilver !== "device_observed") {
+    nonProof.push("Simulator CI is not device HG.");
+  }
+  if (entropy.openRoadmapPullRequests > 0) {
+    nonProof.push("An open roadmap pull request is not production proof.");
+  }
+  if (verdict.deployLag) {
+    agentActions.push("Do not treat a preview deploy as the public host.");
+  }
+  if (entropy.redRequiredCiOpen) {
+    agentActions.push("Do not merge red required CI.");
+  }
+  agentActions.push(`Do not invent ${RESONANCE_OWNER_KEY}.`);
+  if (entropy.openRoadmapPullRequests > 1) {
+    agentActions.push("Refresh the existing roadmap pull request in place. Do not open another.");
+  }
+
+  return {
+    ownerActions,
+    agentActions,
+    nonProof,
+    portfolio: verdict.portfolio,
   };
 }

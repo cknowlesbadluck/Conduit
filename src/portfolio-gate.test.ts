@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classifyPortfolioGate, CONDUIT_EXPECTED_REVISION, RESONANCE_OWNER_KEY } from "./portfolio-gate.js";
+import {
+  classifyPortfolioGate,
+  splitPortfolioActions,
+  CONDUIT_EXPECTED_REVISION,
+  RESONANCE_OWNER_KEY,
+} from "./portfolio-gate.js";
 
 const liveConduitHealth = {
   httpStatus: 200,
@@ -35,11 +40,19 @@ const liveResonance = {
     persistenceConfigured: false,
     githubAdapterConfigured: false,
     missingRequired: [RESONANCE_OWNER_KEY],
-    timestamp: "2026-10-03T17:01:31.208Z",
+    timestamp: "2026-10-03T18:00:54.156Z",
   },
 };
 
-test("13:00 EDT live shape is owner-blocked, not a Conduit outage", () => {
+const entropy = {
+  openRoadmapPullRequests: 3,
+  legacyRepoArchived: false,
+  deviceHgObserved: false,
+  simulatorGreen: true,
+  redRequiredCiOpen: true,
+};
+
+test("18:00 EDT live shape is owner-blocked, not a Conduit outage", () => {
   const verdict = classifyPortfolioGate({
     conduitHealth: liveConduitHealth,
     conduitReady: liveConduitReady,
@@ -87,12 +100,12 @@ test("stamped resonance 200 opens the portfolio only after Conduit is ready", ()
       httpStatus: 200,
       body: { status: "ready", contractRevision: "2026-10-03-ready-surface", ownerActionRequired: false },
     },
-  });
+  }, true);
   assert.equal(ready.resonance, "ready");
   assert.equal(ready.deployLag, false);
   assert.equal(ready.ownerActionRequiredFieldPresent, true);
   assert.equal(ready.portfolio, "open");
-  assert.equal(ready.quicksilver, "device_gate");
+  assert.equal(ready.quicksilver, "device_observed");
 });
 
 test("malformed resonance body fails closed", () => {
@@ -103,4 +116,20 @@ test("malformed resonance body fails closed", () => {
   });
   assert.equal(verdict.resonance, "malformed");
   assert.equal(verdict.portfolio, "blocked_resonance");
+});
+
+test("open roadmap PRs and simulator green are non-proof", () => {
+  const verdict = classifyPortfolioGate({
+    conduitHealth: liveConduitHealth,
+    conduitReady: liveConduitReady,
+    resonanceReady: liveResonance,
+  });
+  const split = splitPortfolioActions(verdict, entropy);
+  assert.equal(split.portfolio, "blocked_owner");
+  assert.equal(split.ownerActions.length, 3);
+  assert.equal(split.nonProof.some((item) => item.includes("roadmap pull request")), true);
+  assert.equal(split.nonProof.some((item) => item.includes("Simulator CI")), true);
+  assert.equal(split.agentActions.some((item) => item.includes("Do not merge red required CI")), true);
+  assert.equal(split.agentActions.some((item) => item.includes("Do not open another")), true);
+  assert.equal(JSON.stringify(split).includes("eyJ"), false);
 });
