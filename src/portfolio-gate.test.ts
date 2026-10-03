@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   classifyPortfolioGate,
+  classifyProbeFreshness,
   splitPortfolioActions,
   CONDUIT_EXPECTED_REVISION,
   RESONANCE_OWNER_KEY,
@@ -40,7 +41,7 @@ const liveResonance = {
     persistenceConfigured: false,
     githubAdapterConfigured: false,
     missingRequired: [RESONANCE_OWNER_KEY],
-    timestamp: "2026-10-03T18:00:54.156Z",
+    timestamp: "2026-10-03T19:01:37.226Z",
   },
 };
 
@@ -57,12 +58,13 @@ test("18:00 EDT live shape is owner-blocked, not a Conduit outage", () => {
     conduitHealth: liveConduitHealth,
     conduitReady: liveConduitReady,
     resonanceReady: liveResonance,
-  });
+  }, false, "2026-10-03T19:01:37.226Z");
   assert.equal(verdict.conduit, "ready");
   assert.equal(verdict.resonance, "owner_blocked");
   assert.equal(verdict.quicksilver, "device_gate");
   assert.equal(verdict.portfolio, "blocked_owner");
   assert.equal(verdict.deployLag, true);
+  assert.equal(verdict.witness, "fresh");
   assert.equal(verdict.ownerActionRequiredFieldPresent, false);
   assert.equal(verdict.ownerAction?.includes(RESONANCE_OWNER_KEY), true);
   assert.equal(JSON.stringify(verdict).includes("eyJ"), false);
@@ -108,6 +110,26 @@ test("stamped resonance 200 opens the portfolio only after Conduit is ready", ()
   assert.equal(ready.quicksilver, "device_observed");
 });
 
+test("a ready body older than 90 minutes cannot open the portfolio", () => {
+  const verdict = classifyPortfolioGate({
+    conduitHealth: liveConduitHealth,
+    conduitReady: liveConduitReady,
+    resonanceReady: {
+      httpStatus: 200,
+      body: {
+        status: "ready",
+        contractRevision: "2026-10-03-ready-surface",
+        ownerActionRequired: false,
+        timestamp: "2026-10-03T14:01:34.741Z",
+      },
+    },
+  }, true, "2026-10-03T19:01:37.226Z");
+  assert.equal(verdict.resonance, "ready");
+  assert.equal(verdict.witness, "stale");
+  assert.equal(verdict.portfolio, "blocked_resonance");
+  assert.equal(classifyProbeFreshness(liveResonance.body, "2026-10-03T19:01:37.226Z"), "fresh");
+});
+
 test("malformed resonance body fails closed", () => {
   const verdict = classifyPortfolioGate({
     conduitHealth: liveConduitHealth,
@@ -116,6 +138,7 @@ test("malformed resonance body fails closed", () => {
   });
   assert.equal(verdict.resonance, "malformed");
   assert.equal(verdict.portfolio, "blocked_resonance");
+  assert.equal(verdict.witness, "undated");
 });
 
 test("open roadmap PRs and simulator green are non-proof", () => {

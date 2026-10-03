@@ -1,14 +1,14 @@
-# Portfolio 10-phase roadmap — 2026-10-03 14:00 EDT
+# Portfolio 10-phase roadmap — 2026-10-03 15:00 EDT
 
-Live probes at 2026-10-03T18:00:51Z (Conduit) and 2026-10-03T18:00:54.156Z (Resonance). No secrets invented. A classifier test is not production proof. An open roadmap pull request is not production proof.
+Live probes at 2026-10-03T19:01:37Z. No secrets invented. A classifier test is not production proof. An open roadmap pull request is not production proof. A probe older than 90 minutes cannot open the portfolio.
 
 Evidence:
-- Conduit `GET /health` and `GET /ready` both returned 200 with `version=0.8.0`, `contractRevision=2026-10-03-ready-surface`, ready `persistence=postgres`. Diagnostics ok. `boundAgentId=grok`, `bindingConflict=false`.
-- Resonance `GET https://resonancenexus.netlify.app/api/ready` returned 503. `missingRequired` is exactly `["SUPABASE_SERVICE_ROLE_KEY"]`. Body omitted `ownerActionRequired` and `contractRevision`. Owner gate plus deploy lag.
-- QuicksilverV1 #218 base is `5eb30beb`. Branch list at audit showed main `9b08845e`, so #218 may be behind. #209 UI smoke failed. CHR-55 device HG on iPhone 16e is unobservable from this host. Simulator CI is not that gate.
-- Conduit #172 verify and postgres-coordination were green. Workers Builds failed and is not the Render gate. Not merged. `splitPortfolioActions` now separates owner actions from non-proof signals.
-- #119, #120, #155, #162, #164, and #168 stay unmerged. #149 and #218 are the in-place roadmap PRs.
-- `activity_prune` removed 0. Legacy `cknowlesbadluck/Quicksilver` is still unarchived. `cknowlesbadluck/mcp` is already archived.
+- Conduit `GET /health` and `GET /ready` both returned 200 with `version=0.8.0`, `contractRevision=2026-10-03-ready-surface`, ready `persistence=postgres`. Diagnostics ok. `boundAgentId=grok`, `bindingConflict=false`. Headers include CORP, CSP, nosniff, DENY.
+- Resonance `GET https://resonancenexus.netlify.app/api/ready` returned 503 at `2026-10-03T19:01:37.226Z`. `missingRequired` is exactly `["SUPABASE_SERVICE_ROLE_KEY"]`. Body omitted `ownerActionRequired` and `contractRevision`. `/api/health` was 200. Owner gate plus deploy lag. Fresh witness, not a stale fixture.
+- QuicksilverV1 main is `9b08845e` (#217 routing config store, M3-T4). #218 is the in-place roadmap PR and may be behind main. #209 UI smoke failed. CHR-55 device HG on iPhone 16e is unobservable from this host. Simulator CI is not that gate.
+- Conduit #172 stays the single gate PR. Workers Builds failed and is not the Render gate. Not merged. `classifyProbeFreshness` now rejects a ready body older than 90 minutes.
+- #119, #120, #155, #162, #164, and #168 stay unmerged. Do not open another roadmap PR.
+- Legacy `cknowlesbadluck/Quicksilver` is still unarchived. Agent archive calls return 403.
 
 ## Phase 1 — Owner gate
 
@@ -48,6 +48,6 @@ Conduit grants stay deny-by-default. Exit: grant tests green and no resource rec
 
 ## Phase 10 — Cross-plane acceptance
 
-`classifyPortfolioGate` classifies probes. `splitPortfolioActions` classifies owner work, agent work, and non-proof. Neither fetches. Exit: live Conduit ready, live Resonance ready, and Quicksilver device HG all green. The unit test is not that proof.
+`classifyPortfolioGate` classifies probes. `classifyProbeFreshness` rejects a witness older than 90 minutes. `splitPortfolioActions` classifies owner work, agent work, and non-proof. None of them fetch. Exit: live Conduit ready, live Resonance ready, and Quicksilver device HG all green. The unit test is not that proof.
 
 Binding constraint: owner secret on Netlify, owner archive of the legacy repo, and owner device HG. Agent work cannot close Phase 1, Phase 4, or the archive.

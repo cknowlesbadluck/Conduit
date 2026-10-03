@@ -9,6 +9,7 @@
 export const CONDUIT_EXPECTED_VERSION = "0.8.0";
 export const CONDUIT_EXPECTED_REVISION = "2026-10-03-ready-surface";
 export const RESONANCE_OWNER_KEY = "SUPABASE_SERVICE_ROLE_KEY";
+export const PROBE_MAX_AGE_MS = 90 * 60 * 1000;
 
 export type Probe = {
   httpStatus: number;
@@ -38,6 +39,7 @@ export type PortfolioVerdict = {
   deployLag: boolean;
   ownerActionRequiredFieldPresent: boolean;
   ownerAction: string | null;
+  witness: "fresh" | "stale" | "undated";
 };
 
 export type EntropyInput = {
@@ -63,6 +65,20 @@ function missingKeys(body: Record<string, unknown>): string[] | null {
   const raw = body.missingRequired;
   if (!Array.isArray(raw) || raw.some((item) => typeof item !== "string")) return null;
   return [...raw];
+}
+
+export function classifyProbeFreshness(
+  body: unknown,
+  observedAtIso: string,
+  maxAgeMs = PROBE_MAX_AGE_MS,
+): "fresh" | "stale" | "undated" {
+  if (!isRecord(body) || typeof body.timestamp !== "string") return "undated";
+  const observed = Date.parse(observedAtIso);
+  const stamped = Date.parse(body.timestamp);
+  if (!Number.isFinite(observed) || !Number.isFinite(stamped)) return "undated";
+  const age = observed - stamped;
+  if (age < 0 || age > maxAgeMs) return "stale";
+  return "fresh";
 }
 
 export function classifyConduit(health: Probe, ready: Probe): HostVerdict {
@@ -122,9 +138,13 @@ export function classifyResonance(probe: Probe): {
 export function classifyPortfolioGate(
   input: PortfolioProbes,
   deviceHgObserved = false,
+  observedAtIso?: string,
 ): PortfolioVerdict {
   const conduit = classifyConduit(input.conduitHealth, input.conduitReady);
   const resonance = classifyResonance(input.resonanceReady);
+  const witness = observedAtIso
+    ? classifyProbeFreshness(input.resonanceReady.body, observedAtIso)
+    : "undated";
   let portfolio: PortfolioVerdict["portfolio"] = "open";
   let ownerAction: string | null = null;
 
@@ -137,6 +157,10 @@ export function classifyPortfolioGate(
     portfolio = "blocked_resonance";
   }
 
+  if (witness === "stale" && portfolio === "open") {
+    portfolio = "blocked_resonance";
+  }
+
   return {
     conduit,
     resonance: resonance.verdict,
@@ -145,6 +169,7 @@ export function classifyPortfolioGate(
     deployLag: resonance.deployLag,
     ownerActionRequiredFieldPresent: resonance.ownerActionRequiredFieldPresent,
     ownerAction,
+    witness,
   };
 }
 
@@ -168,6 +193,12 @@ export function splitPortfolioActions(verdict: PortfolioVerdict, entropy: Entrop
   }
   if (entropy.openRoadmapPullRequests > 0) {
     nonProof.push("An open roadmap pull request is not production proof.");
+  }
+  if (verdict.witness === "stale") {
+    agentActions.push("A stale probe timestamp is not a current witness. Re-probe before claiming the gate.");
+  }
+  if (verdict.witness === "undated") {
+    nonProof.push("An undated probe is not a freshness witness.");
   }
   if (verdict.deployLag) {
     agentActions.push("Do not treat a preview deploy as the public host.");
