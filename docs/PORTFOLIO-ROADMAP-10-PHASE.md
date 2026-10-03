@@ -1,40 +1,41 @@
-# Portfolio 10-phase roadmap — 2026-10-03
+# Portfolio 10-phase roadmap — 2026-10-03 08:00 EDT
 
-Live probes at 2026-10-03T03:05Z.
+Live probes at 2026-10-03T12:01:16Z. No secrets invented.
 
 Evidence:
-- Resonance `/api/health` 200. `/api/ready` 503. Missing exactly `SUPABASE_SERVICE_ROLE_KEY`. Deployed body still omits `ownerActionRequired`. Repo already emits it. This is deploy lag, not an agent-fixable secret.
-- Conduit `/health` 200, `/ready` 200, postgres, version 0.8.0.
-- QuicksilverV1 remains the mobile client. Simulator CI is not device acceptance.
+- Resonance `GET /api/ready` 503. Missing exactly `SUPABASE_SERVICE_ROLE_KEY`. Body omitted `ownerActionRequired` and `contractRevision`. Owner gate plus deploy lag.
+- Conduit `GET /health` 200 `{"status":"ok","service":"conduit"}` with no version. `GET /ready` 200 `version=0.8.0` `persistence=postgres`. Contract split, not an outage.
+- #170 squash-merged at c2b83e8d. Required verify and postgres-coordination were green. Workers Builds failed instantly and is not the Render path. Live `/health` stays stale until Render redeploys. The merge is not production proof.
+- QuicksilverV1 is the mobile client. Simulator CI is not device acceptance.
 
 ## Phase 1 — Owner gate
-Set `SUPABASE_SERVICE_ROLE_KEY` on resonancenexus. Do not invent it. Exit: GET `/api/ready` 200 and body includes `ownerActionRequired: false`.
+Set `SUPABASE_SERVICE_ROLE_KEY` on resonancenexus. Do not invent it. Exit: GET `/api/ready` 200 and `ownerActionRequired` is false.
 
 ## Phase 2 — Deploy lag kill
-Ship the repo readiness contract (`ownerActionRequired`, `contractRevision`) so production matches code. Exit: live ready body contains `contractRevision`.
+Land Resonance #147 only after CodeRabbit is cleared. Exit: live ready body contains `contractRevision`.
 
-## Phase 3 — Conduit header hardening
-Permissions-Policy, CORP, request id, version on `/health`. Exit: live `/health` returns version and the new headers.
+## Phase 3 — Conduit health parity on the host
+#170 is on main. Exit: live `/health` and `/ready` both return version 0.8.0 after Render deploys c2b83e8d.
 
-## Phase 4 — Quicksilver fail-closed posture
-`PortfolioPosture` parses both the deployed 503 body and the newer contract. Exit: unit tests green; device build still not claimed.
+## Phase 4 — Quicksilver fail-closed witness
+`PortfolioWitness` must reject a versioned `/ready` paired with an unversioned `/health`. Exit: witness tests green. Device build still not claimed.
 
 ## Phase 5 — Persistence proof
-After Phase 1, run production smoke against the real 200 body. Exit: smoke script passes on the production host.
+After Phase 1, run production smoke against the real 200 body. Exit: smoke passes on the production host.
 
 ## Phase 6 — Chamber fail-closed stays
 No new provider. Execution remains denied when a capability is not executable. Exit: existing chamber tests stay red-free.
 
 ## Phase 7 — Hygiene prune
-No hourly audit files. One roadmap file per repo, updated in place. Stale preview secrets revoked by the owner.
+No hourly audit files. One roadmap file per repo. Do not merge #119, #120, or #155. Bolt #161, #165, #169 closed as overlapping.
 
 ## Phase 8 — iOS cockpit only after the app target is green
-Do not start a second client. Exit: existing Quicksilver/Resonance iOS target builds, or the blocking issue is closed.
+Do not start a second client. Exit: Resonance #134 builds, or it is closed.
 
 ## Phase 9 — Grant and bridge audit
-Conduit grants stay deny-by-default. Re-check path patterns and SSRF guards. Exit: grant tests green.
+Grants stay deny-by-default. Exit: grant tests green and no resource record holds a secret.
 
 ## Phase 10 — Cross-plane acceptance
-One probe covers Conduit ready, Resonance ready, and Quicksilver posture parse. Exit: all three green on production, not on a preview.
+One probe covers Conduit health, Conduit ready, and Resonance ready. Exit: production verdict accepted. A fixture test is not that proof.
 
 Binding constraint: owner secret on Netlify. Agent work cannot close Phase 1.
