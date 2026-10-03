@@ -13,3 +13,7 @@
 ## 2025-03-10 - Single-pass rate limiter eviction without sorting
 **Learning:** `SlidingWindowLimiter.evict` was allocating entry tuples and calling `[...this.buckets.entries()].sort(...)` over all keys when `maxKeys` capacity was exceeded, creating $O(K \log K)$ sorting overhead and high garbage collection pressure on every rate-limited request. Replacing this with a single-pass $O(K)$ iteration that deletes expired buckets on the fly while tracking the oldest active key reduced eviction latency by >4x with zero array/tuple allocations.
 **Action:** Avoid `[...map.entries()].sort()` for capacity eviction in high-throughput hot paths; use single-pass tracking loops to identify eviction candidates in $O(N)$ time with zero temporary array allocations.
+
+## 2025-03-10 - Copy-On-Write for event listener snapshots
+**Learning:** `publishEvent` was executing `[...listeners]` on every event broadcast to prevent concurrent modification issues during iteration, causing heap allocations and GC overhead on every state mutation. Maintaining a Copy-On-Write snapshot array (`activeListeners`) updated only when listeners subscribe or unsubscribe eliminates per-publish array allocations while preserving strict listener snapshot semantics during dispatch.
+**Action:** Use Copy-On-Write snapshot arrays for collections that are read/dispatched frequently but modified infrequently.
