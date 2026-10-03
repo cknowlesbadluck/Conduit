@@ -8,6 +8,7 @@ import { initCapabilityStore } from "./capability-store.js";
 import { buildProtectedResourceMetadata, createDevelopmentAuthInfo, createTokenVerifier, DEVELOPMENT_ANONYMOUS_SUBJECT, DEVELOPMENT_TOKEN_SUBJECT, loadAuthConfig, requireScope } from "./auth.js";
 import { createConduitServer } from "./mcp.js";
 import { VERSION, SERVICE_NAME } from "./version.js";
+import { healthBody } from "./health-contract.js";
 import { MCP_RATE_LIMITER, TOOL_RATE_LIMITER } from "./rate-limit.js";
 import { timingSafeEqual } from "node:crypto";
 import { replayRecentEvents, subscribeEvents } from "./events.js";
@@ -54,7 +55,7 @@ app.get("/", (_req, res) => res.type("html").send(conduitUiHtml()));
 app.get("/ui.css", (_req, res) => res.type("css").send(CONDUIT_UI_CSS));
 app.get("/ui.js", (_req, res) => res.type("application/javascript").send(CONDUIT_UI_JS));
 app.get("/status", async (_req, res, next) => { try { res.json(await getPublicConduitStatus()); } catch (error) { next(error); } });
-app.get("/health", (_req, res) => res.json({ status: "ok", service: "conduit" }));
+app.get("/health", (_req, res) => res.json(healthBody()));
 app.get("/ready", async (_req, res) => {
   const initialized = isReady();
   const persistenceOk = initialized ? await checkPersistence() : false;
@@ -164,7 +165,7 @@ export const fetchHandler = async (request: Request): Promise<Response> => {
     return new Response(JSON.stringify(diagnostics), { status: 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
   }
   if (url.pathname === "/health") {
-    return new Response(JSON.stringify({ status: "ok", service: "conduit" }), {
+    return new Response(JSON.stringify(healthBody()), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });

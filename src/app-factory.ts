@@ -6,6 +6,7 @@ import { createConduitServer } from "./mcp.js";
 import { buildProtectedResourceMetadata, createDevelopmentAuthInfo, createTokenVerifier, DEVELOPMENT_ANONYMOUS_SUBJECT, type ConduitAuthConfig } from "./auth.js";
 import type { OAuthTokenVerifier } from "@modelcontextprotocol/server";
 import { VERSION, SERVICE_NAME } from "./version.js";
+import { healthBody } from "./health-contract.js";
 import { MCP_RATE_LIMITER, TOOL_RATE_LIMITER } from "./rate-limit.js";
 import { getPublicConduitStatus } from "./status.js";
 import { checkPersistence } from "./db-ready.js";
@@ -69,7 +70,7 @@ export function createConduitApp(options: ConduitAppOptions = {}) {
       next(error);
     }
   });
-  app.get("/health", (_req, res) => res.json({ status: "ok", service: "conduit", version: VERSION }));
+  app.get("/health", (_req, res) => res.json(healthBody()));
 
   app.get("/diagnostics", createDiagnosticsHandler(options.authConfig));
 
