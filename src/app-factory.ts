@@ -44,11 +44,15 @@ export function createConduitApp(options: ConduitAppOptions = {}) {
   const app = express();
   app.disable("x-powered-by");
   app.use((_req, res, next) => {
+    const requestId = _req.get("x-request-id")?.slice(0, 80) || crypto.randomUUID();
     res.set({
       "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
       "Referrer-Policy": "no-referrer",
       "Cache-Control": "no-store",
+      "Cross-Origin-Resource-Policy": "same-origin",
+      "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+      "X-Request-Id": requestId,
       "Content-Security-Policy": "default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",
     });
     next();
@@ -65,7 +69,7 @@ export function createConduitApp(options: ConduitAppOptions = {}) {
       next(error);
     }
   });
-  app.get("/health", (_req, res) => res.json({ status: "ok", service: "conduit" }));
+  app.get("/health", (_req, res) => res.json({ status: "ok", service: "conduit", version: VERSION }));
 
   app.get("/diagnostics", createDiagnosticsHandler(options.authConfig));
 
