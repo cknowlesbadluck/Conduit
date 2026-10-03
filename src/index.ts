@@ -8,7 +8,7 @@ import { initCapabilityStore } from "./capability-store.js";
 import { buildProtectedResourceMetadata, createDevelopmentAuthInfo, createTokenVerifier, DEVELOPMENT_ANONYMOUS_SUBJECT, DEVELOPMENT_TOKEN_SUBJECT, loadAuthConfig, requireScope } from "./auth.js";
 import { createConduitServer } from "./mcp.js";
 import { VERSION, SERVICE_NAME } from "./version.js";
-import { healthBody } from "./health-contract.js";
+import { healthBody, readyBody } from "./health-contract.js";
 import { MCP_RATE_LIMITER, TOOL_RATE_LIMITER } from "./rate-limit.js";
 import { timingSafeEqual } from "node:crypto";
 import { replayRecentEvents, subscribeEvents } from "./events.js";
@@ -59,13 +59,9 @@ app.get("/health", (_req, res) => res.json(healthBody()));
 app.get("/ready", async (_req, res) => {
   const initialized = isReady();
   const persistenceOk = initialized ? await checkPersistence() : false;
-  const ready = initialized && persistenceOk;
-  res.status(ready ? 200 : 503).json({
-    status: ready ? "ready" : (initialized ? "degraded" : "initializing"),
-    service: "conduit",
-    version: VERSION,
-    persistence: process.env.DATABASE_URL && process.env.CONDUIT_TEST_MEMORY !== "true" ? "postgres" : "memory",
-  });
+  const persistence = process.env.DATABASE_URL && process.env.CONDUIT_TEST_MEMORY !== "true" ? "postgres" : "memory";
+  const body = readyBody({ initialized, persistenceOk, persistence });
+  res.status(body.status === "ready" ? 200 : 503).json(body);
 });
 
 async function boot() {
@@ -171,7 +167,7 @@ export const fetchHandler = async (request: Request): Promise<Response> => {
     });
   }
   if (url.pathname === "/ready") {
-    return new Response(JSON.stringify({ status: "ready", service: "conduit", version: VERSION, persistence: "memory" }), {
+    return new Response(JSON.stringify(readyBody({ initialized: true, persistenceOk: true, persistence: "memory" })), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });

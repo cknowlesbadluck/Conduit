@@ -6,7 +6,7 @@ import { createConduitServer } from "./mcp.js";
 import { buildProtectedResourceMetadata, createDevelopmentAuthInfo, createTokenVerifier, DEVELOPMENT_ANONYMOUS_SUBJECT, type ConduitAuthConfig } from "./auth.js";
 import type { OAuthTokenVerifier } from "@modelcontextprotocol/server";
 import { VERSION, SERVICE_NAME } from "./version.js";
-import { healthBody } from "./health-contract.js";
+import { healthBody, readyBody } from "./health-contract.js";
 import { MCP_RATE_LIMITER, TOOL_RATE_LIMITER } from "./rate-limit.js";
 import { getPublicConduitStatus } from "./status.js";
 import { checkPersistence } from "./db-ready.js";
@@ -77,13 +77,9 @@ export function createConduitApp(options: ConduitAppOptions = {}) {
   app.get("/ready", async (_req, res) => {
     const initialized = isReady();
     const persistenceOk = initialized ? await checkPersistence() : false;
-    const ready = initialized && persistenceOk;
-    res.status(ready ? 200 : 503).json({
-      status: ready ? "ready" : (initialized ? "degraded" : "initializing"),
-      service: "conduit",
-      version: VERSION,
-      persistence: process.env.DATABASE_URL && process.env.CONDUIT_TEST_MEMORY !== "true" ? "postgres" : "memory",
-    });
+    const persistence = process.env.DATABASE_URL && process.env.CONDUIT_TEST_MEMORY !== "true" ? "postgres" : "memory";
+    const body = readyBody({ initialized, persistenceOk, persistence });
+    res.status(body.status === "ready" ? 200 : 503).json(body);
   });
 
   if (options.authConfig) {
