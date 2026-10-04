@@ -1,50 +1,54 @@
-# Portfolio 10-phase roadmap — 2026-10-03 10:00 EDT
+# Portfolio 10-phase roadmap — 2026-10-04 08:00 EDT
 
-Live probes at 2026-10-03T14:01:34Z. No secrets invented. A fixture is not production proof.
+Live probes at 2026-10-04T12:02Z. No secrets invented. A fixture is not production proof. A Vercel alias is not the public gate.
 
 Evidence:
-- Resonance `GET /api/ready` returned 503. Body: `{"status":"not_ready","service":"resonance-nexus","stage":"deployment","production":true,"authMode":"required","authModeOk":true,"persistenceConfigured":false,"githubAdapterConfigured":false,"missingRequired":["SUPABASE_SERVICE_ROLE_KEY"],"timestamp":"2026-10-03T14:01:34.741Z"}`. Omitted `ownerActionRequired` and `contractRevision`. Owner gate plus deploy lag.
-- Conduit `GET /health` returned 200 `{"status":"ok","service":"conduit","version":"0.8.0","contractRevision":"2026-10-03-health-parity"}`. `GET /ready` returned 200 `{"status":"ready","service":"conduit","version":"0.8.0","persistence":"postgres"}` and omitted `contractRevision`. #171 squash-merged at 8e5cecf3. Live `/ready` stays unstamped until Render deploys that commit.
-- QuicksilverV1 #216 is the gateway SSE client. UI smoke was still pending at audit time. Simulator CI is not device acceptance.
+- Conduit `GET /health` 200 `{"status":"ok","service":"conduit","version":"0.8.0","contractRevision":"2026-10-03-ready-surface"}`.
+- Conduit `GET /ready` 200 `{"status":"ready","service":"conduit","version":"0.8.0","contractRevision":"2026-10-03-ready-surface","persistence":"postgres"}`. Surface is aligned. Phase 1 of the 2026-10-03 roadmap is done.
+- Resonance `GET /api/health` 200. `GET /api/ready` 503. Body missing exactly `SUPABASE_SERVICE_ROLE_KEY`. Body omitted `ownerActionRequired` and `contractRevision`. Host `resonancenexus.netlify.app`.
+- QuicksilverV1 main `e78be61e` is M3-T9 history budget. Device HG (CHR-55) is unproven. Simulator CI is not acceptance.
+- Open pulls: QuicksilverV1 #223 and #209; Resonance #132 #133 #134; Conduit #119 #120 #155 #162 #164 #168 #172 #173 #174 #175. Held: #119 #120 #155. Non-held count is over the admission budget of 4.
 
-## Phase 1 — Owner gate
+Admission rule, encoded in `src/portfolio-admission.ts`: owner blocks outrank prune, prune outranks new scope.
 
-Set `SUPABASE_SERVICE_ROLE_KEY` on resonancenexus. Do not invent it. Exit: GET `/api/ready` 200 and `ownerActionRequired` is false.
+## Phase 1 — Conduit surface parity
 
-## Phase 2 — Deploy lag kill
+Done on the live host. Exit met: `/health` and `/ready` share `2026-10-03-ready-surface` and persistence is postgres.
 
-Land Resonance #147 only after CodeRabbit clears the stale-revision test pushed at 62dc1635. Exit: live ready body contains `contractRevision` equal to `2026-10-03-owner-gate`.
+## Phase 2 — Resonance owner gate
 
-## Phase 3 — Conduit ready surface on the host
+Set `SUPABASE_SERVICE_ROLE_KEY` on existing Netlify site `resonancenexus`. Do not invent it. Do not switch hosts. Exit: public `/api/ready` 200, `ownerActionRequired` absent or false, body carries the source `contractRevision`.
 
-#171 is on main. Exit: live `/health` and `/ready` share one `contractRevision` after Render deploys 8e5cecf3.
+## Phase 3 — Entropy under budget
 
-## Phase 4 — Quicksilver gateway transport
+Close, rebase, or land. Do not open another roadmap file. Held drafts #119 #120 #155 stay unmerged. Exit: open non-held pulls across the three repos <= 4.
 
-Merge #216 only if UI smoke and required jobs are green. Exit: SSE client on main. Device HG still not claimed.
+## Phase 4 — Quicksilver device HG
 
-## Phase 5 — Persistence proof
+Archive IPA on iPhone 16e (CHR-55). #223 may land only with UI smoke and required jobs green. Exit: device evidence, not a simulator badge.
 
-After Phase 1, run production smoke against the real 200 body. Exit: smoke passes on the production host.
+## Phase 5 — Collapse the classifier pile
 
-## Phase 6 — Chamber fail-closed stays
+One admission function. Retire #172 #173 #174 once this contract is on main. Exit: `admitPortfolio` is the only portfolio gate agents import.
 
-No new provider. Execution remains denied when a capability is not executable. Exit: existing chamber tests stay red-free.
+## Phase 6 — Resonance capability plane on the proof host
 
-## Phase 7 — Hygiene prune
+Public page still shows 0 capabilities. Exit: catalog resolve works against the production 200 ready body, not a preview.
 
-No hourly audit files. One roadmap file per repo. Do not merge #119, #120, or #155. Archive `cknowlesbadluck/Quicksilver`; close still returns 403 to this token.
+## Phase 7 — Single iOS client
 
-## Phase 8 — iOS cockpit only after the app target is green
+#134 is the app target. Do not start a second client. Exit: #134 builds on current main, or it is closed.
 
-Do not start a second client. Exit: Resonance #134 builds, or it is closed.
+## Phase 8 — Chamber evidence
 
-## Phase 9 — Grant and bridge audit
+Form, work, dissolve, audit intact. Exit: chamber tests green on main and one live evidence record.
 
-Grants stay deny-by-default. Exit: grant tests green and no resource record holds a secret.
+## Phase 9 — Grant deny-by-default
+
+No secret in a resource record. Exit: grant tests green and bridge calls still require a grant.
 
 ## Phase 10 — Cross-plane acceptance
 
-One probe covers Conduit health, Conduit ready, and Resonance ready. Exit: production verdict accepted. A fixture test is not that proof.
+One probe covers Conduit health, Conduit ready, and Resonance ready on the proof host. Exit: production verdict accepted. This document is not that proof.
 
-Binding constraint: owner secret on Netlify. Agent work cannot close Phase 1.
+Binding constraint: owner secret on Netlify, then pull entropy. Agent work cannot close Phase 2.
