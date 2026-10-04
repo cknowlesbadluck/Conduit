@@ -35,6 +35,16 @@ const pool = useDatabase
   ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: sslOption, max: 5 })
   : null;
 
+// Performance Optimization: Single-pass filtering over Map values without allocating
+// full Map snapshot arrays (eliminates [...map.values()] array allocation).
+function filterMapValues<T>(map: Map<string, T>, predicate: (item: T) => boolean): T[] {
+  const result: T[] = [];
+  for (const item of map.values()) {
+    if (predicate(item)) result.push(item);
+  }
+  return result;
+}
+
 let ready = false;
 const now = () => new Date().toISOString();
 const id = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
@@ -200,7 +210,7 @@ export async function createProject(input: { name: string; description?: string;
   if(pool) await pool.query("INSERT INTO projects(id,name,description,created_by) VALUES($1,$2,$3,$4)",[p.id,p.name,p.description,p.createdBy]); else projects.set(p.id,p);
   await log("project.create",{projectId:p.id,agentId:p.createdBy}); return p;
 }
-export async function listProjects(){if(pool)return(await pool.query("SELECT id,name,description,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\",archived_at AS \"archivedAt\" FROM projects WHERE archived_at IS NULL ORDER BY created_at DESC, id DESC")).rows.map(normalizeProject);return[...projects.values()].filter(p=>!p.archivedAt).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
+export async function listProjects(){if(pool)return(await pool.query("SELECT id,name,description,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\",archived_at AS \"archivedAt\" FROM projects WHERE archived_at IS NULL ORDER BY created_at DESC, id DESC")).rows.map(normalizeProject);return filterMapValues(projects, p=>!p.archivedAt).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
 
 export async function registerResource(input:{projectId?:string;name:string;description:string;kind:string;endpoint?:string;createdBy:string}){
   if(!(await agentExists(input.createdBy))||(input.projectId&&!(await projectExists(input.projectId))))return null;
@@ -208,7 +218,7 @@ export async function registerResource(input:{projectId?:string;name:string;desc
   if(pool)await pool.query("INSERT INTO resources(id,project_id,name,description,kind,endpoint,created_by) VALUES($1,$2,$3,$4,$5,$6,$7)",[r.id,r.projectId??null,r.name,r.description,r.kind,r.endpoint??null,r.createdBy]);else resources.set(r.id,r);
   await log("resource.register",{resourceId:r.id,agentId:r.createdBy,...(r.projectId?{projectId:r.projectId}:{})});return r;
 }
-export async function listResources(projectId?:string){if(pool){const where=projectId?" WHERE project_id=$1 AND archived_at IS NULL":" WHERE archived_at IS NULL";return(await pool.query("SELECT id,project_id AS \"projectId\",name,description,kind,endpoint,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\",archived_at AS \"archivedAt\" FROM resources"+where+" ORDER BY created_at DESC, id DESC",projectId?[projectId]:[])).rows.map(normalizeResource);}return[...resources.values()].filter(r=>!r.archivedAt&&(!projectId||r.projectId===projectId)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
+export async function listResources(projectId?:string){if(pool){const where=projectId?" WHERE project_id=$1 AND archived_at IS NULL":" WHERE archived_at IS NULL";return(await pool.query("SELECT id,project_id AS \"projectId\",name,description,kind,endpoint,created_by AS \"createdBy\",created_at AS \"createdAt\",updated_at AS \"updatedAt\",archived_at AS \"archivedAt\" FROM resources"+where+" ORDER BY created_at DESC, id DESC",projectId?[projectId]:[])).rows.map(normalizeResource);}return filterMapValues(resources, r=>!r.archivedAt&&(!projectId||r.projectId===projectId)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
 
 export async function createTask(input:{title:string;description?:string;createdBy:string;projectId?:string}){if(!(await agentExists(input.createdBy))||(input.projectId&&!(await projectExists(input.projectId))))return null;const t:Task={id:id("task"),projectId:input.projectId,title:input.title,description:input.description??"",status:"open",createdBy:input.createdBy,createdAt:now(),updatedAt:now()};if(pool)await pool.query("INSERT INTO tasks(id,project_id,title,description,status,created_by) VALUES($1,$2,$3,$4,$5,$6)",[t.id,t.projectId??null,t.title,t.description,t.status,t.createdBy]);else tasks.set(t.id,t);await log("task.create",{taskId:t.id,agentId:t.createdBy,...(t.projectId?{projectId:t.projectId}:{})});return t;}
 
@@ -226,7 +236,7 @@ export async function listTasks(options?: { status?: TaskStatus; projectId?: str
     const rows = (await pool.query(sql, params)).rows;
     return rows.map(normalizeTask);
   }
-  return [...tasks.values()].filter(t => (!status || t.status === status) && (!projectId || t.projectId === projectId) && (!claimedBy || t.claimedBy === claimedBy) && (!createdBy || t.createdBy === createdBy)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return filterMapValues(tasks, t => (!status || t.status === status) && (!projectId || t.projectId === projectId) && (!claimedBy || t.claimedBy === claimedBy) && (!createdBy || t.createdBy === createdBy)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export async function claimTask(taskId:string,agentId:string){
@@ -289,9 +299,9 @@ export async function handoff(taskId:string,fromAgent:string,toAgent:string,note
 }
 
 export async function addContact(name:string,value:string,kind:string,projectId?:string,createdBy?:string){if((projectId&&!(await projectExists(projectId)))||(createdBy&&!(await agentExists(createdBy))))return null;const c:Contact={id:id("contact"),projectId,name,value,kind,createdBy,createdAt:now()};if(pool)await pool.query("INSERT INTO contacts(id,project_id,name,value,kind,created_by) VALUES($1,$2,$3,$4,$5,$6)",[c.id,c.projectId??null,name,value,kind,createdBy??null]);else contacts.set(c.id,c);await log("contact.add",{contactId:c.id,...(projectId?{projectId}:{}),...(createdBy?{agentId:createdBy}:{})});return c;}
-export async function listContacts(projectId?:string){if(pool)return(await pool.query("SELECT id,project_id AS \"projectId\",name,value,kind,created_by AS \"createdBy\",created_at AS \"createdAt\",archived_at AS \"archivedAt\" FROM contacts"+(projectId?" WHERE project_id=$1 AND archived_at IS NULL":" WHERE archived_at IS NULL")+" ORDER BY created_at DESC, id DESC",projectId?[projectId]:[])).rows.map(normalizeContact);return [...contacts.values()].filter(c=>!c.archivedAt&&(!projectId||c.projectId===projectId)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
+export async function listContacts(projectId?:string){if(pool)return(await pool.query("SELECT id,project_id AS \"projectId\",name,value,kind,created_by AS \"createdBy\",created_at AS \"createdAt\",archived_at AS \"archivedAt\" FROM contacts"+(projectId?" WHERE project_id=$1 AND archived_at IS NULL":" WHERE archived_at IS NULL")+" ORDER BY created_at DESC, id DESC",projectId?[projectId]:[])).rows.map(normalizeContact);return filterMapValues(contacts, c=>!c.archivedAt&&(!projectId||c.projectId===projectId)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
 export async function registerTool(name:string,description:string,endpoint?:string,projectId?:string,createdBy?:string){if((projectId&&!(await projectExists(projectId)))||(createdBy&&!(await agentExists(createdBy))))return null;const t:Tool={id:id("tool"),projectId,name,description,endpoint,createdBy,createdAt:now()};if(pool)await pool.query("INSERT INTO tools(id,project_id,name,description,endpoint,created_by) VALUES($1,$2,$3,$4,$5,$6)",[t.id,t.projectId??null,name,description,endpoint??null,createdBy??null]);else tools.set(t.id,t);await log("tool.register",{toolId:t.id,...(projectId?{projectId}:{}),...(createdBy?{agentId:createdBy}:{})});return t;}
-export async function listTools(projectId?:string){if(pool)return(await pool.query("SELECT id,project_id AS \"projectId\",name,description,endpoint,created_by AS \"createdBy\",created_at AS \"createdAt\",archived_at AS \"archivedAt\" FROM tools"+(projectId?" WHERE project_id=$1 AND archived_at IS NULL":" WHERE archived_at IS NULL")+" ORDER BY created_at DESC, id DESC",projectId?[projectId]:[])).rows.map(normalizeTool);return [...tools.values()].filter(t=>!t.archivedAt&&(!projectId||t.projectId===projectId)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
+export async function listTools(projectId?:string){if(pool)return(await pool.query("SELECT id,project_id AS \"projectId\",name,description,endpoint,created_by AS \"createdBy\",created_at AS \"createdAt\",archived_at AS \"archivedAt\" FROM tools"+(projectId?" WHERE project_id=$1 AND archived_at IS NULL":" WHERE archived_at IS NULL")+" ORDER BY created_at DESC, id DESC",projectId?[projectId]:[])).rows.map(normalizeTool);return filterMapValues(tools, t=>!t.archivedAt&&(!projectId||t.projectId===projectId)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
 
 function normalizeContact(row: Record<string, unknown>): Contact {
   return {
@@ -605,16 +615,16 @@ const contactSelect = `SELECT id,project_id AS "projectId",name,value,kind,creat
 const toolSelect = `SELECT id,project_id AS "projectId",name,description,endpoint,created_by AS "createdBy",created_at AS "createdAt",archived_at AS "archivedAt" FROM tools`;
 
 export const listAgentsPage = (options: PageOptions = {}) => keysetPage<Agent>({ ...options, collection: "agents", sql: agentSelect, normalize: row => ({ id: row.id as string, name: row.name as string, description: (row.description as string | null) ?? undefined, createdAt: new Date(row.createdAt as string | Date).toISOString() }), memory: agents.values() });
-export const listProjectsPage = (options: PageOptions = {}) => keysetPage<Project>({ ...options, collection: "projects", sql: projectSelect, conditions: [["archived_at IS NULL", undefined]], normalize: normalizeProject, memory: [...projects.values()].filter(row => !row.archivedAt), filters: { archived: "false" } });
+export const listProjectsPage = (options: PageOptions = {}) => keysetPage<Project>({ ...options, collection: "projects", sql: projectSelect, conditions: [["archived_at IS NULL", undefined]], normalize: normalizeProject, memory: filterMapValues(projects, row => !row.archivedAt), filters: { archived: "false" } });
 
 async function scopedPage<T extends KeysetRow>(spec: Omit<PageSpec<T>, "conditions">) {
   const projectCondition = spec.projectId ? [["project_id=?", spec.projectId] as [string, unknown]] : [];
   return keysetPage({ ...spec, conditions: [["archived_at IS NULL", undefined], ...projectCondition] });
 }
 
-export const listResourcesPage = (options: PageOptions & { projectId?: string } = {}) => scopedPage<Resource>({ ...options, collection: "resources", sql: resourceSelect, normalize: normalizeResource, memory: [...resources.values()].filter(row => !row.archivedAt && (!options.projectId || row.projectId === options.projectId)) });
-export const listContactsPage = (options: PageOptions & { projectId?: string } = {}) => scopedPage<Contact>({ ...options, collection: "contacts", sql: contactSelect, normalize: normalizeContact, memory: [...contacts.values()].filter(row => !row.archivedAt && (!options.projectId || row.projectId === options.projectId)) });
-export const listToolsPage = (options: PageOptions & { projectId?: string } = {}) => scopedPage<Tool>({ ...options, collection: "tools", sql: toolSelect, normalize: normalizeTool, memory: [...tools.values()].filter(row => !row.archivedAt && (!options.projectId || row.projectId === options.projectId)) });
+export const listResourcesPage = (options: PageOptions & { projectId?: string } = {}) => scopedPage<Resource>({ ...options, collection: "resources", sql: resourceSelect, normalize: normalizeResource, memory: filterMapValues(resources, row => !row.archivedAt && (!options.projectId || row.projectId === options.projectId)) });
+export const listContactsPage = (options: PageOptions & { projectId?: string } = {}) => scopedPage<Contact>({ ...options, collection: "contacts", sql: contactSelect, normalize: normalizeContact, memory: filterMapValues(contacts, row => !row.archivedAt && (!options.projectId || row.projectId === options.projectId)) });
+export const listToolsPage = (options: PageOptions & { projectId?: string } = {}) => scopedPage<Tool>({ ...options, collection: "tools", sql: toolSelect, normalize: normalizeTool, memory: filterMapValues(tools, row => !row.archivedAt && (!options.projectId || row.projectId === options.projectId)) });
 
 export function listTasksPage(options: TaskPageOptions = {}) {
   const filters = Object.fromEntries(Object.entries({ status: options.status, claimedBy: options.claimedBy, createdBy: options.createdBy }).filter((entry): entry is [string, string] => Boolean(entry[1])));
@@ -623,7 +633,7 @@ export function listTasksPage(options: TaskPageOptions = {}) {
   if (options.status) conditions.push(["status=?", options.status]);
   if (options.claimedBy) conditions.push(["claimed_by=?", options.claimedBy]);
   if (options.createdBy) conditions.push(["created_by=?", options.createdBy]);
-  const memory = [...tasks.values()].filter(row => (!options.projectId || row.projectId === options.projectId) && (!options.status || row.status === options.status) && (!options.claimedBy || row.claimedBy === options.claimedBy) && (!options.createdBy || row.createdBy === options.createdBy));
+  const memory = filterMapValues(tasks, row => (!options.projectId || row.projectId === options.projectId) && (!options.status || row.status === options.status) && (!options.claimedBy || row.claimedBy === options.claimedBy) && (!options.createdBy || row.createdBy === options.createdBy));
   return keysetPage<Task>({ ...options, collection: "tasks", filters, sql: `SELECT ${taskSelect} FROM tasks`, conditions, normalize: normalizeTask, memory });
 }
 

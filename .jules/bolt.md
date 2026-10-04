@@ -13,3 +13,7 @@
 ## 2025-03-10 - Single-pass rate limiter eviction without sorting
 **Learning:** `SlidingWindowLimiter.evict` was allocating entry tuples and calling `[...this.buckets.entries()].sort(...)` over all keys when `maxKeys` capacity was exceeded, creating $O(K \log K)$ sorting overhead and high garbage collection pressure on every rate-limited request. Replacing this with a single-pass $O(K)$ iteration that deletes expired buckets on the fly while tracking the oldest active key reduced eviction latency by >4x with zero array/tuple allocations.
 **Action:** Avoid `[...map.entries()].sort()` for capacity eviction in high-throughput hot paths; use single-pass tracking loops to identify eviction candidates in $O(N)$ time with zero temporary array allocations.
+
+## 2025-03-10 - Single-pass Map filtering without intermediate snapshot arrays
+**Learning:** List functions and keyset pagination for in-memory collections were calling `[...map.values()].filter(...)`, allocating a full snapshot array of all Map values before filtering. Using a single-pass `filterMapValues` loop iterating directly over `map.values()` and pushing matching elements into the output array avoids full snapshot array allocations and reduces garbage collection pressure on high-frequency store reads.
+**Action:** Use a single-pass `for (const item of map.values())` loop pushing into a result array rather than chaining `[...map.values()].filter(...)` when querying or paginating in-memory Maps.
