@@ -1,6 +1,7 @@
 /**
  * Portfolio saturation witness.
- * Decides whether another pull request is allowed.
+ * Decides whether another pull request is allowed, and which same-repo
+ * witnesses should collapse into the newest survivor.
  * Callers pass probe facts and open-pull metadata. This module never
  * accepts or emits secret values — only missing key names and pull titles.
  */
@@ -60,6 +61,13 @@ export type PhaseStatus = {
   blocker: string | null;
 };
 
+export type CollapseDecision = {
+  survivor: number | null;
+  collapseCandidates: number[];
+  protected: number[];
+  reason: string;
+};
+
 export type SaturationVerdict = {
   witnessOpen: number;
   productOpen: number;
@@ -68,6 +76,8 @@ export type SaturationVerdict = {
   admitAnotherWitness: boolean;
   admitAnotherProduct: boolean;
   doNotMerge: number[];
+  doNotClose: number[];
+  collapse: CollapseDecision;
   ownerActions: string[];
   agentActions: string[];
   pulls: ClassifiedPull[];
@@ -167,6 +177,35 @@ export function buildRoadmap(projects: ProjectProbe[]): PhaseStatus[] {
   return phases;
 }
 
+export function collapseWitnesses(pulls: OpenPull[]): CollapseDecision {
+  const classified = pulls.map((pull) => ({ ...pull, kind: classifyPull(pull) }));
+  const byRepo = new Map<string, Array<(typeof classified)[number]>>();
+  for (const pull of classified) {
+    if (pull.kind !== "witness") continue;
+    const group = byRepo.get(pull.repo) ?? [];
+    group.push(pull);
+    byRepo.set(pull.repo, group);
+  }
+  const collapseCandidates: number[] = [];
+  let survivor: number | null = null;
+  for (const group of byRepo.values()) {
+    const ordered = [...group].sort((left, right) => right.number - left.number);
+    if (survivor === null || ordered[0].number > survivor) survivor = ordered[0].number;
+    for (const older of ordered.slice(1)) collapseCandidates.push(older.number);
+  }
+  const protectedPulls = classified
+    .filter((pull) => pull.kind !== "witness")
+    .map((pull) => pull.number);
+  return {
+    survivor,
+    collapseCandidates,
+    protected: protectedPulls,
+    reason: collapseCandidates.length
+      ? "older same-repo witnesses are collapse candidates; do not close them until their modules are folded into the survivor"
+      : "no same-repo witness stack to collapse",
+  };
+}
+
 export function classifySaturation(input: SaturationInput): SaturationVerdict {
   const budget = input.budget ?? SATURATION_BUDGET;
   const pulls = input.pulls.map((pull) => {
@@ -180,6 +219,7 @@ export function classifySaturation(input: SaturationInput): SaturationVerdict {
   const dependabotOpen = pulls.filter((pull) => pull.kind === "dependabot").length;
   const missing = input.projects.flatMap((project) => keyNames(project.missingRequired));
   const gates = input.projects.flatMap((project) => project.ownerGates ?? []).filter((gate) => gate.trim().length > 0);
+  const collapse = collapseWitnesses(input.pulls);
   const ownerActions = [
     ...missing.map((name) => `set required config by name only: ${name}`),
     ...gates,
@@ -188,6 +228,7 @@ export function classifySaturation(input: SaturationInput): SaturationVerdict {
     "do not invent secret values",
     "do not merge keep-red pulls",
     "do not merge a witness while required CI is red or absent",
+    "do not close keep-red, product, or dependabot pulls as hygiene",
   ];
   if (missing.length > 0) {
     agentActions.push("a 503 that names a missing key is an owner gate, not an implementation task");
@@ -195,7 +236,10 @@ export function classifySaturation(input: SaturationInput): SaturationVerdict {
   const admitAnotherWitness = witnessOpen < budget.maxOpenWitnessPulls;
   const admitAnotherProduct =
     productOpen < budget.maxOpenProductPulls && missing.length === 0 && gates.length === 0;
-  if (!admitAnotherWitness) agentActions.push("witness budget full; refresh an existing witness instead of opening another");
+  if (!admitAnotherWitness) agentActions.push("witness budget full; refresh the survivor instead of opening another");
+  if (collapse.collapseCandidates.length > 0) {
+    agentActions.push(`collapse candidates ${collapse.collapseCandidates.join(", ")} into survivor ${collapse.survivor}; do not close until folded`);
+  }
   if (!admitAnotherProduct) agentActions.push("product budget or owner gate blocks another product pull");
 
   return {
@@ -206,6 +250,8 @@ export function classifySaturation(input: SaturationInput): SaturationVerdict {
     admitAnotherWitness,
     admitAnotherProduct,
     doNotMerge: pulls.filter((pull) => pull.mergeable === false).map((pull) => pull.number),
+    doNotClose: collapse.protected,
+    collapse,
     ownerActions,
     agentActions,
     pulls,
