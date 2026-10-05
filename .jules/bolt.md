@@ -13,3 +13,7 @@
 ## 2025-03-10 - Single-pass rate limiter eviction without sorting
 **Learning:** `SlidingWindowLimiter.evict` was allocating entry tuples and calling `[...this.buckets.entries()].sort(...)` over all keys when `maxKeys` capacity was exceeded, creating $O(K \log K)$ sorting overhead and high garbage collection pressure on every rate-limited request. Replacing this with a single-pass $O(K)$ iteration that deletes expired buckets on the fly while tracking the oldest active key reduced eviction latency by >4x with zero array/tuple allocations.
 **Action:** Avoid `[...map.entries()].sort()` for capacity eviction in high-throughput hot paths; use single-pass tracking loops to identify eviction candidates in $O(N)$ time with zero temporary array allocations.
+
+## 2025-03-10 - Fast-pathing record comparisons and path normalization
+**Learning:** `sameRecord` in `src/pagination.ts` was unconditionally calling `Object.keys(a).sort()` and `Object.keys(b).sort()` on every cursor decode operation, even when filter objects were empty (`{}`) or had a single key. Short-circuiting length mismatches, empty records, and single-key records avoids array sorting allocations. Additionally, fast-pathing `normalizePath` for absolute paths starting with `/` (`charCodeAt(0) === 47`) skips unnecessary URL/scheme prefix scans.
+**Action:** When validating object equality or string paths on hot paths, short-circuit length mismatches and leading character checks before creating or sorting arrays or running regex/prefix scans.

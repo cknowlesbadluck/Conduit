@@ -23,12 +23,15 @@ export type CapabilityRequest = {
 
 const normalizeMethod = (method: string) => method.toUpperCase();
 
+// Performance Optimization: Fast-path absolute paths starting with "/" (charCodeAt(0) === 47)
+// to avoid unnecessary .startsWith("http://") and .startsWith("https://") scans.
 function normalizePath(path: string) {
+  if (path.length > 0 && path.charCodeAt(0) === 47 /* '/' */) return path;
   if (path.startsWith("http://") || path.startsWith("https://")) {
     const url = new URL(path);
     return `${url.origin}${url.pathname}${url.search}`;
   }
-  return path.startsWith("/") ? path : `/${path}`;
+  return `/${path}`;
 }
 
 /**
@@ -75,7 +78,11 @@ export function matchesCapability(grant: CapabilityGrant, request: CapabilityReq
   if (grant.agentId !== request.agentId) return false;
   if (grant.provider !== request.provider) return false;
   if (grant.projectId && grant.projectId !== request.projectId) return false;
-  if (normalizeMethod(grant.method) !== "*" && normalizeMethod(grant.method) !== normalizeMethod(request.method)) return false;
+  // Performance Optimization: Normalize both grant.method and request.method once into local variables
+  // to avoid redundant normalizeMethod() calls inside the method comparison logic.
+  const grantMethodUpper = normalizeMethod(grant.method);
+  const reqMethodUpper = normalizeMethod(request.method);
+  if (grantMethodUpper !== "*" && grantMethodUpper !== reqMethodUpper) return false;
   if (grant.expiresAt && Date.parse(grant.expiresAt) <= Date.now()) return false;
   return matchPattern(grant.pathPattern, request.path);
 }
