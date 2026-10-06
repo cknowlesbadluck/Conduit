@@ -73,3 +73,26 @@ test("probe serialization does not carry a secret value", () => {
   assert.equal(assertNoSecretValues(serialized), true);
   assert.equal(serialized.includes("postgres://"), false);
 });
+
+test("404 stays alias absence even if a missing name is also present", () => {
+  assert.equal(
+    classifyHostProbe({
+      httpStatus: 404,
+      aliasError: "DEPLOYMENT_NOT_FOUND",
+      missingRequired: ["SUPABASE_SERVICE_ROLE_KEY"],
+    }),
+    "alias_absent",
+  );
+});
+
+test("redact drops secret values and keeps config names", () => {
+  const redacted = redactProbe({
+    httpStatus: 503,
+    missingRequired: ["SUPABASE_SERVICE_ROLE_KEY", "postgres://user:secret@db/app", "eyJhbGciOiJIUzI1NiJ9.payload"],
+    aliasError: "postgres://leak",
+  });
+  const serialized = JSON.stringify(redacted);
+  assert.deepEqual(redacted.missingRequired, ["SUPABASE_SERVICE_ROLE_KEY"]);
+  assert.equal(redacted.aliasError, null);
+  assert.equal(assertNoSecretValues(serialized), true);
+});

@@ -73,14 +73,18 @@ export function decideMerge(input: { keepRed: boolean; requiredCiGreen: boolean 
   return { allow: true, reason: "clear" };
 }
 
+const SECRET_VALUE = /postgres:\/\/|eyJ[A-Za-z0-9_-]{10,}|BEGIN [A-Z ]*PRIVATE KEY/i;
+
 /** Names of missing config may be reported. Values must never be. */
 export function redactProbe(probe: HostProbe): HostProbe {
   return {
     httpStatus: probe.httpStatus,
-    missingRequired: probe.missingRequired?.filter((name) => SECRET_KEY.test(name) || name.length > 0).map((name) => name),
+    missingRequired: probe.missingRequired
+      ?.map((name) => name.trim())
+      .filter((name) => name.length > 0 && !name.includes("=") && !name.includes("://") && !SECRET_VALUE.test(name)),
     hasContractRevision: probe.hasContractRevision,
     ownerActionRequired: probe.ownerActionRequired,
-    aliasError: probe.aliasError,
+    aliasError: probe.aliasError && !SECRET_VALUE.test(probe.aliasError) ? probe.aliasError : null,
     persistenceConfigured: probe.persistenceConfigured,
   };
 }
