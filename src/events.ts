@@ -7,10 +7,12 @@ const listeners = new Set<{ filter: Filter; listener: Listener }>();
 const MAX_SUBSCRIBERS = Number(process.env.CONDUIT_MAX_EVENT_SUBSCRIBERS ?? 100);
 
 export function publishEvent(event: ActivityEvent) {
-  // Performance Optimization: Iterate directly over `listeners` Set instead of copying `[...listeners]`.
-  // Direct Set iteration avoids array allocation and garbage collection pressure on every event publish.
-  // Standard ES6 Set iterators safely handle element deletion during iteration.
-  for (const subscription of listeners) {
+  // Performance Optimization: Fast-path when no subscribers are listening to avoid creating
+  // a snapshot array [...listeners] on every event publish when listener count is 0.
+  // Keeps snapshot isolation when listeners exist to safely handle re-entrant subscription changes.
+  if (listeners.size === 0) return;
+
+  for (const subscription of [...listeners]) {
     if (subscription.filter.projectId && subscription.filter.projectId !== event.projectId) continue;
     try { subscription.listener(event); } catch { /* disconnecting clients must not break publishers */ }
   }
