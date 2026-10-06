@@ -17,6 +17,7 @@ import { VERSION, SERVICE_NAME } from "./version.js";
 import { errorResult } from "./errors.js";
 import { isGrantAdmin, registerGrantTools } from "./grant-tools.js";
 import { registerPaginationTools } from "./pagination-tools.js";
+import { admitChange } from "./entropy-gate.js";
 import { enforceExternalCapability } from "./external-policy.js";
 import { actorBindingKey, actorBindingLookupKeys } from "./actor-binding.js";
 
@@ -234,5 +235,9 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
 
   registerGrantTools(server, authConfig);
   registerPaginationTools(server, authConfig);
+  server.registerTool("work_admission", { description: "Classify open work and decide whether a new change may start. Project-agnostic. Does not mutate records, call providers, or accept secrets.", inputSchema: z.object({ title: z.string().min(1).max(300), currentBaseSha: z.string().min(1).max(80).optional(), openCeiling: z.number().int().min(1).max(50).optional(), open: z.array(z.object({ id: z.string().min(1).max(80), title: z.string().min(1).max(300), baseSha: z.string().min(1).max(80).optional(), behind: z.number().int().min(0).max(10000).optional(), secretBlocked: z.boolean().optional() })).max(100) }), annotations: readOnly }, async ({ title, currentBaseSha, openCeiling, open }, extra) => {
+    if (readScope) auth(extra, readScope);
+    return json(admitChange({ title }, open, { currentBaseSha, openCeiling }));
+  });
   return server;
 }
