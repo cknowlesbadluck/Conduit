@@ -191,9 +191,8 @@ export async function listCapabilityGrants(
     })) as CapabilityGrant[];
   }
 
-  // Performance Optimization: Collect matching grants in single pass and reverse in O(N) time.
-  // Since capability grants are stored in chronological insertion order in memory, reversing
-  // matching grants yields createdAt DESC order without O(N log N) localeCompare sorting.
+  // Performance Optimization: Collect matching grants in single pass loop to avoid creating
+  // an intermediate spread array [...memory.values()] before filtering.
   const results: CapabilityGrant[] = [];
   for (const grant of memory.values()) {
     if (
@@ -205,7 +204,7 @@ export async function listCapabilityGrants(
       results.push(grant);
     }
   }
-  return results.reverse();
+  return results.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export async function getCapabilityGrantsForAgent(agentId: string, projectId?: string) {
