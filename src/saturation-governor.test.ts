@@ -57,6 +57,23 @@ test("05:00 EDT probe closes bolt noise and does not open a pull request", () =>
   assert.equal(JSON.stringify(decision).includes("SUPABASE_SERVICE_ROLE_KEY="), false);
 });
 
+test("a generated declaration dump is noise even without a Bolt title", () => {
+  const decision = governSaturation({
+    coordination,
+    product,
+    alias,
+    roadmapAlreadyOpen: true,
+    keepRedNumbers: [119, 120, 155, 162],
+    openRecords: [
+      { number: 184, title: "optimize listCapabilityGrants", generatedDeclarationDump: true },
+      { number: 119, title: "DRAFT KEEP RED: Add managed SSE admission", draft: true },
+    ],
+  });
+  assert.equal(decision.mutation, "close_noise");
+  assert.deepEqual(decision.closeNumbers, [184]);
+  assert.deepEqual(decision.holdNumbers, [119]);
+  assert.equal(decision.openNewPullRequest, false);
+});
 test("a keep-red bolt title is held, not closed", () => {
   const decision = governSaturation({
     product,

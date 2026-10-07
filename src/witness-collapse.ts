@@ -11,6 +11,8 @@ export type OpenRecord = {
   title: string;
   draft?: boolean;
   keepRed?: boolean;
+  /** Generated declaration dumps are never merge candidates. */
+  generatedDeclarationDump?: boolean;
 };
 
 export type CollapseAction =
@@ -62,7 +64,7 @@ export function collapseWitnesses(input: CollapseInput): CollapseDecision {
 
   const holdNumbers = input.openRecords.filter((record) => isKeepRed(record, keepRedNumbers)).map((record) => record.number);
   const mergeCandidates = input.openRecords
-    .filter((record) => !isKeepRed(record, keepRedNumbers))
+    .filter((record) => !isKeepRed(record, keepRedNumbers) && !record.generatedDeclarationDump)
     .map((record) => record.number);
 
   const coordinationReady = coordination?.posture === "ready";

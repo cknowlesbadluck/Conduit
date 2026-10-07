@@ -10,6 +10,8 @@ export type OpenRecord = {
   number: number;
   title: string;
   draft?: boolean;
+  /** True when the record adds a generated declaration dump. That is noise even without a Bolt title. */
+  generatedDeclarationDump?: boolean;
 };
 
 export type AllowedMutation = "refresh_in_place" | "close_noise" | "owner_only" | "hold";
@@ -49,6 +51,10 @@ function isHold(record: OpenRecord, keepRedNumbers: number[]): boolean {
   return Boolean(record.draft || keepRedNumbers.includes(record.number) || KEEP_RED.test(record.title));
 }
 
+function isNoise(record: OpenRecord): boolean {
+  return NOISE.test(record.title) || Boolean(record.generatedDeclarationDump);
+}
+
 export function governSaturation(input: GovernorInput): GovernorDecision {
   const keepRedNumbers = input.keepRedNumbers ?? [];
   const coordination = input.coordination ? classifyHostProbe(input.coordination) : undefined;
@@ -56,7 +62,7 @@ export function governSaturation(input: GovernorInput): GovernorDecision {
   const alias = input.alias ? classifyHostProbe(input.alias) : undefined;
   const holdNumbers = input.openRecords.filter((record) => isHold(record, keepRedNumbers)).map((record) => record.number);
   const closeNumbers = input.openRecords
-    .filter((record) => NOISE.test(record.title) && !isHold(record, keepRedNumbers))
+    .filter((record) => isNoise(record) && !isHold(record, keepRedNumbers))
     .map((record) => record.number);
 
   const productBlocked = product?.posture === "owner_blocked" || product?.posture === "deploy_lag";
