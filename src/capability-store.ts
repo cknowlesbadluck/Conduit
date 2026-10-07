@@ -191,15 +191,21 @@ export async function listCapabilityGrants(
     })) as CapabilityGrant[];
   }
 
-  return [...memory.values()]
-    .filter(
-      (grant) =>
-        (!filter.agentId || grant.agentId === filter.agentId) &&
-        (!filter.projectId || !grant.projectId || grant.projectId === filter.projectId) &&
-        (!filter.provider || grant.provider === filter.provider) &&
-        (filter.includeRevoked || !grant.revokedAt),
-    )
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  // Performance Optimization: Collect matching grants in single pass and reverse in O(N) time.
+  // Since capability grants are stored in chronological insertion order in memory, reversing
+  // matching grants yields createdAt DESC order without O(N log N) localeCompare sorting.
+  const results: CapabilityGrant[] = [];
+  for (const grant of memory.values()) {
+    if (
+      (!filter.agentId || grant.agentId === filter.agentId) &&
+      (!filter.projectId || !grant.projectId || grant.projectId === filter.projectId) &&
+      (!filter.provider || grant.provider === filter.provider) &&
+      (filter.includeRevoked || !grant.revokedAt)
+    ) {
+      results.push(grant);
+    }
+  }
+  return results.reverse();
 }
 
 export async function getCapabilityGrantsForAgent(agentId: string, projectId?: string) {
