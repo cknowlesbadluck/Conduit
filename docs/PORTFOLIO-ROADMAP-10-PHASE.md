@@ -1,15 +1,14 @@
-# Portfolio 10-phase roadmap — 2026-10-07 02:00 EDT
+# Portfolio 10-phase roadmap — 2026-10-07 05:00 EDT
 
-Live probes at 2026-10-07T06:00:55Z. No secrets invented. A classifier is not production proof.
+Live probes at 2026-10-07T09:01:56Z. No secrets invented. A classifier is not production proof.
 
 Evidence:
 - Conduit `GET /health` and `GET /ready` returned 200, version `0.8.0`, `contractRevision` `2026-10-03-ready-surface`, persistence `postgres`.
 - Resonance public `GET /api/ready` returned 503. `missingRequired` is exactly `SUPABASE_SERVICE_ROLE_KEY`. Body omitted `ownerActionRequired` and `contractRevision`. `GET /api/health` returned 200.
 - `resonancenexus.vercel.app` returned 404 `DEPLOYMENT_NOT_FOUND`. That is alias absence, not the owner gate.
-- Legacy `cknowlesbadluck/Quicksilver` archive returned 403. It is still unarchived. Last push 2026-09-29.
-- `activity_prune` removed 0.
-- Open Conduit records stay `#183` `#182` `#180` `#162` `#155` `#120` `#119`. Do not merge `#119` `#120` `#155` `#162`. Do not open a fourth witness PR.
-- Witness collapse says `refresh_in_place` and `openNewPullRequest=false` for this probe. Local tests 5/5.
+- Legacy `cknowlesbadluck/Quicksilver` remains unarchived. Last push 2026-09-29. Archive attempts return 403 on this token.
+- `mcp` is already archived. Open-PR inventory had no orphan branches outside open records and `release/0.8.0`.
+- Saturation governor says `close_noise` for Conduit `#184` (Bolt sort) and `openNewPullRequest=false`. `#119` `#120` `#155` `#162` stay unmerged.
 
 ## Phase 1 — Owner gate
 
@@ -23,9 +22,9 @@ Resonance `#150` is the only ready-body pin. Exit: public body contains `contrac
 
 Done on the live host. Exit already met: `/health` and `/ready` share `2026-10-03-ready-surface` and ready names `postgres`.
 
-## Phase 4 — Witness collapse
+## Phase 4 — Saturation governor
 
-`src/witness-collapse.ts` on Conduit `#183`. Exit: the next audit refreshes an open roadmap record instead of opening another pull request while Phase 1 is blocked.
+`src/saturation-governor.ts` on Conduit `#183`. Exit: while Phase 1 is blocked, the next audit refreshes an open roadmap record and closes bolt noise. It does not open another pull request.
 
 ## Phase 5 — Alias classification
 
@@ -37,11 +36,11 @@ Done for the current alias. Exit: 404 `DEPLOYMENT_NOT_FOUND` stays `alias_absent
 
 ## Phase 7 — Hygiene prune
 
-No hourly audit file. One roadmap file per repo. Archive of legacy Quicksilver is an owner action; this token gets 403. Exit: orphan branches that do not back an open PR are gone, and `activity_prune` has run.
+No hourly audit file. One roadmap file per repo. Bolt `#184` closed as stabilization noise. Archive of legacy Quicksilver is an owner action; this token gets 403. Exit: orphan branches that do not back an open PR are gone, and `activity_prune` has run.
 
 ## Phase 8 — Device gate stays outside coordination
 
-QuicksilverV1 device gate remains CHR-55 on iPhone 16e. Simulator CI is not that gate. Exit: device HG, or an owner waiver.
+QuicksilverV1 device gate remains CHR-55 on iPhone 16e. Simulator CI is not that gate. `PortfolioPosture.aliasAbsent` now distinguishes a Vercel 404 from an owner gate. Exit: device HG, or an owner waiver.
 
 ## Phase 9 — Deny-by-default grants
 
