@@ -1,40 +1,41 @@
-# Portfolio 10-phase roadmap — 2026-10-07 23:00 EDT
+# Portfolio 10-phase roadmap — 2026-10-08 07:00 EDT
 
-Live probes at 2026-10-08T03:01:23Z. No secrets invented. A classifier is not production proof. Witness budget is 2; this pass is an implementation, not another status dump.
+Live probes at 2026-10-08T11:01:18Z. No secrets invented. A ledger is not production proof. This pass refreshes the entropy-governor branch in place. No new witness pull.
 
 Evidence:
-- Conduit `GET /health` and `GET /ready` returned 200, `version=0.8.0`, `contractRevision=2026-10-03-ready-surface`, ready `persistence=postgres`.
-- Resonance `GET https://resonancenexus.netlify.app/api/ready` returned 503. `missingRequired` is exactly `["SUPABASE_SERVICE_ROLE_KEY"]`. Body omitted `ownerActionRequired` and `contractRevision`. `/api/health` was 200.
-- `https://resonancenexus.vercel.app` returned 404 `DEPLOYMENT_NOT_FOUND`. Classified `alias_absent`, not an owner gate.
-- `activity_prune` removed 0. Legacy `cknowlesbadluck/Quicksilver` archive remains an owner action when the API returns 403.
-- Do not merge Conduit #119, #120, #155, or #162.
+- Conduit `GET /health` and `GET /ready` returned 200, `version=0.8.0`, `contractRevision=2026-10-03-ready-surface`, ready `persistence=postgres`. Diagnostics ok. Bound agent `grok`, no binding conflict.
+- Resonance `GET https://resonancenexus.netlify.app/api/ready` returned 503. `missingRequired` is exactly `["SUPABASE_SERVICE_ROLE_KEY"]`. Body omitted `ownerActionRequired` and `contractRevision`.
+- `https://resonancenexus.vercel.app` returned 404 `DEPLOYMENT_NOT_FOUND`. Classified `alias_absent`.
+- `activity_prune` removed 0. Legacy `cknowlesbadluck/Quicksilver` archive remains owner-only when the API returns 403. `cknowlesbadluck/mcp` is already archived.
+- Open non-keep-red Conduit pulls: #180, #182, #183, #185, #186. Keep-red and unmerged: #119, #120, #155, #162.
+- Bolt #186 is pagination micro-noise. Close it. Do not merge keep-red.
 
 ## Phase 1 — Owner gate
 Set `SUPABASE_SERVICE_ROLE_KEY` on Netlify site `resonancenexus` only. Do not invent it. Exit: public `GET /api/ready` is 200 and the body still omits `ownerActionRequired`.
 
 ## Phase 2 — Deploy-lag kill
-Ready body on the canonical host must grow `contractRevision` only after the owner key is set and a deploy is proven by a second probe. Exit: production ready body contains `contractRevision`. A Vercel alias 404 is not that proof.
+A Vercel alias 404 is not the gate. Exit: canonical Netlify ready body contains `contractRevision` after the owner key and a proven deploy.
 
 ## Phase 3 — Entropy governor
-`entropy-governor` refuses a new witness PR when two witness pulls are already open, and refuses keep-red numbers. Exit: governor tests green on the implementation PR. Do not open a fourth roadmap-only PR.
+`entropy-governor` refuses a new witness pull when two witness pulls are open, and refuses keep-red numbers. Exit: governor tests green on #185. Do not open a fourth roadmap-only pull.
 
 ## Phase 4 — Collapse unmerged planners
-Conduit #180 / #182 / #183 and Resonance #150 / #151 and QuicksilverV1 #238 stay unmerged until required checks are green. Exit: one squash per repo, or an explicit close as superseded. No merge of red required CI.
+#180, #182, #183 stay open until required checks are green, then one squash or an explicit close. Exit: no red required CI merged.
 
 ## Phase 5 — Quicksilver device fence
-Simulator CI is not device acceptance. Exit: a recorded hardware run on iPhone 16e. CHR-55 stays owner-gated.
+Simulator CI is not device acceptance. Exit: a recorded hardware run on iPhone 16e.
 
-## Phase 6 — Resonance chamber fail-closed
-No new provider. Execution stays denied when a capability is not executable. Exit: chamber tests stay red-free on main.
+## Phase 6 — Chamber / gateway fail-closed
+No new provider. Execution stays denied when a capability is not executable. Exit: fail-closed tests stay red-free on main.
 
 ## Phase 7 — Hygiene prune
-Delete orphan branches with no open PR. One roadmap file per repo. Close superseded docs PRs. Archive legacy Quicksilver if the token allows; 403 is an owner action.
+Delete branches whose sha equals default, and hygiene fences with no open pull. Close Bolt noise. One roadmap file. Archive legacy Quicksilver if the token allows.
 
 ## Phase 8 — Single iOS peer
-Do not start a second Resonance client. Exit: one iOS target that consumes the Nexus capability model, after Phase 1.
+Do not start a second client. Exit: one iOS target on the Nexus capability model, after Phase 1.
 
 ## Phase 9 — Grant and TLS stay deny-by-default
-#162 and #155 stay unmerged until Render TLS env is set. Exit: grant tests green and no resource record holds a secret.
+#155 and #162 stay unmerged until Render TLS env is set. Exit: no resource record holds a secret.
 
 ## Phase 10 — Cross-plane acceptance
 One probe covers Conduit ready, Resonance ready 200, and a Quicksilver device archive. Exit: all three green on production. Unit tests are not that proof.
