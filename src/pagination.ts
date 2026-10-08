@@ -21,10 +21,16 @@ const orders: Record<CursorCollection, CursorOrder> = {
   activity: { field: "at", direction: "desc", tieBreaker: "id" },
 };
 
+// Performance Optimization: Fast-path key length mismatch and empty checks before array sorting
+// to avoid unnecessary allocations and sort operations during cursor validation.
 const sameRecord = (a: Record<string, string>, b: Record<string, string>) => {
-  const ak = Object.keys(a).sort();
-  const bk = Object.keys(b).sort();
-  return ak.length === bk.length && ak.every((key, index) => key === bk[index] && a[key] === b[key]);
+  const ak = Object.keys(a);
+  const bk = Object.keys(b);
+  if (ak.length !== bk.length) return false;
+  if (ak.length === 0) return true;
+  ak.sort();
+  bk.sort();
+  return ak.every((key, index) => key === bk[index] && a[key] === b[key]);
 };
 
 /** Opaque, versioned keyset cursor codec. Decode validates that a cursor belongs to this exact query. */
