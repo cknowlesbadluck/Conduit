@@ -10,9 +10,12 @@
  *
  * A paused Supabase project is an owner gate distinct from a missing key.
  * Setting the key against a paused project is not persistence proof.
+ * A merged device fence is not device acceptance.
  */
 
-export const LATTICE_REVISION = "2026-10-09-paused-project";
+import { DEVICE_FENCE_LANDED, classifyLanded, holdContradictions } from "./landed-fence.js";
+
+export const LATTICE_REVISION = "2026-10-09-landed-fence";
 
 export const OPEN_PR_BUDGET = 2;
 
@@ -68,6 +71,7 @@ export type LatticeInput = {
   iosContractProof?: boolean;
   deviceAcceptanceProof?: boolean;
   releaseEvidence?: boolean;
+  openPullNumbers?: number[];
 };
 
 export type LatticeDecision = {
@@ -80,6 +84,7 @@ export type LatticeDecision = {
   entropyBreach: boolean;
   discretionaryOpen: number;
   refreshInPlace: boolean;
+  deviceFence: "landed_unverified" | "landed_accepted";
 };
 
 export const PHASES: readonly PhaseId[] = [
@@ -151,7 +156,9 @@ function ownerActionsFor(input: LatticeInput): string[] {
   } else {
     ownerActions.push("Legacy cknowlesbadluck/Quicksilver is archived. Do not retry archive.");
   }
-  ownerActions.push("Device acceptance remains an iPhone 16e human gate. Simulator CI is not that gate.");
+  ownerActions.push(
+    "QuicksilverV1 #241 is on main at 83f13504. That merge is landed_unverified. iPhone 16e device acceptance is still unrecorded.",
+  );
   ownerActions.push("Keep-red Conduit #119 #120 #155 #162 stay unmerged until the owner sets Render Postgres TLS env.");
   return ownerActions;
 }
@@ -163,6 +170,14 @@ export function decideCutover(input: LatticeInput): LatticeDecision {
   const refreshInPlace = input.latticeFamilyOpen === true;
   const breach = entropyBreach(input.repos);
   const paused = input.hosts.some((host) => host.projectPaused);
+  const deviceFence = classifyLanded({
+    ...DEVICE_FENCE_LANDED,
+    deviceRecorded: input.deviceAcceptanceProof === true,
+  });
+  const contradictions = holdContradictions(input.openPullNumbers ?? [], [DEVICE_FENCE_LANDED]);
+  if (contradictions.length > 0) {
+    throw new Error(`refusing to hold landed pull(s) ${contradictions.join(", ")} as open`);
+  }
 
   const finish = (
     admittedPhase: PhaseId,
@@ -180,6 +195,7 @@ export function decideCutover(input: LatticeInput): LatticeDecision {
     entropyBreach: breach,
     discretionaryOpen: discretionary,
     refreshInPlace,
+    deviceFence,
   });
 
   if (ownerGateOpen(input.hosts) || publicContractDrift(input.hosts)) {
@@ -254,7 +270,7 @@ export function decideCutover(input: LatticeInput): LatticeDecision {
     return finish(
       "p8_device_acceptance",
       "owner_only",
-      "Native contract is recorded. Device acceptance is an iPhone 16e human gate, not simulator CI.",
+      "Native contract is recorded. Device fence merge is not acceptance. iPhone 16e evidence is still required.",
     );
   }
 
