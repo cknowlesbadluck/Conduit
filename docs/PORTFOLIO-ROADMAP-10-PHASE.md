@@ -1,50 +1,41 @@
-# Portfolio 10-phase roadmap — 2026-10-03 10:00 EDT
+# Portfolio 10-phase roadmap — 2026-10-09 08:02 EDT
 
-Live probes at 2026-10-03T14:01:34Z. No secrets invented. A fixture is not production proof.
+Live probes at 2026-10-09T12:02:13Z. No secrets invented. A classifier test is not production proof. This pass did not merge #187.
 
 Evidence:
-- Resonance `GET /api/ready` returned 503. Body: `{"status":"not_ready","service":"resonance-nexus","stage":"deployment","production":true,"authMode":"required","authModeOk":true,"persistenceConfigured":false,"githubAdapterConfigured":false,"missingRequired":["SUPABASE_SERVICE_ROLE_KEY"],"timestamp":"2026-10-03T14:01:34.741Z"}`. Omitted `ownerActionRequired` and `contractRevision`. Owner gate plus deploy lag.
-- Conduit `GET /health` returned 200 `{"status":"ok","service":"conduit","version":"0.8.0","contractRevision":"2026-10-03-health-parity"}`. `GET /ready` returned 200 `{"status":"ready","service":"conduit","version":"0.8.0","persistence":"postgres"}` and omitted `contractRevision`. #171 squash-merged at 8e5cecf3. Live `/ready` stays unstamped until Render deploys that commit.
-- QuicksilverV1 #216 is the gateway SSE client. UI smoke was still pending at audit time. Simulator CI is not device acceptance.
+- `GET /health` and `GET /ready` on `https://conduit-feco.onrender.com` both returned 200, `version=0.8.0`, `contractRevision=2026-10-03-ready-surface`, ready `persistence=postgres`.
+- Resonance public ready is 503 missing exactly `SUPABASE_SERVICE_ROLE_KEY` and omits the contract stamp. Vercel alias is 404 `DEPLOYMENT_NOT_FOUND`.
+- Quicksilver device acceptance is not recorded on gateway health. CHR-55 remains open.
+- Held: #119 and #120 draft red. #155 do not merge until Render TLS env is set. #162 same hold. #188 CI verify is green; Workers Builds failed. #187 says do not merge.
 
-## Phase 1 — Owner gate
+## Phase 1 — Owner gate is not Conduit's
+Do not invent the Resonance service-role key. Exit: Conduit diagnostics still refuse to store it.
 
-Set `SUPABASE_SERVICE_ROLE_KEY` on resonancenexus. Do not invent it. Exit: GET `/api/ready` 200 and `ownerActionRequired` is false.
+## Phase 2 — Contract stay
+Do not open another health-stamp PR. Exit: live health and ready still share `2026-10-03-ready-surface`.
 
-## Phase 2 — Deploy lag kill
+## Phase 3 — TLS hold
+#155 and #162 stay unmerged until the Render Postgres TLS env is set. Exit: a probe after the env change, not a fixture.
 
-Land Resonance #147 only after CodeRabbit clears the stale-revision test pushed at 62dc1635. Exit: live ready body contains `contractRevision` equal to `2026-10-03-owner-gate`.
+## Phase 4 — Draft red stays draft
+#119 and #120 are not merge candidates. Exit: they remain draft.
 
-## Phase 3 — Conduit ready surface on the host
+## Phase 5 — Probe verdict
+`classifyProbe` names alias_absent, owner_gate, deploy_lag, and device_not_recorded. `productionProof` is always false. Exit: unit tests green.
 
-#171 is on main. Exit: live `/health` and `/ready` share one `contractRevision` after Render deploys 8e5cecf3.
-
-## Phase 4 — Quicksilver gateway transport
-
-Merge #216 only if UI smoke and required jobs are green. Exit: SSE client on main. Device HG still not claimed.
-
-## Phase 5 — Persistence proof
-
-After Phase 1, run production smoke against the real 200 body. Exit: smoke passes on the production host.
-
-## Phase 6 — Chamber fail-closed stays
-
-No new provider. Execution remains denied when a capability is not executable. Exit: existing chamber tests stay red-free.
+## Phase 6 — Pagination micro-opt
+#188 may merge only after the Workers Builds failure is explained or shown to be unrelated. Exit: verify and postgres-coordination stay green.
 
 ## Phase 7 — Hygiene prune
+No hourly audit files. One roadmap file. Do not stack another lattice PR on top of #187.
 
-No hourly audit files. One roadmap file per repo. Do not merge #119, #120, or #155. Archive `cknowlesbadluck/Quicksilver`; close still returns 403 to this token.
+## Phase 8 — Grants stay deny-by-default
+A resource record is not a grant. Exit: grant tests green and no resource record holds a secret.
 
-## Phase 8 — iOS cockpit only after the app target is green
-
-Do not start a second client. Exit: Resonance #134 builds, or it is closed.
-
-## Phase 9 — Grant and bridge audit
-
-Grants stay deny-by-default. Exit: grant tests green and no resource record holds a secret.
+## Phase 9 — Bridge stays deny-by-default
+`integration_call` and `mcp_bridge_call` stay least-privilege. Exit: no new provider hardcoded into core identity.
 
 ## Phase 10 — Cross-plane acceptance
+One probe covers Conduit health, Conduit ready, and the public Resonance ready body. Exit: production verdict accepted. A fixture test is not that proof.
 
-One probe covers Conduit health, Conduit ready, and Resonance ready. Exit: production verdict accepted. A fixture test is not that proof.
-
-Binding constraint: owner secret on Netlify. Agent work cannot close Phase 1.
+Binding constraint for the portfolio is the Resonance owner secret. Conduit itself is ready at the coordination surface and is not production-proven for TLS or grants.
