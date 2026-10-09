@@ -19,7 +19,7 @@ const pulls: OpenPull[] = [
 test("never merges keep-red and never opens a new witness while lattice is open", () => {
   const decision = decidePhaseLock({ latticeOpen: true, pulls });
   assert.equal(decision.openNewWitness, false);
-  assert.equal(decision.revision, "2026-10-08-phase-lock");
+  assert.equal(decision.revision, "2026-10-08-2300-collapse");
   for (const number of KEEP_RED) {
     assert.equal(disposePull({ repo: "Conduit", number, title: "keep" }, true), "keep_red");
   }
