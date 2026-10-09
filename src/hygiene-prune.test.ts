@@ -14,13 +14,14 @@ const live = {
   ],
   pulls: [
     { repo: "Conduit", number: 187, title: "feat: portfolio cutover lattice" },
+    { repo: "Conduit", number: 188, title: "⚡ Bolt: optimize keyset cursor validation and task filter construction", author: "cknowlesbadluck" },
     { repo: "Conduit", number: 119, title: "DRAFT KEEP RED: Add managed SSE admission and graceful shutdown" },
     { repo: "Conduit", number: 120, title: "DRAFT KEEP RED: Add explicit ordered database migrations" },
     { repo: "Conduit", number: 155, title: "DB TLS: verify Postgres certificates by default (DO NOT MERGE until Render env is set)" },
     { repo: "Conduit", number: 162, title: "harden: shared Postgres TLS policy and optional HMAC cursors" },
     { repo: "Resonance", number: 154, title: "feat: portfolio cutover lattice" },
     { repo: "QuicksilverV1", number: 242, title: "feat: portfolio cutover lattice" },
-    { repo: "QuicksilverV1", number: 209, title: "chore(deps): bump actions/checkout from 4 to 7 in the actions group" },
+    { repo: "QuicksilverV1", number: 209, title: "chore(deps): bump actions/checkout from 4 to 7 in the actions group", author: "dependabot[bot]" },
   ],
   latticeFamilyOpen: true,
   missingRequired: ["SUPABASE_SERVICE_ROLE_KEY"],
@@ -34,7 +35,7 @@ test("inactive Supabase blocks persistence proof", () => {
 
 test("live portfolio prune deletes nothing and opens nothing", () => {
   const decision = decideHygiene(live);
-  assert.equal(decision.revision, "2026-10-09-hygiene-prune");
+  assert.equal(decision.revision, "2026-10-09-automation-hold");
   assert.equal(decision.openNewWitness, false);
   assert.deepEqual(decision.deleteBranches, []);
   assert.deepEqual(decision.closePulls, []);
@@ -43,7 +44,8 @@ test("live portfolio prune deletes nothing and opens nothing", () => {
   assert.equal(decision.singleLegalAction, "owner_unpause_then_set_key");
   assert.equal(decision.dispositions.some((row) => row.target === "Conduit#release/0.8.0" && row.disposition === "hold_not_delete"), true);
   assert.equal(decision.dispositions.filter((row) => row.disposition === "keep_unmerged").length, 4);
-  assert.equal(decision.dispositions.some((row) => row.target === "QuicksilverV1#209" && row.disposition === "hold_until_ci"), true);
+  assert.equal(decision.dispositions.some((row) => row.target === "Conduit#188" && row.disposition === "automation_hold"), true);
+  assert.equal(decision.dispositions.some((row) => row.target === "QuicksilverV1#209" && row.disposition === "automation_hold"), true);
   assert.equal(decision.dispositions.some((row) => row.target === "cknowlesbadluck/mcp" && row.disposition === "already_pruned"), true);
 });
 
