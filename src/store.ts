@@ -617,7 +617,11 @@ export const listContactsPage = (options: PageOptions & { projectId?: string } =
 export const listToolsPage = (options: PageOptions & { projectId?: string } = {}) => scopedPage<Tool>({ ...options, collection: "tools", sql: toolSelect, normalize: normalizeTool, memory: [...tools.values()].filter(row => !row.archivedAt && (!options.projectId || row.projectId === options.projectId)) });
 
 export function listTasksPage(options: TaskPageOptions = {}) {
-  const filters = Object.fromEntries(Object.entries({ status: options.status, claimedBy: options.claimedBy, createdBy: options.createdBy }).filter((entry): entry is [string, string] => Boolean(entry[1])));
+  // Performance Optimization: Direct property assignment avoids Object.entries -> filter -> Object.fromEntries temporary array allocations.
+  const filters: Record<string, string> = {};
+  if (options.status) filters.status = options.status;
+  if (options.claimedBy) filters.claimedBy = options.claimedBy;
+  if (options.createdBy) filters.createdBy = options.createdBy;
   const conditions: Array<[string, unknown]> = [];
   if (options.projectId) conditions.push(["project_id=?", options.projectId]);
   if (options.status) conditions.push(["status=?", options.status]);
