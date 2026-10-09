@@ -7,15 +7,19 @@
  * Keep-red pulls are excluded from the entropy budget. They are an owner hold,
  * not discretionary scope. A lattice family that is already open is refreshed
  * in place. This function never admits a second witness family.
+ *
+ * A paused Supabase project is an owner gate distinct from a missing key.
+ * Setting the key against a paused project is not persistence proof.
  */
 
-export const LATTICE_REVISION = "2026-10-09-entropy-fence";
+export const LATTICE_REVISION = "2026-10-09-paused-project";
 
 export const OPEN_PR_BUDGET = 2;
 
 export type HostClass =
   | "ready"
   | "owner_gated"
+  | "project_paused"
   | "alias_absent"
   | "unprobed"
   | "unexpected";
@@ -41,6 +45,7 @@ export type HostProbe = {
   bodyHasOwnerActionRequired?: boolean;
   bodyHasContractRevision?: boolean;
   deploymentNotFound?: boolean;
+  projectPaused?: boolean;
 };
 
 export type RepoEntropy = {
@@ -93,6 +98,7 @@ export const PHASES: readonly PhaseId[] = [
 const OWNER_SECRET = "SUPABASE_SERVICE_ROLE_KEY";
 
 export function classifyHost(probe: HostProbe): HostClass {
+  if (probe.projectPaused) return "project_paused";
   if (probe.httpStatus === null) return "unprobed";
   if (probe.deploymentNotFound || probe.httpStatus === 404) return "alias_absent";
   if (probe.httpStatus === 200) return "ready";
@@ -109,7 +115,8 @@ export function discretionaryOpen(repo: RepoEntropy): number {
 export function ownerGateOpen(hosts: HostProbe[]): boolean {
   return hosts.some((host) => {
     const missing = host.missingRequired ?? [];
-    return missing.includes(OWNER_SECRET) || classifyHost(host) === "owner_gated";
+    const klass = classifyHost(host);
+    return missing.includes(OWNER_SECRET) || klass === "owner_gated" || klass === "project_paused";
   });
 }
 
@@ -126,6 +133,12 @@ export function entropyBreach(repos: RepoEntropy[]): boolean {
 
 function ownerActionsFor(input: LatticeInput): string[] {
   const ownerActions: string[] = [];
+  const paused = input.hosts.filter((host) => host.projectPaused).map((host) => host.name);
+  if (paused.length > 0) {
+    ownerActions.push(
+      `Unpause Supabase project(s) ${paused.join(", ")} before setting any key. A paused project cannot prove persistence.`,
+    );
+  }
   const resonanceGated = input.hosts.some((host) => (host.missingRequired ?? []).includes(OWNER_SECRET));
   if (resonanceGated) {
     ownerActions.push("Set SUPABASE_SERVICE_ROLE_KEY on Netlify resonancenexus only. Do not invent it.");
@@ -149,6 +162,7 @@ export function decideCutover(input: LatticeInput): LatticeDecision {
   const discretionary = input.repos.reduce((sum, repo) => sum + discretionaryOpen(repo), 0);
   const refreshInPlace = input.latticeFamilyOpen === true;
   const breach = entropyBreach(input.repos);
+  const paused = input.hosts.some((host) => host.projectPaused);
 
   const finish = (
     admittedPhase: PhaseId,
@@ -172,9 +186,11 @@ export function decideCutover(input: LatticeInput): LatticeDecision {
     return finish(
       "p0_owner_gates",
       "owner_only",
-      publicContractDrift(input.hosts)
-        ? "Public ready body drifted: ownerActionRequired or contractRevision must stay omitted until the owner key is set."
-        : "Owner gate is open. Later phases are refused until the missing key is set by the owner.",
+      paused
+        ? "Owner gate is open. Supabase project pause blocks persistence even after the Netlify key is set."
+        : publicContractDrift(input.hosts)
+          ? "Public ready body drifted: ownerActionRequired or contractRevision must stay omitted until the owner key is set."
+          : "Owner gate is open. Later phases are refused until the missing key is set by the owner.",
     );
   }
 
