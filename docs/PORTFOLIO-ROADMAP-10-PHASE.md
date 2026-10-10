@@ -1,11 +1,11 @@
-# Portfolio 10-phase roadmap — 2026-10-10 03:02 EDT
+# Portfolio 10-phase roadmap — 2026-10-10 03:01 EDT
 
-Live probes at 2026-10-10T03:00Z. No secrets invented. Classifier tests are not production proof. This pass pruned stale audit artifacts and did not merge held PRs.
+Live probes at 2026-10-10T07:01Z. No secrets invented. Classifier tests are not production proof. This pass refreshed live evidence and did not merge held PRs.
 
 Evidence:
 - Conduit `/health` and `/ready` 200, `version=0.8.0`, `contractRevision=2026-10-03-ready-surface`, `persistence=postgres`.
-- Resonance `GET https://resonancenexus.netlify.app/api/ready` 503 missing exactly `SUPABASE_SERVICE_ROLE_KEY`. Body omits `ownerActionRequired` and `contractRevision` (deploy lag + owner gate).
-- QuicksilverV1 gateway remains liveness-only. `deviceAcceptance=not_recorded`. Gate is CHR-55 real iPhone 16e archive IPA.
+- Resonance `GET https://resonancenexus.netlify.app/api/ready` 503 missing exactly `["SUPABASE_SERVICE_ROLE_KEY"]`. Body omits `ownerActionRequired` and `contractRevision` (deploy lag + owner gate).
+- QuicksilverV1 gateway unresolved. `deviceAcceptance=not_recorded`. Gate is CHR-55 real iPhone 16e archive IPA.
 - Held: #119/#120 draft red. #155/#162 unmerged until Render TLS env set. #187/#188/#190 held. Dependabot none open on Conduit.
 
 ## Phase 1 — Owner gate is not Conduit's
@@ -27,7 +27,7 @@ Do not open another health-stamp PR. Exit: live health and ready still share `20
 #188 may merge only after the Workers Builds failure is explained or shown to be unrelated. Exit: verify and postgres-coordination stay green.
 
 ## Phase 7 — Hygiene prune executed
-No hourly audit files. One roadmap file. Stale AUDIT-2026-09-25.md pruned.
+No hourly audit files. One roadmap file. Stale AUDIT artifacts pruned.
 
 ## Phase 8 — Grants stay deny-by-default
 A resource record is not a grant. Exit: grant tests green and no resource record holds a secret.
