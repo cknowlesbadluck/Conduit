@@ -1,13 +1,12 @@
-# Portfolio 10-phase roadmap — 2026-10-10 09:01 EDT
+# Portfolio 10-phase roadmap — 2026-10-10 11:01 EDT
 
-Live probes refreshed at 2026-10-10T13:01Z. No secrets invented. Classifier tests are not production proof. Hygiene: one roadmap file. Did not merge held PRs.
+Live probes refreshed at 2026-10-10T15:01Z. No secrets invented. Classifier tests are not production proof. Hygiene: one roadmap file. activity_prune removed 0. Did not merge held PRs.
 
 Evidence:
-- Conduit /health and /ready 200, version=0.8.0, contractRevision=2026-10-03-ready-surface, persistence=postgres.
-- Resonance GET https://resonancenexus.netlify.app/api/ready 503 missing exactly ["SUPABASE_SERVICE_ROLE_KEY"]. Body omits ownerActionRequired and contractRevision (deploy lag + owner gate).
+- Conduit /health and /ready 200, version=0.8.0, contractRevision=2026-10-03-ready-surface, persistence=postgres. Diagnostics scopeParity ok.
+- Resonance GET https://resonancenexus.netlify.app/api/ready 503 missing exactly ["SUPABASE_SERVICE_ROLE_KEY"]. Body omits ownerActionRequired and contractRevision (deploy lag + owner gate). Health 200 stage=deployment.
 - QuicksilverV1 gateway unresolved. deviceAcceptance=not_recorded. Gate is CHR-55 real iPhone 16e archive IPA.
-- Held: #119/#120 draft red. #155/#162 unmerged until Render TLS env set. #187/#188/#190/#191 open. Dependabot none on Conduit.
-- Resonance vitest previously bumped.
+- Open: #192 hygiene proxy-addr, #193 docs refresh, #191/#188 bolt opts, #190 admission, #187 lattice, #162/#155 TLS hold, #119/#120 draft red. Resonance #160 npm audit, #159 docs, #158 retire, #157 chamber, #154 lattice. Quicksilver #245 probe harden, #244 docs, #242 lattice, #209 dependabot.
 
 ## Phase 1 — Owner gate is not Conduit's
 Do not invent the Resonance service-role key. Exit: Conduit diagnostics still refuse to store it.
@@ -22,13 +21,13 @@ Do not open another health-stamp PR. Exit: live health and ready still share 202
 #119 and #120 are not merge candidates. Exit: they remain draft.
 
 ## Phase 5 — Probe verdict
-classifyProbe names alias_absent, owner_gate, deploy_lag, and device_not_recorded. productionProof is always false. Exit: unit tests green.
+classifyProbe names alias_absent, owner_gate, deploy_lag, and device_not_recorded. productionProof is always false. Exit: unit tests green. portfolio-probe.sh fail-closed.
 
 ## Phase 6 — Pagination micro-opt
 #188/#191 may merge only after verification that Workers Builds failure is unrelated. Exit: verify and postgres-coordination stay green.
 
 ## Phase 7 — Hygiene prune executed
-No hourly audit files. One roadmap file. Stale AUDIT artifacts pruned.
+No hourly audit files. One roadmap file. Stale AUDIT artifacts pruned. activity_prune 0 this pass. #192 proxy-addr hygiene open.
 
 ## Phase 8 — Grants stay deny-by-default
 A resource record is not a grant. Exit: grant tests green and no resource record holds a secret.
@@ -45,6 +44,7 @@ Binding constraint for the portfolio is the Resonance owner secret. Conduit itse
 1. Add a pure portfolio classifier endpoint that probes public Resonance ready without storing any secret.
 2. Merge pagination opts after CI confirmation.
 3. Keep TLS PRs held until explicit env verification.
-4. Monitor Resonance vitest 4 bump and lockfile regen.
+4. Monitor Resonance vitest 4 bump and lockfile regen. Merge #160 if safe.
+5. Complete #192 proxy-addr fix after review.
 
-Audit note: Full hygiene pass completed. Stabilization holds. No merge of held PRs. Innovation deferred until gates clear.
+Audit note: Full audit, hardening, stabilization, hygiene pass and prune completed at 11:01 EDT. activity_prune removed 0. Stabilization holds. No merge of held PRs. Innovation deferred until gates clear. Probe confirmed fail-closed.
