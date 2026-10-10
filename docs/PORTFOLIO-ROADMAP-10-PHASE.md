@@ -1,12 +1,12 @@
-# Portfolio 10-phase roadmap — 2026-10-10 03:01 EDT
+# Portfolio 10-phase roadmap — 2026-10-10 08:02 EDT
 
-Live probes at 2026-10-10T07:01Z. No secrets invented. Classifier tests are not production proof. This pass refreshed live evidence and did not merge held PRs.
+Live probes at 2026-10-10T08:02Z. No secrets invented. Classifier tests are not production proof. This pass refreshed live evidence and did not merge held PRs.
 
 Evidence:
 - Conduit `/health` and `/ready` 200, `version=0.8.0`, `contractRevision=2026-10-03-ready-surface`, `persistence=postgres`.
 - Resonance `GET https://resonancenexus.netlify.app/api/ready` 503 missing exactly `["SUPABASE_SERVICE_ROLE_KEY"]`. Body omits `ownerActionRequired` and `contractRevision` (deploy lag + owner gate).
 - QuicksilverV1 gateway unresolved. `deviceAcceptance=not_recorded`. Gate is CHR-55 real iPhone 16e archive IPA.
-- Held: #119/#120 draft red. #155/#162 unmerged until Render TLS env set. #187/#188/#190 held. Dependabot none open on Conduit.
+- Held: #119/#120 draft red. #155/#162 unmerged until Render TLS env set. #187/#188/#190/#191 open. Dependabot none open on Conduit.
 
 ## Phase 1 — Owner gate is not Conduit's
 Do not invent the Resonance service-role key. Exit: Conduit diagnostics still refuse to store it.
@@ -24,7 +24,7 @@ Do not open another health-stamp PR. Exit: live health and ready still share `20
 `classifyProbe` names alias_absent, owner_gate, deploy_lag, and device_not_recorded. `productionProof` is always false. Exit: unit tests green.
 
 ## Phase 6 — Pagination micro-opt
-#188 may merge only after the Workers Builds failure is explained or shown to be unrelated. Exit: verify and postgres-coordination stay green.
+#188/#191 may merge only after verification that Workers Builds failure is unrelated. Exit: verify and postgres-coordination stay green.
 
 ## Phase 7 — Hygiene prune executed
 No hourly audit files. One roadmap file. Stale AUDIT artifacts pruned.
@@ -39,3 +39,8 @@ A resource record is not a grant. Exit: grant tests green and no resource record
 One probe covers Conduit health, Conduit ready, and the public Resonance ready body. Exit: production verdict accepted. A fixture test is not that proof.
 
 Binding constraint for the portfolio is the Resonance owner secret. Conduit itself is ready at the coordination surface and is not production-proven for TLS or grants.
+
+## Innovative next slices (post-gate)
+1. Add a pure portfolio classifier endpoint that probes public Resonance ready without storing any secret.
+2. Merge pagination opts after CI confirmation.
+3. Keep TLS PRs held until explicit env verification.
