@@ -1,12 +1,12 @@
-# Portfolio 10-phase roadmap — 2026-10-09 08:02 EDT
+# Portfolio 10-phase roadmap — 2026-10-10 03:02 EDT
 
-Live probes at 2026-10-09T12:02:13Z. No secrets invented. A classifier test is not production proof. This pass did not merge #187.
+Live probes at 2026-10-10T03:00Z. No secrets invented. Classifier tests are not production proof. This pass pruned stale audit artifacts and did not merge held PRs.
 
 Evidence:
-- `GET /health` and `GET /ready` on `https://conduit-feco.onrender.com` both returned 200, `version=0.8.0`, `contractRevision=2026-10-03-ready-surface`, ready `persistence=postgres`.
-- Resonance public ready is 503 missing exactly `SUPABASE_SERVICE_ROLE_KEY` and omits the contract stamp. Vercel alias is 404 `DEPLOYMENT_NOT_FOUND`.
-- Quicksilver device acceptance is not recorded on gateway health. CHR-55 remains open.
-- Held: #119 and #120 draft red. #155 do not merge until Render TLS env is set. #162 same hold. #188 CI verify is green; Workers Builds failed. #187 says do not merge.
+- Conduit `/health` and `/ready` 200, `version=0.8.0`, `contractRevision=2026-10-03-ready-surface`, `persistence=postgres`.
+- Resonance `GET https://resonancenexus.netlify.app/api/ready` 503 missing exactly `SUPABASE_SERVICE_ROLE_KEY`. Body omits `ownerActionRequired` and `contractRevision` (deploy lag + owner gate).
+- QuicksilverV1 gateway remains liveness-only. `deviceAcceptance=not_recorded`. Gate is CHR-55 real iPhone 16e archive IPA.
+- Held: #119/#120 draft red. #155/#162 unmerged until Render TLS env set. #187/#188/#190 held. Dependabot none open on Conduit.
 
 ## Phase 1 — Owner gate is not Conduit's
 Do not invent the Resonance service-role key. Exit: Conduit diagnostics still refuse to store it.
@@ -26,8 +26,8 @@ Do not open another health-stamp PR. Exit: live health and ready still share `20
 ## Phase 6 — Pagination micro-opt
 #188 may merge only after the Workers Builds failure is explained or shown to be unrelated. Exit: verify and postgres-coordination stay green.
 
-## Phase 7 — Hygiene prune
-No hourly audit files. One roadmap file. Do not stack another lattice PR on top of #187.
+## Phase 7 — Hygiene prune executed
+No hourly audit files. One roadmap file. Stale AUDIT-2026-09-25.md pruned.
 
 ## Phase 8 — Grants stay deny-by-default
 A resource record is not a grant. Exit: grant tests green and no resource record holds a secret.
