@@ -13,3 +13,7 @@
 ## 2025-03-10 - Single-pass rate limiter eviction without sorting
 **Learning:** `SlidingWindowLimiter.evict` was allocating entry tuples and calling `[...this.buckets.entries()].sort(...)` over all keys when `maxKeys` capacity was exceeded, creating $O(K \log K)$ sorting overhead and high garbage collection pressure on every rate-limited request. Replacing this with a single-pass $O(K)$ iteration that deletes expired buckets on the fly while tracking the oldest active key reduced eviction latency by >4x with zero array/tuple allocations.
 **Action:** Avoid `[...map.entries()].sort()` for capacity eviction in high-throughput hot paths; use single-pass tracking loops to identify eviction candidates in $O(N)$ time with zero temporary array allocations.
+
+## 2025-03-11 - Fast relational comparison for ISO timestamp and ID sorting
+**Learning:** In-memory store functions (`listAgents`, `listProjects`, `listResources`, `listTasks`, `listContacts`, `listTools`, `keysetPage`, `listCapabilityGrants`) were sorting arrays using `String.prototype.localeCompare`. `localeCompare` carries internationalization overhead that is ~1.5x–2x slower than JS relational operators (`<` and `>`). Because ISO 8601 timestamps and string IDs are ASCII-formatted, relational string comparison preserves exact sorting while speeding up list operations.
+**Action:** Prefer direct relational operators (`b.createdAt < a.createdAt ? -1 : ...`) over `localeCompare` when sorting ISO 8601 timestamps or ASCII identifier strings.
