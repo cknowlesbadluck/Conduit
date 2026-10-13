@@ -2,13 +2,27 @@
 /**
  * PortfolioPosture classifier — pure, no secrets, fail-closed.
  * Classifies live probe responses into owner_gate | deploy_lag | alias_absent | device_not_recorded | cold_start | ready | incomplete_ready | unknown.
- * Unit-testable. Used by portfolio-probe.sh and cross-repo evidence.
+ * Unit-testable. Used for cross-repo posture evidence.
  */
 
+// Statuses that mean "host not answering yet" (free-tier spin-up, gateway timeout),
+// never evidence of readiness or of an owner gate.
+const COLD_START_STATUSES = new Set([0, 502, 504]);
+
+export function isColdStart(status) {
+  return status === undefined || status === null || Number.isNaN(status) || COLD_START_STATUSES.has(status);
+}
+
+function coldStart(status) {
+  return { posture: 'cold_start', reason: status === 0 || status == null || Number.isNaN(status) ? 'timeout_or_zero' : `gateway_${status}` };
+}
+
 export function classifyResonanceReady(body, status) {
+  if (isColdStart(status)) return coldStart(status);
   if (status !== 503 && status !== 200) return { posture: 'unknown', reason: `unexpected_status_${status}` };
   if (status === 200) {
-    // Future: require stamp fields once Resonance ready carries contractRevision
+    // Fail closed: a 200 without an explicit ready body is not proof of readiness.
+    if (!body || typeof body !== 'object' || body.status !== 'ready') return { posture: 'incomplete_ready', reason: 'missing_ready_body' };
     return { posture: 'ready', reason: 'ok' };
   }
   if (!body || typeof body !== 'object') return { posture: 'unknown', reason: 'no_body' };
@@ -23,7 +37,7 @@ export function classifyResonanceReady(body, status) {
 }
 
 export function classifyConduitReady(body, status) {
-  if (status === 0) return { posture: 'cold_start', reason: 'timeout_or_zero' };
+  if (isColdStart(status)) return coldStart(status);
   if (status === 200 && body?.status === 'ready') {
     if (body.persistence === 'postgres' && body.contractRevision) {
       return { posture: 'ready', reason: 'stamped', contractRevision: body.contractRevision };
@@ -47,6 +61,21 @@ export function classifyAlias(status, body) {
   if (status === 404) return { posture: 'alias_absent', reason: '404' };
   if (status === 200 && (!body || body.status !== 'ready')) return { posture: 'stranger', reason: 'unexpected_200' };
   return null;
+}
+
+/**
+ * Read-only cross-plane consistency check between Conduit and Resonance postures.
+ * Pure: takes already-classified postures, performs no I/O. Fail-closed: the portfolio is
+ * only "consistent_ready" when both planes are fully ready; cold starts are retryable, never proof.
+ */
+export function crossPlaneConsistency(conduit, resonance) {
+  const c = conduit?.posture ?? 'unknown';
+  const r = resonance?.posture ?? 'unknown';
+  if (c === 'cold_start' || r === 'cold_start') return { verdict: 'retry', reason: 'cold_start', conduit: c, resonance: r };
+  if (c === 'ready' && r === 'ready') return { verdict: 'consistent_ready', reason: 'both_ready', conduit: c, resonance: r };
+  if (r === 'owner_gate') return { verdict: 'blocked', reason: 'resonance_owner_gate', ownerActionRequired: true, conduit: c, resonance: r };
+  if (c === 'unknown' || r === 'unknown') return { verdict: 'inconsistent', reason: 'unclassified_plane', conduit: c, resonance: r };
+  return { verdict: 'not_ready', reason: `${c}/${r}`, conduit: c, resonance: r };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
