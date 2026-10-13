@@ -1,14 +1,21 @@
-# Portfolio 10-phase roadmap — 2026-10-13 10:00 EDT (full audit + harden + stabilize + hygiene prune + innovate)
+# Conduit 10-phase roadmap — refreshed 2026-10-13 18:00 EDT
 
-Live probes at 2026-10-13T14:01Z. Resonance /api/ready 503 owner-gated (missing SUPABASE_SERVICE_ROLE_KEY exactly). Conduit /ready 200 stamped (version=0.8.0, contractRevision=2026-10-03-ready-surface, persistence=postgres). Quicksilver gateway host unresolved (000); deviceAcceptance=not_recorded; CHR-55 remains sole gate. Vercel: resonance.vercel.app and quicksilver.vercel.app 200 stranger_occupant; resonancenexus.vercel.app and quicksilverv1.vercel.app 404 alias_absent. No secrets invented. Classifier tests ≠ production proof.
+Live evidence 2026-10-13 ~22:05Z: Conduit `/ready` 200 stamped (0.8.0, 2026-10-03-ready-surface, postgres), `/mcp` 401 unauthenticated. Resonance and Quicksilver state not re-probed from this repo. CHR-55 device acceptance remains open; nothing here claims it. Classifier tests are not production proof.
+See docs/AUDIT-2026-10-13.md for findings. Open audit PRs: #197 CI hardening, #198 deps, #199 roadmap, #203 cold_start + cross-plane, #204 Bolt consolidation.
 
-Evidence:
-- Resonance: {"status":"not_ready","service":"resonance-nexus","stage":"deployment","production":true,"authMode":"required","authModeOk":true,"persistenceConfigured":false,"githubAdapterConfigured":false,"missingRequired":["SUPABASE_SERVICE_ROLE_KEY"],"timestamp":"2026-10-13T14:01:13.311Z"} HTTP 503.
-- Conduit ready: 200 stamped (version=0.8.0, contractRevision=2026-10-03-ready-surface, persistence=postgres). /health 200. Classifier rejects incomplete_ready.
-- Hygiene prune: single roadmap file policy holds. Superseded docs-refresh PRs (#244 QuicksilverV1, #159 Resonance, #193 Conduit) presented for close (interactive forms rendered). Activity prune removed 0.
-- Open held: QuicksilverV1 #242/#209/#245 (lattice/hardening); Conduit #187/#190/#188/#191/#194/#195/#196; Resonance #154/#157/#158. Dependabot: Resonance postcss (high GHSA-r28c-9q8g-f849 / medium GHSA-fxqj-rqcc-2cmp path traversal) still open — lockfile follow-up next (no deploy).
-- No hourly audits. Legacy Quicksilver archived.
-- Full brutal audit note added: docs/AUDIT-2026-10-13.md (portfolio scores ~5/10, structural weaknesses listed).
+1. **CI truth** — pinned actions/least privilege (#197); resolve or disconnect Cloudflare Workers Builds. Exit: main fully green. Risk: low.
+2. **Backlog prune** — land #204, close the five Bolt PRs, decide #187/#190/#193 conflicts and stale branches (#202). Exit: <6 open PRs. Risk: low.
+3. **Posture fail-closed** — cold_start/gateway classification, cross-plane consistency (#203). Exit: tests cover every posture. Risk: low.
+4. **Single entrypoint** — make `index.ts` use `app-factory.ts`. Exit: one route/auth wiring, e2e tests hit it. Risk: medium.
+5. **DB TLS** — verify certs by default (#155/#162, #201). Exit: prod `/ready` green with verification on. Risk: medium (outage if env wrong).
+6. **Migrations** — ordered migrations (#120). Exit: fresh + upgrade tested in CI Postgres. Risk: medium.
+7. **Public surface** — auth or cache `/diagnostics`, trim `/status`. Exit: no unauthenticated outbound fan-out. Risk: low.
+8. **SSE & shutdown** — #119 admission limits, graceful drain. Exit: load test without leaked sockets. Risk: medium.
+9. **Tests & observability** — coverage reporting, structured logs with redaction. Exit: ≥80% on auth/store. Risk: low.
+10. **Release 0.9.0** — changelog, tag, runbook, live-smoke gate; device acceptance only after CHR-55 has real evidence. Exit: tagged release, smoke green. Risk: medium.
+
+---
+Previous portfolio phases (kept for history):
 
 ## Phase 1 — Owner gate stays external
 Do not invent or store SUPABASE_SERVICE_ROLE_KEY. Exit: live ready body remains owner-blocked; posture parser rejects any other classification.
