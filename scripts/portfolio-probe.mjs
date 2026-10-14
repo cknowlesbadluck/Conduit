@@ -4,7 +4,9 @@
  *
  * Fetches each known public endpoint (no credentials are sent, read, or printed) and
  * classifies the outcome:
- *   ready | not_ready (+ missing list) | stranger_occupant | alias_absent | unreachable | timeout | unknown
+ *   ready | not_ready (+ missing list) | challenge | stranger_occupant | alias_absent | unreachable | timeout | unknown
+ * `challenge` = a CDN bot challenge (Cloudflare `cf-mitigated: challenge` / "Just a moment..."
+ * interstitial) answered instead of the origin: we cannot see the service, so it is NOT ok.
  * Only `ready` counts as ok. Anything unrecognised is `unknown` and NOT ok.
  *
  * Usage: node scripts/portfolio-probe.mjs [--json]   (exit 1 if any target is not ok)
@@ -32,6 +34,9 @@ export function classify(target, observation) {
   if (observation.error) return { ...base, outcome: "unreachable", ok: false };
   const { status, headers = {}, body = "" } = observation;
   const vercelError = String(headers["x-vercel-error"] ?? "");
+  if (/challenge/i.test(String(headers["cf-mitigated"] ?? "")) || /challenges\.cloudflare\.com|<title>Just a moment\.\.\.<\/title>/i.test(body)) {
+    return { ...base, outcome: "challenge", ok: false, status, reason: "cdn_bot_challenge" };
+  }
   if (status === 404 && (/DEPLOYMENT_NOT_FOUND|NOT_FOUND/.test(vercelError) || /DEPLOYMENT_NOT_FOUND/.test(body))) {
     return { ...base, outcome: "alias_absent", ok: false, status };
   }
@@ -48,6 +53,9 @@ export function classify(target, observation) {
     const missing = Array.isArray(json.missingRequired) ? json.missingRequired.filter((m) => typeof m === "string" && ENV_NAME.test(m)) : [];
     return { ...base, outcome: "not_ready", ok: false, status, missing };
   }
+  if (status === 503 && body.trim() === "" && /cloudflare/i.test(String(headers.server ?? ""))) {
+    return { ...base, outcome: "unknown", ok: false, status, reason: "edge_503_empty_origin_unavailable" };
+  }
   if (status === 503 && service !== target.expectService && service !== undefined) return { ...base, outcome: "stranger_occupant", ok: false, status, reason: "service_mismatch" };
   return { ...base, outcome: "unknown", ok: false, status };
 }
@@ -60,7 +68,7 @@ export async function observe(url, { timeoutMs = 20_000, fetchImpl = fetch } = {
     // alias cannot bounce us somewhere else and look healthy.
     const res = await fetchImpl(url, { signal: controller.signal, redirect: "manual", headers: { accept: "application/json" } });
     const body = (await res.text()).slice(0, 16_384);
-    return { status: res.status, headers: { "x-vercel-error": res.headers.get("x-vercel-error") ?? "" }, body };
+    return { status: res.status, headers: { "x-vercel-error": res.headers.get("x-vercel-error") ?? "", "cf-mitigated": res.headers.get("cf-mitigated") ?? "", server: res.headers.get("server") ?? "" }, body };
   } catch (error) {
     return { error: controller.signal.aborted || error?.name === "AbortError" ? "timeout" : "unreachable" };
   } finally { clearTimeout(timer); }
@@ -74,6 +82,6 @@ const isMain = import.meta.url === `file://${process.argv[1]}`;
 if (isMain) {
   const results = await probeAll();
   if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), results }, null, 2));
-  else for (const r of results) console.log(`${r.ok ? "OK  " : "FAIL"} ${r.name.padEnd(22)} ${r.outcome}${r.missing?.length ? ` missing=[${r.missing.join(",")}]` : ""}${r.status ? ` (${r.status})` : ""}`);
+  else for (const r of results) console.log(`${r.ok ? "OK  " : "FAIL"} ${r.name.padEnd(22)} ${r.outcome}${r.missing?.length ? ` missing=[${r.missing.join(",")}]` : ""}${r.reason ? ` reason=${r.reason}` : ""}${r.status ? ` (${r.status})` : ""}`);
   process.exitCode = results.every((r) => r.ok) ? 0 : 1;
 }

@@ -43,3 +43,17 @@ test("observe sends no credentials, does not follow redirects, maps errors", asy
   assert.deepEqual(await observe("https://x", { fetchImpl: async () => { throw new TypeError("fetch failed"); } }), { error: "unreachable" });
   assert.deepEqual(await observe("https://x", { timeoutMs: 5, fetchImpl: (_u, init) => new Promise((_r, rej) => init.signal.addEventListener("abort", () => rej(Object.assign(new Error("a"), { name: "AbortError" })))) }), { error: "timeout" });
 });
+
+test("challenge: Cloudflare managed challenge is its own fail-closed outcome", () => {
+  const html = '<!DOCTYPE html><html><head><title>Just a moment...</title></head><body><script src="https://challenges.cloudflare.com/x"></script></body></html>';
+  for (const obs of [
+    { status: 429, headers: { "cf-mitigated": "challenge", server: "cloudflare" }, body: html },
+    { status: 403, headers: {}, body: html },
+    { status: 200, headers: { "cf-mitigated": "challenge" }, body: "" },
+  ]) { const r = classify(conduit, obs); assert.equal(r.outcome, "challenge"); assert.equal(r.ok, false); }
+});
+
+test("edge 503 with empty body from Cloudflare is unknown (origin unavailable), not ok", () => {
+  const r = classify(conduit, { status: 503, headers: { server: "cloudflare" }, body: "" });
+  assert.equal(r.outcome, "unknown"); assert.equal(r.reason, "edge_503_empty_origin_unavailable"); assert.equal(r.ok, false);
+});
