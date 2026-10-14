@@ -3,16 +3,29 @@
 Live evidence 2026-10-13 ~22:05Z: Conduit `/ready` 200 stamped (0.8.0, 2026-10-03-ready-surface, postgres), `/mcp` 401 unauthenticated. Resonance and Quicksilver state not re-probed from this repo. CHR-55 device acceptance remains open; nothing here claims it. Classifier tests are not production proof.
 See docs/AUDIT-2026-10-13.md for findings. Open audit PRs: #197 CI hardening, #198 deps, #199 roadmap, #203 cold_start + cross-plane, #204 Bolt consolidation.
 
-1. **CI truth** — pinned actions/least privilege (#197); resolve or disconnect Cloudflare Workers Builds. Exit: main fully green. Risk: low.
-2. **Backlog prune** — land #204, close the five Bolt PRs, decide #187/#190/#193 conflicts and stale branches (#202). Exit: <6 open PRs. Risk: low.
-3. **Posture fail-closed** — cold_start/gateway classification, cross-plane consistency (#203). Exit: tests cover every posture. Risk: low.
-4. **Single entrypoint** — make `index.ts` use `app-factory.ts`. Exit: one route/auth wiring, e2e tests hit it. Risk: medium.
-5. **DB TLS** — verify certs by default (#155/#162, #201). Exit: prod `/ready` green with verification on. Risk: medium (outage if env wrong).
-6. **Migrations** — ordered migrations (#120). Exit: fresh + upgrade tested in CI Postgres. Risk: medium.
-7. **Public surface** — auth or cache `/diagnostics`, trim `/status`. Exit: no unauthenticated outbound fan-out. Risk: low.
-8. **SSE & shutdown** — #119 admission limits, graceful drain. Exit: load test without leaked sockets. Risk: medium.
-9. **Tests & observability** — coverage reporting, structured logs with redaction. Exit: ≥80% on auth/store. Risk: low.
-10. **Release 0.9.0** — changelog, tag, runbook, live-smoke gate; device acceptance only after CHR-55 has real evidence. Exit: tagged release, smoke green. Risk: medium.
+## Production-readiness roadmap (third pass, 2026-10-13 21:00 EDT)
+
+Principles: provider-neutral, free-tier only, no secrets in code, every phase reversible, fail-closed by default. Measured baseline: line coverage 77% overall, but `index.ts` (the production entrypoint) 0%, `grant-tools` 23%, `mcp.ts` 46%, `store.ts` 52%, `db-ready` 29%.
+
+| # | Phase | Goal | Deliverables | Exit criteria | Risk |
+|---|---|---|---|---|---|
+| 1 | Green truth | CI that can be trusted | Pinned actions (#197); fix or disconnect Cloudflare Workers Builds; required checks list | `main` all green for 7 days | Low |
+| 2 | One wiring | Tests exercise exactly what production runs | `index.ts` reduced to `createConduitApp(loadOptions(env)).listen()`; move host/origin/CORS, `/events`, `CONDUIT_TOKEN` into the factory; reconcile `legacy: "stateless"` drift | `index.ts` < 30 lines; http-e2e covers prod wiring; coverage of wiring ≥ 85% | Medium |
+| 3 | Lockdown by construction | Prod safety independent of a single env var | `isProductionRuntime()` (#206) extended to the capability-required default after checking live env; startup refuses dev auth modes on prod; `trust proxy` configured so per-IP limits are real | Startup test matrix: prod markers × dev flags all refuse | Medium |
+| 4 | Public surface minimised | Nothing unauthenticated does work on others' behalf | `/diagnostics` cached (#208) then moved behind read scope with a public `/health`-only summary; `/status` counts behind auth; typed tool inputs (#207) | Unauthenticated routes: `/`, `/health`, `/ready`, OAuth metadata only | Low |
+| 5 | Transport security | Encrypted and verified DB connections | Postgres TLS verify on by default (#155/#162 merged as one), explicit `DATABASE_SSL_*` docs, `/ready` reports TLS mode | Live `/ready` green with verification on | Medium (outage if CA wrong) |
+| 6 | Signed, scoped cursors | Cursors can't be forged or replayed across queries | HMAC-signed keyset cursors with key rotation (from #162), consolidated Bolt perf (#204) | Tampered/foreign cursors rejected in tests; fuzz test on codec | Low |
+| 7 | Capability gates per tool | Least privilege for every write and external call | Per-tool capability map (read/write/admin/external), deny-by-default for `integration_call`/`mcp_bridge_call`, grants audited | Contract test asserts every tool declares a gate | Medium |
+| 8 | Persistence & ordered migrations | Safe, reviewable schema evolution | Versioned forward-only migrations (#120) with checksum table, dry-run mode, inline DDL removed from `store.ts` | Fresh + upgrade-from-0.8.0 tested on CI Postgres; no destructive DDL without flag | Medium |
+| 9 | Contract & integration tests | Behavior pinned at the protocol edge | MCP contract snapshots (tool list + schemas), HTTP e2e over real wiring, Postgres parity suite, coverage gate | Coverage ≥ 80% on auth/store/mcp; schema drift fails CI | Low |
+| 10 | Operable release | Repeatable, observable 0.9.0 | Structured logs with request ids + redaction, graceful SSE drain (#119), changelog, tag, rollback runbook; device acceptance claimed only with real CHR-55 evidence | Tagged 0.9.0, live-smoke green, rollback rehearsed | Medium |
+
+Assumptions challenged:
+- "Tests are green, so prod is covered": false; the production entrypoint is untested (0%).
+- "NODE_ENV=production protects us": a single forgotten variable re-enables dev auth; fixed for auth in #206.
+- "Rate limits are per client": without `trust proxy`, `req.ip` is likely the proxy, so limits are shared by everyone.
+- "Cloudflare Workers is a deploy target": `index.ts` exports a Workers `fetchHandler` stub that serves fake `/status` and `/ready` (always ready, memory). Either commit to it or remove it; today it only produces a red check and a misleading surface.
+- "Portfolio posture belongs here": it contradicts the README's non-goals; consider moving it to a separate ops repo.
 
 ---
 Previous portfolio phases (kept for history):
