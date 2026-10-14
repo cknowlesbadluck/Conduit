@@ -1,3 +1,4 @@
+import { DATABASE_CONNECT_TIMEOUT_MS } from "./db-timeouts.js";
 import pg from "pg";
 import { cursorCodec, cursorOrder, pageLimit, type CursorCollection, type Page } from "./pagination.js";
 
@@ -32,7 +33,7 @@ const sslOption = process.env.DATABASE_SSL === "false"
   : { rejectUnauthorized: sslRejectUnauthorized };
 
 const pool = useDatabase
-  ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: sslOption, max: 5 })
+  ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: sslOption, max: 5, connectionTimeoutMillis: DATABASE_CONNECT_TIMEOUT_MS })
   : null;
 
 let ready = false;

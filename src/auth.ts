@@ -1,3 +1,4 @@
+import { AUTH_DISCOVERY_TIMEOUT_MS } from "./db-timeouts.js";
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import type { AuthInfo, OAuthTokenVerifier } from "@modelcontextprotocol/server";
 import { OAuthError, OAuthErrorCode } from "@modelcontextprotocol/server";
@@ -58,7 +59,7 @@ export async function loadAuthConfig(): Promise<ConduitAuthConfig | null> {
     throw new Error("DESCOPE_MCP_SERVER_WELL_KNOWN_URL must use HTTPS in production");
   }
 
-  const response = await fetch(discoveryUrl, { headers: { accept: "application/json" } });
+  const response = await fetch(discoveryUrl, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(AUTH_DISCOVERY_TIMEOUT_MS) });
   if (!response.ok) throw new Error(`Unable to load Descope discovery metadata: HTTP ${response.status}`);
 
   const raw = (await response.json()) as Record<string, unknown>;

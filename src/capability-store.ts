@@ -1,3 +1,4 @@
+import { DATABASE_CONNECT_TIMEOUT_MS } from "./db-timeouts.js";
 import pg from "pg";
 // Performance Optimization: Use store's exported agentExists to execute direct O(1) PK/Map check
 // instead of fetching and sorting all agents via listAgents().
@@ -11,6 +12,7 @@ const pool = useDatabase
       connectionString: process.env.DATABASE_URL,
       ssl: process.env.DATABASE_SSL === "false" ? false : { rejectUnauthorized: false },
       max: 3,
+      connectionTimeoutMillis: DATABASE_CONNECT_TIMEOUT_MS,
     })
   : null;
 
