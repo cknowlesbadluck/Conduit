@@ -17,7 +17,9 @@ jobs:
           node-version: 22
       - run: npm ci
       - run: npm run typecheck
-      - run: npm test
+      # Coverage gate pinned just under the current baseline (Node 22: lines 65.4, branches 75.2, functions 67.9).
+      # Raise these when coverage improves; never lower them to make a PR pass.
+      - run: npm run test:coverage
       - run: npm run build
 
   postgres-coordination:
