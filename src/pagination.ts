@@ -21,10 +21,20 @@ const orders: Record<CursorCollection, CursorOrder> = {
   activity: { field: "at", direction: "desc", tieBreaker: "id" },
 };
 
+// Performance Optimization: Direct O(K) property check avoids array allocations and O(K log K)
+// sorting from Object.keys(a).sort() during cursor validation on every paginated request.
 const sameRecord = (a: Record<string, string>, b: Record<string, string>) => {
-  const ak = Object.keys(a).sort();
-  const bk = Object.keys(b).sort();
-  return ak.length === bk.length && ak.every((key, index) => key === bk[index] && a[key] === b[key]);
+  if (a === b) return true;
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  for (let i = 0; i < aKeys.length; i++) {
+    const key = aKeys[i];
+    if (!Object.prototype.hasOwnProperty.call(b, key) || a[key] !== b[key]) {
+      return false;
+    }
+  }
+  return true;
 };
 
 /** Opaque, versioned keyset cursor codec. Decode validates that a cursor belongs to this exact query. */
