@@ -10,8 +10,8 @@ Principles: provider-neutral, free-tier only, no secrets in code, every phase re
 | # | Phase | Goal | Deliverables | Exit criteria | Risk |
 |---|---|---|---|---|---|
 | 1 | Green truth | CI that can be trusted | Pinned actions (#197); fix or disconnect Cloudflare Workers Builds; required checks list | `main` all green for 7 days | Low |
-| 2 | One wiring | Tests exercise exactly what production runs | `index.ts` reduced to `createConduitApp(loadOptions(env)).listen()`; move host/origin/CORS, `/events`, `CONDUIT_TOKEN` into the factory; reconcile `legacy: "stateless"` drift | `index.ts` < 30 lines; http-e2e covers prod wiring; coverage of wiring ≥ 85% | Medium |
-| 3 | Lockdown by construction | Prod safety independent of a single env var | `isProductionRuntime()` (#206) extended to the capability-required default after checking live env; startup refuses dev auth modes on prod; `trust proxy` configured so per-IP limits are real | Startup test matrix: prod markers × dev flags all refuse | Medium |
+| 2 | One wiring (in progress: #211) | Tests exercise exactly what production runs | `index.ts` reduced to `createConduitApp(loadOptions(env)).listen()`; move host/origin/CORS, `/events`, `CONDUIT_TOKEN` into the factory; reconcile `legacy: "stateless"` drift | `index.ts` < 30 lines; http-e2e covers prod wiring; coverage of wiring ≥ 85% | Medium |
+| 3 | Lockdown by construction (in progress: #206 fail-closed, #209 trust proxy) | Prod safety independent of a single env var | `isProductionRuntime()` (#206) extended to the capability-required default after checking live env; startup refuses dev auth modes on prod; `trust proxy` configured so per-IP limits are real | Startup test matrix: prod markers × dev flags all refuse | Medium |
 | 4 | Public surface minimised | Nothing unauthenticated does work on others' behalf | `/diagnostics` cached (#208) then moved behind read scope with a public `/health`-only summary; `/status` counts behind auth; typed tool inputs (#207) | Unauthenticated routes: `/`, `/health`, `/ready`, OAuth metadata only | Low |
 | 5 | Transport security | Encrypted and verified DB connections | Postgres TLS verify on by default (#155/#162 merged as one), explicit `DATABASE_SSL_*` docs, `/ready` reports TLS mode | Live `/ready` green with verification on | Medium (outage if CA wrong) |
 | 6 | Signed, scoped cursors | Cursors can't be forged or replayed across queries | HMAC-signed keyset cursors with key rotation (from #162), consolidated Bolt perf (#204) | Tampered/foreign cursors rejected in tests; fuzz test on codec | Low |
@@ -19,6 +19,8 @@ Principles: provider-neutral, free-tier only, no secrets in code, every phase re
 | 8 | Persistence & ordered migrations | Safe, reviewable schema evolution | Versioned forward-only migrations (#120) with checksum table, dry-run mode, inline DDL removed from `store.ts` | Fresh + upgrade-from-0.8.0 tested on CI Postgres; no destructive DDL without flag | Medium |
 | 9 | Contract & integration tests | Behavior pinned at the protocol edge | MCP contract snapshots (tool list + schemas), HTTP e2e over real wiring, Postgres parity suite, coverage gate | Coverage ≥ 80% on auth/store/mcp; schema drift fails CI | Low |
 | 10 | Operable release | Repeatable, observable 0.9.0 | Structured logs with request ids + redaction, graceful SSE drain (#119), changelog, tag, rollback runbook; device acceptance claimed only with real CHR-55 evidence | Tagged 0.9.0, live-smoke green, rollback rehearsed | Medium |
+
+Fourth-pass changes: phase 3 now also covers moving `CONDUIT_CAPABILITIES_REQUIRED` to `isProductionRuntime()`; phase 4 adds removing or making honest the Workers `fetchHandler` stub (fake `/status` and `/ready`); phase 9 adds a coverage gate now that `index.ts` is trivial.
 
 Assumptions challenged:
 - "Tests are green, so prod is covered": false; the production entrypoint is untested (0%).
