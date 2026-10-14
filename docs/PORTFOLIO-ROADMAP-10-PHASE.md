@@ -20,6 +20,8 @@ Principles: provider-neutral, free-tier only, no secrets in code, every phase re
 | 9 | Contract & integration tests | Behavior pinned at the protocol edge | MCP contract snapshots (tool list + schemas), HTTP e2e over real wiring, Postgres parity suite, coverage gate | Coverage ≥ 80% on auth/store/mcp; schema drift fails CI | Low |
 | 10 | Operable release | Repeatable, observable 0.9.0 | Structured logs with request ids + redaction, graceful SSE drain (#119), changelog, tag, rollback runbook; device acceptance claimed only with real CHR-55 evidence | Tagged 0.9.0, live-smoke green, rollback rehearsed | Medium |
 
+Fifth-pass progress: #212 capabilities default (phase 3), #213 honest Workers handler (phase 4), #214 coverage gate (phase 9), #216 DB/discovery timeouts (phase 10). New for phase 8: consolidate the four pg pools into one shared pool. New for phase 4: an SSE connection cap and a shared poller.
+
 Fourth-pass changes: phase 3 now also covers moving `CONDUIT_CAPABILITIES_REQUIRED` to `isProductionRuntime()`; phase 4 adds removing or making honest the Workers `fetchHandler` stub (fake `/status` and `/ready`); phase 9 adds a coverage gate now that `index.ts` is trivial.
 
 Assumptions challenged:
