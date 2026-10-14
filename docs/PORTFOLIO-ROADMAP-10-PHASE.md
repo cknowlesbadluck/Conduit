@@ -1,28 +1,49 @@
-# Conduit — 10-Phase Production-Readiness Roadmap (refined 2026-10-14 10:00 EDT)
+# Portfolio — 10-Phase Production-Readiness Roadmap (refined 2026-10-14 14:30 EDT)
 
-Purpose: Conduit is a project-agnostic TypeScript MCP coordination bridge (agents, tasks, grants, integrations) running on Render with Postgres. It does not own other projects' posture; portfolio-wide classifiers do not belong here (see #210).
+Scope: three independent projects, kept separate. No shared runtime code and no cross-repo merges; the planes talk only through documented HTTP contracts. Each section below is owned by its own repo.
+Principles: provider-neutral, free-tier only, no secrets in code or docs, every phase reversible, fail-closed, nothing merged by agents.
 
-Principles: provider-neutral, free-tier only, no secrets in code, every phase reversible, fail-closed by default.
-Live 2026-10-14 10:01 EDT: `/health` 200, `/ready` 200 (0.8.0, postgres, contract 2026-10-03-ready-surface); a cold first `/ready` hung once at 09:05. Baseline coverage 77%, `index.ts` 0%.
-Known red check: Cloudflare Workers Builds fails on every PR; it is not a deploy target (owner: disconnect it, or keep #213's honest handler).
-Evidence: docs/AUDIT-2026-10-13.md.
+## Live evidence (2026-10-14 ~18:00Z / 14:20 EDT, `scripts/portfolio-probe.mjs`, #218)
 
-| # | Phase | Goal | PRs / work | Exit criteria |
-|---|---|---|---|---|
-| 1 | Green truth | CI that can be trusted | #197 SHA pins/least privilege, #198 deps; owner: disconnect Workers Builds, required checks | main green 7 days; only real checks required |
-| 2 | One wiring | Tests run what production runs | #211 `index.ts` thin wrapper over app-factory; #217 SSE admission before headers (503 + Retry-After at cap) | `index.ts` < 30 lines; e2e covers prod wiring |
-| 3 | Lockdown by construction | Prod safety not tied to one env var | #206 prod lockdown, #212 capabilities required on prod, #209 trust proxy | Prod markers × dev flags all refuse at startup |
-| 4 | Minimal public surface | Unauthenticated routes do no work for others | #208 diagnostics cache, #207 typed tool inputs, #213 honest Workers handler | Public: `/`, `/health`, `/ready`, OAuth metadata only |
-| 5 | Transport security | Verified DB TLS | One shared `postgresSsl()` policy for every pool (#162 or #155, consolidate per #201); set Render `DATABASE_SSL_*` first | Live `/ready` green with verification on |
-| 6 | Signed cursors + pagination perf | Unforgeable, cheap cursors | #204 Bolt consolidation (closes #200/#202 scope), HMAC cursors from #162 | Tampered cursors rejected; codec fuzz test |
-| 7 | Per-tool capability gates | Least privilege | Capability map per tool; deny-by-default for `integration_call`/`mcp_bridge_call`; audited grants | Contract test: every tool declares a gate |
-| 8 | Ordered migrations + one pool | Safe schema evolution | Forward-only migrations (#120 draft) with checksums/dry-run; consolidate the four pg pools | Fresh + upgrade-from-0.8.0 on CI Postgres |
-| 9 | Contract tests + coverage gate | Pinned protocol edge | #214 coverage gate; MCP tool/schema snapshots; Postgres parity suite | ≥ 80% on auth/store/mcp; schema drift fails CI |
-| 10 | Operable 0.9.0 | Repeatable, observable release | #216 finite timeouts; structured redacted logs; SSE graceful drain (remaining part of #119 after #217); changelog, tag, rollback runbook | Tagged 0.9.0; live smoke green; rollback rehearsed |
+| Target | Outcome | Detail |
+|---|---|---|
+| conduit-feco.onrender.com/ready | ready | 200, 0.8.0, contractRevision 2026-10-03-ready-surface, postgres |
+| resonancenexus.netlify.app/api/ready | not_ready | 503, missingRequired = [SUPABASE_SERVICE_ROLE_KEY] (owner gate) |
+| resonance.vercel.app | stranger_occupant | 200, not our deployment |
+| quicksilver.vercel.app | stranger_occupant | 200, not our deployment |
+| resonancenexus.vercel.app | alias_absent | 404 DEPLOYMENT_NOT_FOUND |
+| quicksilverv1.vercel.app | alias_absent | 404 DEPLOYMENT_NOT_FOUND |
 
-## Merge order
-1. #197 → #198 (CI/deps) → 2. #206 → #211 → #217, #212 (stacked on #206) → #209 → 3. #207, #208, #213 → 4. #204 → #216 → #214 (gate last, at the new baseline) → 5. one of #210 (recommended: remove out-of-scope portfolio script) or #203, never both → 6. TLS (#155/#162 consolidated) only after Render env is set → 7. #205 (this doc).
+Device: CHR-55 is the only device gate. deviceAcceptance = not_recorded. No device evidence is claimed anywhere.
 
-Held: #187, #190 (portfolio lattice/admission experiments, conflicting, do-not-merge), #119/#120 (draft, keep red), #155/#162 (owner TLS decision #201). Closed this pass: #199 (superseded by this doc).
+## Phases (shared shape, per-project work)
 
-Status 2026-10-14 10:00 EDT: no merges/commits/issues since 06:00; 0 open Dependabot alerts; all audit PRs mergeable, only Workers Builds red; #119 kept (shutdown drain not covered by #217); #155/#162 overlap documented on both PRs (#155 = canonical TLS, split HMAC cursors out of #162).
+| # | Phase | Exit criteria |
+|---|---|---|
+| 1 | Green, pinned CI | main green; actions SHA-pinned; only real checks required |
+| 2 | One wiring / one envelope | Tests exercise production wiring; uniform sanitized error envelope |
+| 3 | Fail-closed auth & lockdown | Prod refuses dev/anonymous modes at startup |
+| 4 | Minimal public surface + limits | Unauthenticated routes bounded and rate-limited |
+| 5 | Transport & data security | Verified DB TLS; DB enforces tenancy |
+| 6 | Honest posture | `/ready` never green on cold start or missing config; probe classifies fail-closed |
+| 7 | Capability gates | Undeclared capability ⇒ refuse + audit |
+| 8 | Safe schema evolution | Forward-only migrations tested on CI Postgres; never applied by agents |
+| 9 | Contract tests + coverage gate | Protocol/adapter contracts pinned; drift fails CI |
+| 10 | Operable release | Tagged release, runbook, rollback rehearsed, live probe green |
+
+## Conduit (MCP coordination bridge, Render + Postgres)
+
+Status: live ready. Workers Builds check red on every PR (not a deploy target).
+1. #197 CI pins, #198 deps; owner: disconnect Workers Builds. 2. #211 app-factory wiring → #217 SSE admission 503 at cap. 3. #206 lockdown, #212 grants required in prod, #209 trust proxy. 4. #208 diagnostics cache, #207 typed tool inputs, #213 honest Workers handler; per-tool + external rate limits already on main. 5. DB TLS: #155 canonical (verify-on; Render env first); split HMAC cursors out of #162. 6. #203 cold_start posture; #218 portfolio probe (owner: keep here or move out; #210 removes legacy portfolio-posture.mjs). 7. Per-tool capability map, deny-by-default for integration_call/mcp_bridge_call. 8. #120 ordered migrations (draft). 9. #214 coverage gate, #204 pagination perf. 10. #216 timeouts; SSE drain (rest of #119); tag 0.9.0.
+Merge order: #197 → #198 → #206 → #211 → #217, #212 → #209 → #207, #208, #213 → #204 → #216 → #214 → #210 or #203 → #218 → TLS (#155) after Render env → #205.
+
+## Resonance (provider-neutral Nexus, Next.js 15 + Supabase, Netlify)
+
+Status: prod 503, owner gate SUPABASE_SERVICE_ROLE_KEY; main CI red since e8df8f6.
+1. #161 lockfile (unblocker; also clears Dependabot #1–#4 postcss), #162 workflows, #164 Dependabot; owner: branch protection (#165). 2. #172, #177, #181 error envelope + requestId. 3. #174 auth fail-closed. 4. #176, #180 route tests. 5. #175 rate limit; cursor pagination next. 6. #169 cold_start, #170 contract self-check. 7. #182 adapter contract tests; capability manifest + executor refusal (CHR-33). 8. #173 search_path (authored, NOT applied). 9. #178 commitSha → #179 parity check. 10. Owner sets key → `/api/ready` 200 (CHR-54); runbook.
+Merge order: #161 → #162, #164 → #172 → #176 → #177 → #181 / #178 → #179 / #180 → #174, #175, #169, #170, #182 → #173 → #171.
+
+## QuicksilverV1 (iOS; owned by Quicksilver Dev; read-only here)
+
+Status: no live web alias of ours (quicksilver.vercel.app is a stranger, quicksilverv1.vercel.app absent). Device gate CHR-55 not_recorded.
+Open drafts #280–#291: no file overlap or duplicates. #283–#287 are one-file slices of issue #252 (@unchecked Sendable) and could be consolidated. Hygiene decisions belong to Quicksilver Dev.
