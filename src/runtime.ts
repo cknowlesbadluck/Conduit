@@ -11,3 +11,13 @@ export function isProductionRuntime(env: NodeJS.ProcessEnv = process.env): boole
   if (env.CONDUIT_PRODUCTION === "true") return true;
   return HOST_MARKERS.some((name) => Boolean(env[name]?.trim()));
 }
+
+/**
+ * Development-only behavior (CONDUIT_TOKEN static bearer, CONDUIT_ALLOW_ANONYMOUS, plain-HTTP auth URLs)
+ * requires an explicit opt-in AND no production signal. An unidentified runtime is NOT development.
+ * Opt in locally with CONDUIT_DEV_MODE=true, or NODE_ENV=development|test.
+ */
+export function isDevelopmentRuntime(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (isProductionRuntime(env)) return false;
+  return env.CONDUIT_DEV_MODE === "true" || env.NODE_ENV === "development" || env.NODE_ENV === "test";
+}

@@ -25,6 +25,10 @@ It does not define Conduit and is not a runtime component of Conduit.
 - authenticated activity history and live task lifecycle events
 - unified global or project-scoped coordination context
 
+## Local development auth
+
+Static-token (`CONDUIT_TOKEN`) and anonymous (`CONDUIT_ALLOW_ANONYMOUS=true`) MCP modes are development-only and fail closed: they require `CONDUIT_DEV_MODE=true` (or `NODE_ENV=development|test`) and are refused whenever a production signal is present (`NODE_ENV=production`, `CONDUIT_PRODUCTION=true`, or a hosting marker such as `RENDER`). Without OAuth configured and without the opt-in, `/mcp` returns `503 auth_not_configured`.
+
 ## Non-goals
 
 - Conduit is not a general-purpose GitHub, Render, or Linear client

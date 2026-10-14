@@ -1,6 +1,6 @@
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import type { AuthInfo, OAuthTokenVerifier } from "@modelcontextprotocol/server";
-import { isProductionRuntime } from "./runtime.js";
+import { isDevelopmentRuntime } from "./runtime.js";
 import { OAuthError, OAuthErrorCode } from "@modelcontextprotocol/server";
 
 type OAuthMetadata = {
@@ -45,7 +45,7 @@ export async function loadAuthConfig(): Promise<ConduitAuthConfig | null> {
   } catch {
     throw new Error("MCP_RESOURCE_URL must be a valid absolute URL");
   }
-  if (parsedResourceUrl.protocol !== "https:" && isProductionRuntime()) {
+  if (parsedResourceUrl.protocol !== "https:" && !isDevelopmentRuntime()) {
     throw new Error("MCP_RESOURCE_URL must use HTTPS in production");
   }
 
@@ -55,7 +55,7 @@ export async function loadAuthConfig(): Promise<ConduitAuthConfig | null> {
   } catch {
     throw new Error("DESCOPE_MCP_SERVER_WELL_KNOWN_URL must be a valid absolute URL");
   }
-  if (parsedDiscoveryUrl.protocol !== "https:" && isProductionRuntime()) {
+  if (parsedDiscoveryUrl.protocol !== "https:" && !isDevelopmentRuntime()) {
     throw new Error("DESCOPE_MCP_SERVER_WELL_KNOWN_URL must use HTTPS in production");
   }
 
@@ -83,7 +83,7 @@ export async function loadAuthConfig(): Promise<ConduitAuthConfig | null> {
     } catch {
       throw new Error(`Descope discovery metadata has invalid URL for ${key}: ${endpointUrl}`);
     }
-    if (url.protocol !== "https:" && isProductionRuntime()) {
+    if (url.protocol !== "https:" && !isDevelopmentRuntime()) {
       throw new Error(`Descope discovery metadata ${key} must use HTTPS in production: ${endpointUrl}`);
     }
   }
@@ -96,7 +96,7 @@ export async function loadAuthConfig(): Promise<ConduitAuthConfig | null> {
     } catch {
       throw new Error("DESCOPE_MCP_SERVER_ISSUER must be a valid absolute URL");
     }
-    if (parsedConfiguredIssuer.protocol !== "https:" && isProductionRuntime()) {
+    if (parsedConfiguredIssuer.protocol !== "https:" && !isDevelopmentRuntime()) {
       throw new Error("DESCOPE_MCP_SERVER_ISSUER must use HTTPS in production");
     }
     if (configuredIssuer !== issuer) {

@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 
 test("production startup does not expose static bearer-token MCP mode", async () => {
   const source = await readFile(new URL("../src/index.ts", import.meta.url), "utf8");
-  assert.match(source, /process\.env\.CONDUIT_TOKEN && !isProductionRuntime\(\)/);
+  assert.match(source, /process\.env\.CONDUIT_TOKEN && isDevelopmentRuntime\(\)/);
   assert.match(source, /timingSafeEqual/);
   assert.match(source, /auth_not_configured/);
 });
