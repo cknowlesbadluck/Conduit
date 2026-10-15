@@ -13,3 +13,7 @@
 ## 2025-03-10 - Single-pass rate limiter eviction without sorting
 **Learning:** `SlidingWindowLimiter.evict` was allocating entry tuples and calling `[...this.buckets.entries()].sort(...)` over all keys when `maxKeys` capacity was exceeded, creating $O(K \log K)$ sorting overhead and high garbage collection pressure on every rate-limited request. Replacing this with a single-pass $O(K)$ iteration that deletes expired buckets on the fly while tracking the oldest active key reduced eviction latency by >4x with zero array/tuple allocations.
 **Action:** Avoid `[...map.entries()].sort()` for capacity eviction in high-throughput hot paths; use single-pass tracking loops to identify eviction candidates in $O(N)$ time with zero temporary array allocations.
+
+## 2025-03-10 - Single-pass record comparison and literal array allocations
+**Learning:** `sameRecord` in `src/pagination.ts` was calling `Object.keys().sort()` on every keyset cursor decoding, causing unnecessary array allocations and $O(K \log K)$ sorting. Replacing this with `Object.keys(a)` length matching and single-pass `Object.hasOwn(b, key)` verification eliminated array sorting entirely. Additionally, returning direct array literals in `actorBindingLookupKeys` avoided dynamic array `.push()` overhead on hot auth paths.
+**Action:** Prefer single-pass property checks without sorting for record comparison, and return fixed array literals instead of dynamic push targets for small fixed-length lookups.

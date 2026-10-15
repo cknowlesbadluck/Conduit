@@ -3,11 +3,11 @@ export function actorBindingKey(clientId?: string, sub?: string) {
   return sub ?? clientId;
 }
 
+// Performance Optimization: Return direct array literals instead of allocating and pushing to a dynamic array.
 /** Composite key first, then legacy JWT sub so existing production bindings still resolve. */
 export function actorBindingLookupKeys(clientId?: string, sub?: string): string[] {
   const primary = actorBindingKey(clientId, sub);
-  const keys: string[] = [];
-  if (primary) keys.push(primary);
-  if (sub && sub !== primary) keys.push(sub);
-  return keys;
+  if (!primary) return [];
+  if (sub && sub !== primary) return [primary, sub];
+  return [primary];
 }
