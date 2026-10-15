@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classify, observe } from "./portfolio-probe.mjs";
+import { classify, observe, renderSummary } from "./portfolio-probe.mjs";
 
 const conduit = { name: "conduit", url: "https://x/ready", expectService: "conduit" };
 const resonance = { name: "resonance", url: "https://y/api/ready", expectService: "resonance-nexus" };
@@ -56,4 +56,16 @@ test("challenge: Cloudflare managed challenge is its own fail-closed outcome", (
 test("edge 503 with empty body from Cloudflare is unknown (origin unavailable), not ok", () => {
   const r = classify(conduit, { status: 503, headers: { server: "cloudflare" }, body: "" });
   assert.equal(r.outcome, "unknown"); assert.equal(r.reason, "edge_503_empty_origin_unavailable"); assert.equal(r.ok, false);
+});
+
+test("renderSummary: table per target, escapes pipes/HTML, garbled input is not ok", () => {
+  const md = renderSummary({ at: "2026-10-14T00:00:00Z", results: [
+    { name: "conduit", ok: true, outcome: "ready", status: 200, contractRevision: "rev" },
+    { name: "res|<x>", ok: false, outcome: "not_ready", status: 503, missing: ["SUPABASE_SERVICE_ROLE_KEY"] },
+  ] });
+  assert.match(md, /\| conduit \| yes \| ready \| 200 rev \|/);
+  assert.match(md, /missing=SUPABASE_SERVICE_ROLE_KEY/);
+  assert.doesNotMatch(md, /<x>|res\|/);
+  assert.match(md, /All ok: no/);
+  for (const bad of [undefined, null, {}, { results: "x" }]) assert.match(renderSummary(bad), /All ok: no/);
 });

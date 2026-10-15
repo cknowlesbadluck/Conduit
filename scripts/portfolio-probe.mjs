@@ -78,8 +78,24 @@ export async function probeAll(targets = TARGETS, options) {
   return Promise.all(targets.map(async (t) => classify(t, await observe(t.url, options))));
 }
 
+/** Markdown job summary from a `--json` report. Pure; unknown/garbled input renders as not ok. */
+export function renderSummary(report) {
+  const results = Array.isArray(report?.results) ? report.results : [];
+  const esc = (v) => String(v ?? "").replace(/[|\r\n<>]/g, " ");
+  const lines = [`## Portfolio probe ${esc(report?.at ?? "(no timestamp)")}`, "", "| Target | OK | Outcome | Detail |", "|---|---|---|---|"];
+  for (const r of results) lines.push(`| ${esc(r.name)} | ${r.ok === true ? "yes" : "no"} | ${esc(r.outcome ?? "unknown")} | ${esc([r.status, r.reason, r.missing?.length ? `missing=${r.missing.join(",")}` : "", r.contractRevision].filter(Boolean).join(" "))} |`);
+  if (results.length === 0) lines.push("| (no results) | no | unknown | probe produced no parseable report |");
+  lines.push("", `All ok: ${results.length > 0 && results.every((r) => r.ok === true) ? "yes" : "no"}`);
+  return lines.join("\n") + "\n";
+}
+
 const isMain = import.meta.url === `file://${process.argv[1]}`;
-if (isMain) {
+if (isMain && process.argv.includes("--summary")) {
+  const { readFileSync } = await import("node:fs");
+  let report;
+  try { report = JSON.parse(readFileSync(process.argv[process.argv.indexOf("--summary") + 1], "utf8")); } catch { report = undefined; }
+  process.stdout.write(renderSummary(report));
+} else if (isMain) {
   const results = await probeAll();
   if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), results }, null, 2));
   else for (const r of results) console.log(`${r.ok ? "OK  " : "FAIL"} ${r.name.padEnd(22)} ${r.outcome}${r.missing?.length ? ` missing=[${r.missing.join(",")}]` : ""}${r.reason ? ` reason=${r.reason}` : ""}${r.status ? ` (${r.status})` : ""}`);
