@@ -28,7 +28,7 @@ const sameRecord = (a: Record<string, string>, b: Record<string, string>) => {
   if (ak.length !== Object.keys(b).length) return false;
   for (let i = 0; i < ak.length; i++) {
     const key = ak[i];
-    if (a[key] !== b[key] || !Object.hasOwn(b, key)) return false;
+    if (a[key] !== b[key] || !Object.prototype.hasOwnProperty.call(b, key)) return false;
   }
   return true;
 };
