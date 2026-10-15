@@ -1,4 +1,4 @@
-# Portfolio — 10-Phase Production-Readiness Roadmap (refined 2026-10-14 14:30 EDT)
+# Portfolio — 10-Phase Production-Readiness Roadmap (refined 2026-10-14 22:05 EDT)
 
 Scope: three independent projects, kept separate. No shared runtime code and no cross-repo merges; the planes talk only through documented HTTP contracts. Each section below is owned by its own repo.
 Principles: provider-neutral, free-tier only, no secrets in code or docs, every phase reversible, fail-closed, nothing merged by agents.
@@ -34,8 +34,8 @@ Device: CHR-55 is the only device gate. deviceAcceptance = not_recorded. No devi
 ## Conduit (MCP coordination bridge, Render + Postgres)
 
 Status: live ready. Workers Builds check red on every PR (not a deploy target).
-1. #197 CI pins, #198 deps; owner: disconnect Workers Builds. 2. #211 app-factory wiring → #217 SSE admission 503 at cap. 3. #206 lockdown, #212 grants required in prod, #209 trust proxy. 4. #208 diagnostics cache, #207 typed tool inputs, #213 honest Workers handler; per-tool + external rate limits already on main. 5. DB TLS: #155 canonical (verify-on; Render env first); split HMAC cursors out of #162. 6. #203 cold_start posture; #218 portfolio probe (owner: keep here or move out; #210 removes legacy portfolio-posture.mjs). 7. Per-tool capability map, deny-by-default for integration_call/mcp_bridge_call. 8. #120 ordered migrations (draft). 9. #214 coverage gate, #204 pagination perf. 10. #216 timeouts; SSE drain (rest of #119); tag 0.9.0.
-Merge order: #197 → #198 → #206 → #211 → #217, #212 → #209 → #207, #208, #213 → #204 → #216 → #214 → #210 or #203 → #218 → TLS (#155) after Render env → #205.
+1. #197 CI pins, #198 deps; owner: disconnect Workers Builds. 2. #211 app-factory wiring → #217 SSE admission 503 at cap. 3. #206 lockdown, #212 grants required in prod, #209 trust proxy. 4. #208 diagnostics cache, #207 typed tool inputs, #213 honest Workers handler; per-tool + external rate limits already on main. 5. DB TLS: #155 canonical (verify-on; Render env first); split HMAC cursors out of #162. 6. #203 cold_start posture; #218 portfolio probe + #219 scheduled report-only run (owner: keep here or move out; #210 removes legacy portfolio-posture.mjs). 7. Per-tool capability map, deny-by-default for integration_call/mcp_bridge_call. 8. #120 ordered migrations (draft). 9. #214 coverage gate, #204 pagination perf. 10. #216 timeouts; SSE drain (rest of #119); tag 0.9.0.
+Merge order: #197 → #198 → #206 → #211 → #217, #212 → #209 → #207, #208, #213 → #204 → #216 → #214 → #210 or #203 → #218 → #219 → TLS (#155) after Render env → #205.
 
 ## Resonance (provider-neutral Nexus, Next.js 15 + Supabase, Netlify)
 
@@ -47,3 +47,16 @@ Merge order: #161 → #162, #164 → #172 → #176 → #177 → #181 / #178 → 
 
 Status: no live web alias of ours (quicksilver.vercel.app is a stranger, quicksilverv1.vercel.app absent). Device gate CHR-55 not_recorded.
 Open drafts #280–#291: no file overlap or duplicates. #283–#287 are one-file slices of issue #252 (@unchecked Sendable) and could be consolidated. Hygiene decisions belong to Quicksilver Dev.
+
+## Latest live probe (2026-10-14 22:05 EDT, #218 probe, 1 run + 1 /health call)
+
+| Target | Outcome |
+|---|---|
+| conduit-feco.onrender.com /health, /ready | **ready** 200, 0.8.0, contractRevision 2026-10-03-ready-surface (recovered; was edge-503 down 18:02–18:13 EDT, then a Cloudflare challenge) |
+| resonancenexus.netlify.app/api/ready | not_ready 503, missing [SUPABASE_SERVICE_ROLE_KEY] |
+| Supabase Resonance / Quicksilver / WhereamI? | INACTIVE (paused), read-only API |
+| resonance.vercel.app, quicksilver.vercel.app | stranger_occupant (no service stamp) |
+| resonancenexus.vercel.app, quicksilverv1.vercel.app | alias_absent 404 |
+| Device CHR-55 | not_recorded |
+
+Roadmap summary: phases 1–2 are blocked on merges (Resonance #161; Conduit #197 → #211). Phases 3–6 and 9 are authored and green, waiting on review. Phase 5 TLS and phase 10 are owner-gated (Render DB TLS env; restoring the Supabase DB + setting the service-role key). Innovate: I1 scheduled report-only probe = Conduit #219 (on #218); I2–I4 not started.
