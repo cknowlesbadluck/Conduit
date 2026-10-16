@@ -1,4 +1,4 @@
-# Conduit — 10-Phase Roadmap to a hardened 0.8+ (updated in place 2026-10-16 14:15 EDT)
+# Conduit — 10-Phase Roadmap to a hardened 0.8+ (updated in place 2026-10-16 18:10 EDT)
 
 Target: hardened Conduit 0.8+ → 0.9.0 with reliable grants and low PR entropy. Cross-repo view: `ROADMAP.md`. Current audit: `docs/AUDIT-2026-10-15.md`. Repos stay separate; Conduit talks to Resonance only through HTTP/MCP contracts.
 These are **Conduit workstreams C1–C10**, numbered separately from the canonical portfolio phases 1–10 in `ROADMAP.md`. "C10" means the Conduit release workstream, not portfolio phase 10.
@@ -14,12 +14,12 @@ Status: **[passed]** · **[in progress]** · **[blocked]** (owner action).
 | C6 | Transport + data security | Postgres TLS verified by default (#155), after the owner sets the Render env | **[blocked]** (owner env) |
 | C7 | Honest posture + drift | `/ready` 200 + contractRevision ✓; scheduled probe on main (#239 ✓); drift detection (#241 ✓); Workers handler honest (#213) | **[in progress]** |
 | C8 | Contracts + coverage | tool-surface snapshot ✓; coverage ≥70% lines; JSON-typed schemas (#207) | **[in progress]** |
-| C9 | Low entropy | ≤8 open non-draft PRs; nothing conflicting for more than 3 days; stacks rebased onto main; red drafts (#119/#120) decided | **[in progress]**: about 20 open today |
+| C9 | Low entropy | ≤8 open non-draft PRs; nothing conflicting for more than 3 days; stacks rebased onto main; red drafts (#119/#120) decided | **[in progress]**: 23 open PRs on 2026-10-16 18:10 EDT (#244 closed as duplicate of #242; #204/#231 pagination are complementary, not duplicates) |
 | C10 | Operable release 0.9.0 | runbook; SSE drain; tag 0.9.0; contractRevision change policy in SPEC.md; 7 days of probe drift=false | **[in progress]** |
 
 ## Merge order (grants train first)
 
-Done: #241 (merged 2026-10-16 14:08 EDT). Pending: #238 → #234 → #206 → #212 (rebase) → #211/#217 (rebase) → #213 → #208/#209 → #231 → #155 (after owner env). **Merge authorization (single policy):** agents may merge only Conduit docs/test/CI-only PRs that are green (ignoring the owner-side Workers Builds check) with no outstanding changes-requested or unaddressed bot findings, then verify `/ready` returns 200. Runtime/auth PRs and every Resonance/QuicksilverV1 PR need the owner. This supersedes any older "agents never merge" wording preserved below.
+Done: #241 (merged 2026-10-16 14:08 EDT). Pending: #238 → #234 → #206 → #212 (rebase) → #211/#217 (rebase) → #213 → #208/#209 → #231 → #243 (URL redaction) → #245/#246 (probe shape + parity, one-line rebase between them) → #155 (after owner env). **Merge authorization (single policy):** agents may merge only Conduit docs/test/CI-only PRs that are green (ignoring the owner-side Workers Builds check) with no outstanding changes-requested or unaddressed bot findings, then verify `/ready` returns 200. Runtime/auth PRs and every Resonance/QuicksilverV1 PR need the owner. This supersedes any older "agents never merge" wording preserved below.
 
 ## Portfolio status and cross-repo merge order (preserved from the 2026-10-15 22:30 EDT refinement)
 
