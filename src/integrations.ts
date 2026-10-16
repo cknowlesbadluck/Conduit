@@ -44,10 +44,18 @@ function normalizePath(path: string): string {
   if (value.length === 0 || value.length > MAX_PATH_LENGTH) throw new Error("integration_path_invalid");
   if (!value.startsWith("/")) throw new Error("integration_path_must_start_with_slash");
   if (value.startsWith("//") || value.includes("\\") || /^(?:\/|%2f)?\.\.?(?:\/|%2f)/i.test(value)) throw new Error("integration_path_invalid");
+  // Check before URL parsing: URL() silently removes dot segments, while grants
+  // authorize the original path supplied by the caller.
+  let decodedInputPath: string;
+  try { decodedInputPath = decodeURIComponent(value.split("?")[0]); }
+  catch { throw new Error("integration_path_invalid"); }
+  if (decodedInputPath.split("/").some((segment) => segment === ".." || segment === ".")) throw new Error("integration_path_invalid");
   let url: URL;
   try { url = new URL(value, BASE_URL); } catch { throw new Error("integration_path_invalid"); }
   if (url.origin !== BASE_URL || url.username || url.password || url.protocol !== "https:") throw new Error("integration_path_must_be_relative");
-  const decodedPath = decodeURIComponent(url.pathname);
+  let decodedPath: string;
+  try { decodedPath = decodeURIComponent(url.pathname); }
+  catch { throw new Error("integration_path_invalid"); }
   if (decodedPath.split("/").some((segment) => segment === ".." || segment === ".")) throw new Error("integration_path_invalid");
   return `${url.pathname}${url.search}`;
 }

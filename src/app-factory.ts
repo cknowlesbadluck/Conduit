@@ -6,11 +6,12 @@ import { createConduitServer } from "./mcp.js";
 import { buildProtectedResourceMetadata, createDevelopmentAuthInfo, createTokenVerifier, DEVELOPMENT_ANONYMOUS_SUBJECT, type ConduitAuthConfig } from "./auth.js";
 import type { OAuthTokenVerifier } from "@modelcontextprotocol/server";
 import { VERSION, SERVICE_NAME } from "./version.js";
+import { healthBody, readyBody } from "./health-contract.js";
 import { MCP_RATE_LIMITER, TOOL_RATE_LIMITER } from "./rate-limit.js";
 import { getPublicConduitStatus } from "./status.js";
 import { checkPersistence } from "./db-ready.js";
 import { isReady } from "./store.js";
-import { runDiagnostics } from "./diagnostics.js";
+import { createDiagnosticsHandler } from "./diagnostics-route.js";
 import { conduitUiHtml, CONDUIT_UI_CSS, CONDUIT_UI_JS } from "./ui.js";
 
 export interface ConduitAppOptions {
@@ -40,22 +41,19 @@ function unauthorizedBearer(res: Response, metadataUrl?: string) {
   res.status(401).json({ error: "unauthorized" });
 }
 
-function requestOrigin(req: Request): string | undefined {
-  const host = req.get("host");
-  if (!host) return undefined;
-  const proto = req.get("x-forwarded-proto")?.split(",")[0]?.trim() || req.protocol || "http";
-  return `${proto}://${host}`;
-}
-
 export function createConduitApp(options: ConduitAppOptions = {}) {
   const app = express();
   app.disable("x-powered-by");
   app.use((_req, res, next) => {
+    const requestId = _req.get("x-request-id")?.slice(0, 80) || crypto.randomUUID();
     res.set({
       "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
       "Referrer-Policy": "no-referrer",
       "Cache-Control": "no-store",
+      "Cross-Origin-Resource-Policy": "same-origin",
+      "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+      "X-Request-Id": requestId,
       "Content-Security-Policy": "default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",
     });
     next();
@@ -72,27 +70,16 @@ export function createConduitApp(options: ConduitAppOptions = {}) {
       next(error);
     }
   });
-  app.get("/health", (_req, res) => res.json({ status: "ok", service: "conduit" }));
+  app.get("/health", (_req, res) => res.json(healthBody()));
 
-  app.get("/diagnostics", async (req, res, next) => {
-    try {
-      const diagnostics = await runDiagnostics(options.authConfig, requestOrigin(req));
-      res.json(diagnostics);
-    } catch (error) {
-      next(error);
-    }
-  });
+  app.get("/diagnostics", createDiagnosticsHandler(options.authConfig));
 
   app.get("/ready", async (_req, res) => {
     const initialized = isReady();
     const persistenceOk = initialized ? await checkPersistence() : false;
-    const ready = initialized && persistenceOk;
-    res.status(ready ? 200 : 503).json({
-      status: ready ? "ready" : (initialized ? "degraded" : "initializing"),
-      service: "conduit",
-      version: VERSION,
-      persistence: process.env.DATABASE_URL && process.env.CONDUIT_TEST_MEMORY !== "true" ? "postgres" : "memory",
-    });
+    const persistence = process.env.DATABASE_URL && process.env.CONDUIT_TEST_MEMORY !== "true" ? "postgres" : "memory";
+    const body = readyBody({ initialized, persistenceOk, persistence });
+    res.status(body.status === "ready" ? 200 : 503).json(body);
   });
 
   if (options.authConfig) {

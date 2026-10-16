@@ -8,17 +8,19 @@ import { initCapabilityStore } from "./capability-store.js";
 import { buildProtectedResourceMetadata, createDevelopmentAuthInfo, createTokenVerifier, DEVELOPMENT_ANONYMOUS_SUBJECT, DEVELOPMENT_TOKEN_SUBJECT, loadAuthConfig, requireScope } from "./auth.js";
 import { createConduitServer } from "./mcp.js";
 import { VERSION, SERVICE_NAME } from "./version.js";
+import { healthBody, readyBody } from "./health-contract.js";
 import { MCP_RATE_LIMITER, TOOL_RATE_LIMITER } from "./rate-limit.js";
 import { timingSafeEqual } from "node:crypto";
 import { replayRecentEvents, subscribeEvents } from "./events.js";
 import { getPublicConduitStatus } from "./status.js";
 import { runDiagnostics } from "./diagnostics.js";
+import { createDiagnosticsHandler } from "./diagnostics-route.js";
 import { conduitUiHtml, CONDUIT_UI_CSS, CONDUIT_UI_JS } from "./ui.js";
 
 const app = express();
 app.disable("x-powered-by");
 app.use((_req, res, next) => {
-  res.set({ "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer", "Cache-Control": "no-store", "Content-Security-Policy": "default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'" });
+  res.set({ "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer", "Cache-Control": "no-store", "Cross-Origin-Resource-Policy": "same-origin", "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()", "Content-Security-Policy": "default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'" });
   next();
 });
 app.use(express.json({ limit: process.env.MAX_JSON_BODY || "1mb" }));
@@ -35,7 +37,6 @@ if (allowedOriginHostnames.length) app.use(originValidation(allowedOriginHostnam
 app.use((req, res, next) => { applyCors(req, res); if (req.method === "OPTIONS") { res.sendStatus(204); return; } next(); });
 const port = Number(process.env.PORT || 3000);
 const allowAnonymous = process.env.CONDUIT_ALLOW_ANONYMOUS === "true" && process.env.NODE_ENV !== "production";
-function requestOrigin(req: express.Request): string | undefined { const host = req.get("host"); if (!host) return undefined; const proto = req.get("x-forwarded-proto")?.split(",")[0]?.trim() || req.protocol || "http"; return `${proto}://${host}`; }
 function protectedResourceMetadataResponse(res: express.Response, metadata: ReturnType<typeof buildProtectedResourceMetadata>) { res.type("application/json").json(metadata); }
 function unauthorizedBearer(res: express.Response, metadataUrl?: string) { const resourceMetadata = metadataUrl ? `, resource_metadata="${metadataUrl}"` : ""; res.set("WWW-Authenticate", `Bearer realm="${SERVICE_NAME}", error="invalid_token"${resourceMetadata}`); res.status(401).json({ error: "unauthorized" }); }
 function timingSafeTokenMatch(expected: string, supplied: string | undefined) { if (!supplied) return false; const left = Buffer.from(expected, "utf8"); const right = Buffer.from(supplied, "utf8"); return left.length === right.length && timingSafeEqual(left, right); }
@@ -54,30 +55,23 @@ app.get("/", (_req, res) => res.type("html").send(conduitUiHtml()));
 app.get("/ui.css", (_req, res) => res.type("css").send(CONDUIT_UI_CSS));
 app.get("/ui.js", (_req, res) => res.type("application/javascript").send(CONDUIT_UI_JS));
 app.get("/status", async (_req, res, next) => { try { res.json(await getPublicConduitStatus()); } catch (error) { next(error); } });
-app.get("/health", (_req, res) => res.json({ status: "ok", service: "conduit" }));
+app.get("/health", (_req, res) => res.json(healthBody()));
 app.get("/ready", async (_req, res) => {
   const initialized = isReady();
   const persistenceOk = initialized ? await checkPersistence() : false;
-  const ready = initialized && persistenceOk;
-  res.status(ready ? 200 : 503).json({
-    status: ready ? "ready" : (initialized ? "degraded" : "initializing"),
-    service: "conduit",
-    version: VERSION,
-    persistence: process.env.DATABASE_URL && process.env.CONDUIT_TEST_MEMORY !== "true" ? "postgres" : "memory",
-  });
+  const persistence = process.env.DATABASE_URL && process.env.CONDUIT_TEST_MEMORY !== "true" ? "postgres" : "memory";
+  const body = readyBody({ initialized, persistenceOk, persistence });
+  res.status(body.status === "ready" ? 200 : 503).json(body);
 });
 
 async function boot() {
   await init();
   await initCapabilityStore();
   const authConfig = await loadAuthConfig();
-  app.get("/diagnostics", async (req, res, next) => {
-    try {
-      res.json(await runDiagnostics(authConfig ?? undefined, requestOrigin(req)));
-    } catch (error) {
-      next(error);
-    }
-  });
+  app.get("/diagnostics", createDiagnosticsHandler(authConfig ?? undefined));
+  // Build the token verifier (and its cached remote JWKS) once and share it between
+  // /events and /mcp instead of re-creating it on every /events request.
+  const tokenVerifier = authConfig ? createTokenVerifier(authConfig) : undefined;
   const eventHandler = async (req: express.Request, res: express.Response) => {
     const projectId = typeof req.query.projectId === "string" ? req.query.projectId : undefined;
     res.status(200);
@@ -98,7 +92,7 @@ async function boot() {
         const token = req.header("authorization")?.replace(/^Bearer\s+/i, "");
         if (!token) { unauthorizedBearer(res, resourceMetadataUrl); return; }
         try {
-          const authInfo = await createTokenVerifier(authConfig).verifyAccessToken(token);
+          const authInfo = await tokenVerifier!.verifyAccessToken(token);
           requireScope(authInfo, authConfig.readScope);
           req.auth = authInfo;
           next();
@@ -122,7 +116,7 @@ async function boot() {
     app.use(mcpAuthMetadataRouter({ oauthMetadata: authConfig.metadata, resourceServerUrl: new URL(authConfig.resourceUrl) }));
     const handler = createMcpHandler(() => createConduitServer(authConfig));
     const nodeHandler = toNodeHandler(handler, { onerror: console.error });
-    app.all("/mcp", requireBearerAuth({ verifier: createTokenVerifier(authConfig), resourceMetadataUrl }), rateLimitMcp, (req, res) => nodeHandler(req, res, req.body));
+    app.all("/mcp", requireBearerAuth({ verifier: tokenVerifier!, resourceMetadataUrl }), rateLimitMcp, (req, res) => nodeHandler(req, res, req.body));
     console.log(`Conduit OAuth enabled for ${authConfig.resourceUrl}`);
   } else if (process.env.CONDUIT_TOKEN && process.env.NODE_ENV !== "production") {
     const token = process.env.CONDUIT_TOKEN;
@@ -167,13 +161,13 @@ export const fetchHandler = async (request: Request): Promise<Response> => {
     return new Response(JSON.stringify(diagnostics), { status: 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
   }
   if (url.pathname === "/health") {
-    return new Response(JSON.stringify({ status: "ok", service: "conduit" }), {
+    return new Response(JSON.stringify(healthBody()), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
   }
   if (url.pathname === "/ready") {
-    return new Response(JSON.stringify({ status: "ready", service: "conduit", version: VERSION, persistence: "memory" }), {
+    return new Response(JSON.stringify(readyBody({ initialized: true, persistenceOk: true, persistence: "memory" })), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });

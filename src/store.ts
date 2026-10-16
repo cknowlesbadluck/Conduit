@@ -1,6 +1,8 @@
+import { DATABASE_CONNECT_TIMEOUT_MS } from "./db-timeouts.js";
 import pg from "pg";
 import { createPgPool, databaseConfigured } from "./db-pool.js";
 import { cursorCodec, cursorOrder, pageLimit, type CursorCollection, type Page } from "./pagination.js";
+import { redactRecord } from "./redact.js";
 
 
 export type TaskStatus = "open" | "claimed" | "blocked" | "completed";
@@ -26,7 +28,7 @@ const contacts = new Map<string, Contact>();
 const tools = new Map<string, Tool>();
 const activity: ActivityEvent[] = [];
 const useDatabase = databaseConfigured();
-const pool = createPgPool({ max: 5 });
+const pool = createPgPool({ max: 5, connectionTimeoutMillis: DATABASE_CONNECT_TIMEOUT_MS });
 
 let ready = false;
 const now = () => new Date().toISOString();
@@ -36,7 +38,8 @@ export function isReady() { return ready; }
 
 const ACTIVITY_RETENTION_LIMIT = Math.max(200, Number(process.env.CONDUIT_ACTIVITY_RETENTION) || 5000);
 
-async function log(type: string, data: Record<string, string>) {
+async function log(type: string, raw: Record<string, string>) {
+  const data = redactRecord(raw);
   const event = { id: id("evt"), type, at: now(), ...data };
   if (pool) await pool.query("INSERT INTO activity(id,type,at,data,project_id) VALUES($1,$2,$3,$4,$5)", [event.id, type, event.at, JSON.stringify(data), data.projectId ?? null]);
   else { activity.push(event); if (activity.length > ACTIVITY_RETENTION_LIMIT) activity.splice(0, activity.length - ACTIVITY_RETENTION_LIMIT); }
@@ -52,7 +55,28 @@ export async function pruneActivity() {
   return result.rowCount ?? 0;
 }
 
-async function logWithClient(client: pg.PoolClient, type: string, data: Record<string, string>) {
+const DEFAULT_RETENTION_INTERVAL_MS = 6 * 60 * 60 * 1000;
+let retentionTimer: ReturnType<typeof setInterval> | undefined;
+
+/**
+ * Keeps the Postgres activity table bounded on long-lived instances, not just at boot.
+ * Idempotent (one timer per process), unref'd (never keeps the process alive), and
+ * best-effort (a failed pass is retried next interval). CONDUIT_ACTIVITY_PRUNE_INTERVAL_MS=0 disables.
+ */
+export function startActivityRetention(options: { intervalMs?: number; prune?: () => Promise<unknown> } = {}) {
+  const configured = Number(process.env.CONDUIT_ACTIVITY_PRUNE_INTERVAL_MS);
+  const intervalMs = options.intervalMs ?? (Number.isFinite(configured) && process.env.CONDUIT_ACTIVITY_PRUNE_INTERVAL_MS !== undefined ? configured : DEFAULT_RETENTION_INTERVAL_MS);
+  if (retentionTimer || !(intervalMs > 0)) return retentionTimer;
+  const prune = options.prune ?? pruneActivity;
+  retentionTimer = setInterval(() => { prune().catch(() => { /* best-effort */ }); }, Math.max(60_000, intervalMs));
+  retentionTimer.unref?.();
+  return retentionTimer;
+}
+
+export function stopActivityRetention() { if (retentionTimer) clearInterval(retentionTimer); retentionTimer = undefined; }
+
+async function logWithClient(client: pg.PoolClient, type: string, raw: Record<string, string>) {
+  const data = redactRecord(raw);
   const event = { id: id("evt"), type, at: now(), ...data };
   await client.query("INSERT INTO activity(id,type,at,data,project_id) VALUES($1,$2,$3,$4,$5)", [event.id, type, event.at, JSON.stringify(data), data.projectId ?? null]);
 }
@@ -140,6 +164,7 @@ export async function init() {
       INSERT INTO schema_migrations(version) VALUES('0.8.4-keyset-pagination') ON CONFLICT (version) DO NOTHING;
     `);
     try { await pruneActivity(); } catch { /* hygiene pass is best-effort; never block startup on it */ }
+    startActivityRetention();
   }
   ready = true;
 }

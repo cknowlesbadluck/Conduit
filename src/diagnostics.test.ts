@@ -83,3 +83,30 @@ test("diagnostics reports missing scopes as parity failure", () => {
   assert.deepEqual(result.scopeParity.missing, ["mcp:conduit.write"]);
   assert.deepEqual(result.discovery, { cimd: false, dcr: false });
 });
+
+import { resolveDiagnosticsTarget } from "./diagnostics.js";
+
+test("diagnostics target ignores the Host header when OAuth is configured", () => {
+  const target = resolveDiagnosticsTarget({
+    authConfig: { resourceUrl: "https://conduit.example.com/mcp" } as Parameters<typeof resolveDiagnosticsTarget>[0]["authConfig"],
+    requestHost: "conduit.example.com:6379",
+    requestProto: "https",
+    localPort: 3000,
+  });
+  assert.equal(target, "https://conduit.example.com");
+});
+
+test("diagnostics target prefers PUBLIC_URL over the Host header", () => {
+  const target = resolveDiagnosticsTarget({ publicUrl: "https://conduit.example.com", requestHost: "evil.example:22", localPort: 3000 });
+  assert.equal(target, "https://conduit.example.com");
+});
+
+test("diagnostics target without configuration only allows loopback on the listening port", () => {
+  assert.equal(resolveDiagnosticsTarget({ requestHost: "127.0.0.1:3000", localPort: 3000 }), "http://127.0.0.1:3000");
+  assert.equal(resolveDiagnosticsTarget({ requestHost: "localhost:3000", localPort: 3000 }), "http://localhost:3000");
+  assert.throws(() => resolveDiagnosticsTarget({ requestHost: "127.0.0.1:6379", localPort: 3000 }), /diagnostics_target_not_allowed/);
+  assert.throws(() => resolveDiagnosticsTarget({ requestHost: "10.0.0.5:3000", localPort: 3000 }), /diagnostics_target_not_allowed/);
+  assert.throws(() => resolveDiagnosticsTarget({ requestHost: "localhost", localPort: 3000 }), /diagnostics_target_not_allowed/);
+  assert.throws(() => resolveDiagnosticsTarget({ requestHost: "user@localhost:3000", localPort: 3000 }), /diagnostics_target_not_allowed/);
+  assert.throws(() => resolveDiagnosticsTarget({ localPort: 3000 }), /diagnostics_target_not_allowed/);
+});
