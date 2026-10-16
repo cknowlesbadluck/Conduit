@@ -4,7 +4,7 @@
  * does not name a product, and never treats a fixture as production proof.
  */
 
-export type ProbeVerdict =
+type ProbeVerdict =
   | "ready"
   | "owner_gate"
   | "deploy_lag"
