@@ -41,3 +41,7 @@ test("isSecretParamName matches credential names by token, not substring", () =>
     assert.equal(isSecretParamName(name), false, name);
   }
 });
+
+test("redactUrl preserves kept-param encoding and drops fragments", () => {
+  assert.equal(redactUrl("https://c.example.com/mcp?q=a%20b&token=x&r=c+d#access_token=frag"), "https://c.example.com/mcp?q=a%20b&r=c+d");
+});

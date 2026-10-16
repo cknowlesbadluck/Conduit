@@ -35,8 +35,17 @@ export function redactUrl(value: string | URL | undefined | null): string {
   }
   url.username = "";
   url.password = "";
-  for (const name of [...url.searchParams.keys()]) {
-    if (isSecretParamName(name)) url.searchParams.delete(name);
+  url.hash = "";
+  if (url.search) {
+    // Rebuild from the raw pairs so kept params keep their original encoding (this URL can be the JWT audience).
+    const kept = url.search.slice(1).split("&").filter((pair) => {
+      if (pair === "") return false;
+      const rawName = pair.split("=", 1)[0];
+      let name = rawName;
+      try { name = decodeURIComponent(rawName.replace(/\+/g, " ")); } catch { return false; }
+      return !isSecretParamName(name);
+    });
+    url.search = kept.length ? `?${kept.join("&")}` : "";
   }
   return url.toString();
 }
