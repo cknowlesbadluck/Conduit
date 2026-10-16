@@ -1,6 +1,6 @@
 # Portfolio Roadmap — 10 phases
 
-Canonical, unified roadmap for **Conduit** (MCP bridge), **Resonance** (integration plane) and **QuicksilverV1** (iOS product, owned by Quicksilver Dev). The repos stay separate and talk only through documented HTTP/MCP contracts. Live status and PR merge order: `docs/PORTFOLIO-ROADMAP-10-PHASE.md`. Current audit: `docs/AUDIT-2026-10-15.md` (updated in place 2026-10-16). Update these in place; do not add dated audit files.
+Canonical, unified roadmap for **Conduit** (MCP bridge), **Resonance** (integration plane) and **QuicksilverV1** (iOS product, owned by Quicksilver Dev). The repos stay separate and talk only through documented HTTP/MCP contracts. Conduit 10-phase plan, live status and the cross-repo PR merge order: `docs/PORTFOLIO-ROADMAP-10-PHASE.md`. Current audit: `docs/AUDIT-2026-10-15.md` (updated in place 2026-10-16). Update these in place; do not add dated audit files.
 
 Ground rules: agents never apply migrations, change production config, or spend money. Each phase is done only when **every** exit check below is true for each project. Status tags: **[passed]** · **[in progress]** · **[blocked]** (needs owner action). Last observed 2026-10-16 10:05 EDT: Conduit main CI + Live Smoke green, `/ready` 200; Resonance main CI green, `/api/ready` 503 (missing `SUPABASE_SERVICE_ROLE_KEY`); QuicksilverV1 main CI green.
 
