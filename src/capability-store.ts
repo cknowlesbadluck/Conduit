@@ -1,8 +1,10 @@
+import { DATABASE_CONNECT_TIMEOUT_MS } from "./db-timeouts.js";
 import pg from "pg";
 // Performance Optimization: Use store's exported agentExists to execute direct O(1) PK/Map check
 // instead of fetching and sorting all agents via listAgents().
 import { agentExists, getProject } from "./store.js";
 import type { CapabilityGrant, CapabilityProvider } from "./capabilities.js";
+import { redactRecord } from "./redact.js";
 
 const { Pool } = pg;
 const useDatabase = Boolean(process.env.DATABASE_URL) && process.env.CONDUIT_TEST_MEMORY !== "true";
@@ -11,6 +13,7 @@ const pool = useDatabase
       connectionString: process.env.DATABASE_URL,
       ssl: process.env.DATABASE_SSL === "false" ? false : { rejectUnauthorized: false },
       max: 3,
+      connectionTimeoutMillis: DATABASE_CONNECT_TIMEOUT_MS,
     })
   : null;
 
@@ -20,7 +23,8 @@ let initialized = false;
 const id = () => `grant_${crypto.randomUUID()}`;
 const now = () => new Date().toISOString();
 
-async function logActivity(type: string, data: Record<string, unknown>) {
+async function logActivity(type: string, raw: Record<string, unknown>) {
+  const data = redactRecord(raw);
   const eventId = `evt_${crypto.randomUUID()}`;
   const at = now();
   if (pool) {
