@@ -1,5 +1,7 @@
 # Portfolio — 10-Phase Production-Readiness Roadmap (refined 2026-10-15 22:30 EDT)
 
+> Canonical phase definitions and exit checks now live in `/ROADMAP.md`. This file tracks live evidence and merge order. 2026-10-16: Conduit #228, #216, #210, #223, #205 merged (/ready 200 after each); Resonance #192 merged (/api/ready still honest 503).
+
 Products: **QuicksilverV1** (primary product, iOS, owned by Quicksilver Dev), **Resonance** (provider-neutral integration plane), **Conduit** (MCP coordination bridge). These are separate repos with no shared runtime; they talk only through documented HTTP/MCP contracts. Agents never merge, apply migrations or change prod config. Current audit: `docs/AUDIT-2026-10-15.md`.
 
 ## Live evidence (22:05 EDT)
