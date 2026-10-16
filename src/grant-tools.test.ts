@@ -45,6 +45,9 @@ test("isGrantAdmin matches composite key, bare sub or bare clientId; empty env g
     assert.equal(isGrantAdmin(caller("c", "other")), false);
     process.env.CONDUIT_GRANT_ADMIN_SUBJECTS = "only-sub";
     assert.equal(isGrantAdmin(caller("x", "only-sub")), true);
+    // CURRENT BEHAVIOUR, flagged in review of #235: a bare clientId entry also admits every
+    // user `sub` of that OAuth client. Pinned here so a fix (restrict to client-credentials
+    // tokens without a distinct sub) is a deliberate, visible change to this assertion.
     process.env.CONDUIT_GRANT_ADMIN_SUBJECTS = "only-client";
     assert.equal(isGrantAdmin(caller("only-client", "y")), true);
     assert.equal(isGrantAdmin({}), false, "unauthenticated caller is never admin");
@@ -70,6 +73,8 @@ test("grant_create surfaces store errors (unregistered agent) as tool errors", a
   assert.match(errorOf(r), /agent_unregistered/);
 });
 
+// CURRENT BEHAVIOUR, flagged in review of #235: revocation filters on created_by, so a
+// grant admin cannot revoke a grant created by a project owner. Tracked as a runtime follow-up.
 test("grant_revoke: only the creator revokes; revoked grants hidden unless governor asks", async () => {
   const { tool, target, projectId, ownerCtx, otherCtx } = await setup();
   const created = await tool("grant_create")({ agentId: target, projectId, provider: "github", method: "GET", pathPattern: "/r" }, ownerCtx);
@@ -86,10 +91,18 @@ test("grant_revoke: only the creator revokes; revoked grants hidden unless gover
 });
 
 test("grants_list: non-governor cannot list another agent's grants", async () => {
-  const { tool, target, other, otherCtx } = await setup();
+  const { tool, target, other, projectId, ownerCtx, otherCtx } = await setup();
+  const foreign = await tool("grant_create")({ agentId: target, projectId, provider: "github", method: "GET", pathPattern: "/f" }, ownerCtx);
+  const foreignId = foreign.structuredContent?.id as string;
+  assert.ok(foreignId);
   assert.match(errorOf(await tool("grants_list")({ agentId: target }, otherCtx)), /grant_admin_required/);
-  const own = await tool("grants_list")({ agentId: other }, otherCtx);
-  assert.equal(own.isError, undefined);
+  for (const input of [{ agentId: other }, {}, { projectId }]) {
+    const own = await tool("grants_list")(input, otherCtx);
+    assert.equal(own.isError, undefined);
+    const rows = own.structuredContent as unknown as Array<{ id: string; agentId: string }>;
+    assert.ok(rows.every((g) => g.agentId === other), `non-governor saw foreign grants for ${JSON.stringify(input)}`);
+    assert.ok(!rows.some((g) => g.id === foreignId));
+  }
 });
 
 test("grant tools require scopes", async () => {
