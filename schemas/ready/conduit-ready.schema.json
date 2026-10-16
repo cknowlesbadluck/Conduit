@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "conduit-ready",
+  "title": "Conduit GET /ready payload (src/health-contract.ts ReadyBody)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "service", "version", "contractRevision", "persistence"],
+  "properties": {
+    "status": { "enum": ["ready", "degraded", "initializing"] },
+    "service": { "const": "conduit" },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+([-+][0-9A-Za-z.-]+)?$" },
+    "contractRevision": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}-[a-z0-9-]{1,64}$" },
+    "persistence": { "enum": ["postgres", "memory"] }
+  }
+}
