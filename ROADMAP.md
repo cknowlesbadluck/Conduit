@@ -18,7 +18,7 @@ Ground rules: agents never apply migrations, change production config, or spend 
 | # | Phase | Conduit exit check | Resonance exit check | Quicksilver exit check |
 |---|---|---|---|---|
 | 5 | Transport + data security | **[blocked]** Postgres TLS verified (#155, after Render env, owner) | **[blocked]** `search_path` fix (#173) applied by owner; RLS lint (#195) + read-only verify (#196) open, need review and an owner run | **[blocked]** own Supabase restored (owner) |
-| 6 | Honest posture | **[in progress]** `/ready` 200 with contractRevision ✓; scheduled report-only probe on main (#239 ✓); drift pins (#241) open | **[blocked]** `/api/ready` 200 with commitSha (#178); live 503 with missing service-role key; Netlify prod deploying current main (owner) | — |
+| 6 | Honest posture | **[in progress]** `/ready` 200 with contractRevision ✓; scheduled report-only probe on main (#239 ✓); drift pins (#241 ✓, merged 2026-10-16) | **[blocked]** `/api/ready` 200 with commitSha (#178); live 503 with missing service-role key; Netlify prod deploying current main (owner) | — |
 | 7 | Contracts + coverage | **[in progress]** tool-surface snapshot (#225) ✓; coverage gate enforced (lines 64 / branches 70 / functions 66), target ≥70% lines (main 69.7%, 72.0% with #235) | **[in progress]** cross-plane contract (#184); route tests (#176/#180) open | **[in progress]** TSan job (#309); contract client tests |
 | 8 | Operable release | **[in progress]** runbook; tag 0.9.0; SSE drain (#119 draft) | **[blocked]** runbook (#197) open; CHR-54 closed only when `/api/ready` 200 (owner key) | **[blocked]** fresh Archive/IPA; CHR-55 device acceptance with real evidence (not recorded) |
 
