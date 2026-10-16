@@ -1,3 +1,4 @@
+import { redactUrl } from "./url-redact.js";
 import type { ConduitAuthConfig } from "./auth.js";
 
 export type ConduitDiagnostics = {
@@ -113,7 +114,7 @@ export function resolveDiagnosticsTarget(input: {
 }
 
 export async function runDiagnostics(authConfig?: ConduitAuthConfig, baseUrl?: string): Promise<ConduitDiagnostics> {
-  const resource = authConfig?.resourceUrl ?? `${process.env.PUBLIC_URL ?? "http://localhost:3000"}/mcp`;
+  const resource = redactUrl(authConfig?.resourceUrl ?? `${(process.env.PUBLIC_URL?.trim() || "http://localhost:3000").replace(/\/$/, "")}/mcp`);
   const configuredBase = baseUrl ?? new URL(resource).origin;
   const expectedOrigin = new URL(resource).origin;
   if (authConfig && new URL(configuredBase).origin !== expectedOrigin) throw new Error("diagnostics_target_must_match_conduit_origin");
@@ -172,7 +173,7 @@ export async function runDiagnostics(authConfig?: ConduitAuthConfig, baseUrl?: s
         const candidateMetadata = await candidate.response!.json() as AuthorizationServerMetadata;
         const validation = buildAuthorizationServerMetadataCheck(authConfig.issuer, candidateMetadata);
         if (validation.ok) {
-          checks.authorizationServerStandard = { ok: true, status: candidate.status, detail: url };
+          checks.authorizationServerStandard = { ok: true, status: candidate.status, detail: redactUrl(url) };
           standardDiscoveryOk = true;
           break;
         }
@@ -185,7 +186,7 @@ export async function runDiagnostics(authConfig?: ConduitAuthConfig, baseUrl?: s
 
     const jwks = await safeFetch(authConfig.metadata.jwks_uri);
     checks.jwks = { ok: jwks.ok, status: jwks.status };
-    checks.issuer = { ok: true, detail: authConfig.issuer };
+    checks.issuer = { ok: true, detail: redactUrl(authConfig.issuer) };
   } else {
     checks.authorizationServer = { ok: false, detail: "oauth_not_configured" };
     checks.authorizationServerStandard = { ok: false, detail: "oauth_not_configured" };

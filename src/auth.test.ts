@@ -93,3 +93,22 @@ test('loadAuthConfig validates DESCOPE_MCP_SERVER_ISSUER match and scheme', asyn
     globalThis.fetch = origFetch;
   }
 });
+
+test('loadAuthConfig strips userinfo and token query params from MCP_RESOURCE_URL', async () => {
+  const keys = ['DESCOPE_MCP_SERVER_WELL_KNOWN_URL', 'DESCOPE_MCP_SERVER_ISSUER', 'MCP_RESOURCE_URL', 'NODE_ENV'] as const;
+  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  const origFetch = globalThis.fetch;
+  process.env.DESCOPE_MCP_SERVER_WELL_KNOWN_URL = 'https://api.descope.com/.well-known/openid-configuration';
+  process.env.MCP_RESOURCE_URL = 'https://bob:p4ssw0rd@conduit.example.com/mcp?token=zzz';
+  process.env.NODE_ENV = 'test';
+  process.env.DESCOPE_MCP_SERVER_ISSUER = 'https://api.descope.com';
+  try {
+    globalThis.fetch = (async () => ({ ok: true, json: async () => ({ issuer: 'https://api.descope.com', jwks_uri: 'https://api.descope.com/jwks', authorization_endpoint: 'https://api.descope.com/auth', token_endpoint: 'https://api.descope.com/token' }) })) as unknown as typeof fetch;
+    const config = await loadAuthConfig();
+    assert.equal(config?.resourceUrl, 'https://conduit.example.com/mcp');
+    assert.ok(!JSON.stringify(config).includes('p4ssw0rd'));
+  } finally {
+    globalThis.fetch = origFetch;
+    for (const k of keys) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
+  }
+});
