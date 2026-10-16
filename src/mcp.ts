@@ -1,6 +1,5 @@
-function sanitizeForLog(text: string): string {
-  return text.replace(/([?&](?:token|key|secret|auth|code|password|access_token|api_key|apikey)=)[^&]*/gi, "$1[REDACTED]");
-}
+import { redactString } from "./redact.js";
+const sanitizeForLog = redactString;
 import { McpServer, type AuthInfo } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
@@ -150,7 +149,7 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
       const result = await callIntegration({ provider, method, path, body });
       console.info(JSON.stringify({ type: "integration.call", provider, method, path: sanitizeForLog(result.path), status: result.status, ok: result.ok, projectId: projectId ?? null, actor: actorSubject(extra) ?? null }));
       return json(result);
-    } catch (error) { const message = error instanceof Error ? error.message : "integration_call_failed"; console.warn(JSON.stringify({ type: "integration.call.failed", provider, method, path, projectId: projectId ?? null, actor: actorSubject(extra) ?? null, error: message })); return rejected(message.startsWith("capability_denied") ? "capability_denied" : "integration_call_failed", { message }); }
+    } catch (error) { const message = redactString(error instanceof Error ? error.message : "integration_call_failed"); console.warn(JSON.stringify({ type: "integration.call.failed", provider, method, path: sanitizeForLog(path), projectId: projectId ?? null, actor: actorSubject(extra) ?? null, error: message })); return rejected(message.startsWith("capability_denied") ? "capability_denied" : "integration_call_failed", { message }); }
   });
 
   server.registerTool("mcp_bridge_call", { description: "Forward one JSON-RPC request to a remote HTTPS MCP endpoint. Discovery/list methods require read scope; tools/call and other methods require write scope. Private, loopback, and link-local targets are rejected, DNS is pinned after validation, and redirects are not followed.", inputSchema: z.object({ endpoint: z.string().url(), method: z.string().min(1).max(200), id: z.union([z.string(), z.number(), z.null()]).optional(), params: z.union([z.record(z.string(), z.json()), z.array(z.json())]).optional().describe("JSON-RPC 2.0 structured params: object or array"), projectId: z.string().min(1).max(200).optional() }), annotations: openWorldWrite }, async ({ endpoint, method, id, params, projectId }, extra) => {
@@ -164,7 +163,7 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
       console.info(JSON.stringify({ type: "mcp.bridge.call", endpoint: target.origin, method, status: result.status, ok: result.ok, projectId: projectId ?? null, actor: actorSubject(extra) ?? null }));
       return json(result);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "mcp_bridge_call_failed";
+      const message = redactString(error instanceof Error ? error.message : "mcp_bridge_call_failed");
       let origin: string | null = null;
       try { origin = new URL(endpoint).origin; } catch { origin = null; }
       console.warn(JSON.stringify({ type: "mcp.bridge.call.failed", endpoint: origin, method, projectId: projectId ?? null, actor: actorSubject(extra) ?? null, error: message }));
