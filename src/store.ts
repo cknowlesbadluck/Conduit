@@ -62,7 +62,6 @@ export async function pruneActivity() {
   return result.rowCount ?? 0;
 }
 
-<<<<<<< HEAD
 const DEFAULT_RETENTION_INTERVAL_MS = 6 * 60 * 60 * 1000;
 let retentionTimer: ReturnType<typeof setInterval> | undefined;
 
@@ -83,11 +82,8 @@ export function startActivityRetention(options: { intervalMs?: number; prune?: (
 
 export function stopActivityRetention() { if (retentionTimer) clearInterval(retentionTimer); retentionTimer = undefined; }
 
-async function logWithClient(client: pg.PoolClient, type: string, data: Record<string, string>) {
-=======
 async function logWithClient(client: pg.PoolClient, type: string, raw: Record<string, string>) {
   const data = redactRecord(raw);
->>>>>>> origin/main
   const event = { id: id("evt"), type, at: now(), ...data };
   await client.query("INSERT INTO activity(id,type,at,data,project_id) VALUES($1,$2,$3,$4,$5)", [event.id, type, event.at, JSON.stringify(data), data.projectId ?? null]);
 }
