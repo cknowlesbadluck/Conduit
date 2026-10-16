@@ -50,5 +50,10 @@ export const cursorCodec = {
   },
 };
 
-export function pageLimit(limit = 50, max = 200) { return Math.max(1, Math.min(limit, max, 200)); }
+export function pageLimit(limit = 50, max = 200) {
+  // Non-finite or fractional input (NaN, Infinity, 1.5) must never reach SQL LIMIT; fall back to the default / floor.
+  const requested = Number.isFinite(limit) ? Math.floor(limit) : 50;
+  const ceiling = Number.isFinite(max) ? Math.floor(max) : 200;
+  return Math.max(1, Math.min(requested, ceiling, 200));
+}
 export function cursorOrder(collection: CursorCollection) { return orders[collection]; }
