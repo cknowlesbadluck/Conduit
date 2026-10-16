@@ -3,6 +3,7 @@ import pg from "pg";
 // instead of fetching and sorting all agents via listAgents().
 import { agentExists, getProject } from "./store.js";
 import type { CapabilityGrant, CapabilityProvider } from "./capabilities.js";
+import { redactRecord } from "./redact.js";
 
 const { Pool } = pg;
 const useDatabase = Boolean(process.env.DATABASE_URL) && process.env.CONDUIT_TEST_MEMORY !== "true";
@@ -20,7 +21,8 @@ let initialized = false;
 const id = () => `grant_${crypto.randomUUID()}`;
 const now = () => new Date().toISOString();
 
-async function logActivity(type: string, data: Record<string, unknown>) {
+async function logActivity(type: string, raw: Record<string, unknown>) {
+  const data = redactRecord(raw);
   const eventId = `evt_${crypto.randomUUID()}`;
   const at = now();
   if (pool) {

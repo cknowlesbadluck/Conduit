@@ -1,5 +1,6 @@
 import pg from "pg";
 import { cursorCodec, cursorOrder, pageLimit, type CursorCollection, type Page } from "./pagination.js";
+import { redactRecord } from "./redact.js";
 
 const { Pool } = pg;
 
@@ -43,7 +44,8 @@ export function isReady() { return ready; }
 
 const ACTIVITY_RETENTION_LIMIT = Math.max(200, Number(process.env.CONDUIT_ACTIVITY_RETENTION) || 5000);
 
-async function log(type: string, data: Record<string, string>) {
+async function log(type: string, raw: Record<string, string>) {
+  const data = redactRecord(raw);
   const event = { id: id("evt"), type, at: now(), ...data };
   if (pool) await pool.query("INSERT INTO activity(id,type,at,data,project_id) VALUES($1,$2,$3,$4,$5)", [event.id, type, event.at, JSON.stringify(data), data.projectId ?? null]);
   else { activity.push(event); if (activity.length > ACTIVITY_RETENTION_LIMIT) activity.splice(0, activity.length - ACTIVITY_RETENTION_LIMIT); }
@@ -59,7 +61,8 @@ export async function pruneActivity() {
   return result.rowCount ?? 0;
 }
 
-async function logWithClient(client: pg.PoolClient, type: string, data: Record<string, string>) {
+async function logWithClient(client: pg.PoolClient, type: string, raw: Record<string, string>) {
+  const data = redactRecord(raw);
   const event = { id: id("evt"), type, at: now(), ...data };
   await client.query("INSERT INTO activity(id,type,at,data,project_id) VALUES($1,$2,$3,$4,$5)", [event.id, type, event.at, JSON.stringify(data), data.projectId ?? null]);
 }
