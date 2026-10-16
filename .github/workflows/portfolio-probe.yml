@@ -30,16 +30,22 @@ jobs:
         with:
           node-version: 22
       - name: Probe (report-only)
+        # One probe run (6 GETs); the table and JSON in the summary come from the same snapshot.
         run: |
-          {
-            echo "## Portfolio probe ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
-            echo '```'
-            node scripts/portfolio-probe.mjs || true
-            echo '```'
-            echo '<details><summary>JSON</summary>'
-            echo
-            echo '```json'
-            node scripts/portfolio-probe.mjs --json || true
-            echo '```'
-            echo '</details>'
-          } >> "$GITHUB_STEP_SUMMARY"
+          node scripts/portfolio-probe.mjs --json > probe.json || true
+          node -e '
+            const fs = require("fs");
+            let r; try { r = JSON.parse(fs.readFileSync("probe.json", "utf8")); } catch { r = null; }
+            const out = [];
+            if (!r || !Array.isArray(r.results)) {
+              out.push("## Portfolio probe", "", "Probe produced no parseable JSON (report-only; not a failure).");
+            } else {
+              out.push(`## Portfolio probe (${r.at})`, "", "| | target | outcome | status | detail |", "|---|---|---|---|---|");
+              for (const x of r.results) {
+                const detail = x.missing ? `missing=[${x.missing.join(",")}]` : (x.reason ?? x.version ?? "");
+                out.push(`| ${x.ok ? "OK" : "FAIL"} | ${x.name} | ${x.outcome} | ${x.status ?? ""} | ${detail} |`);
+              }
+              out.push("", "<details><summary>JSON</summary>", "", "```json", JSON.stringify(r, null, 2), "```", "</details>");
+            }
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, out.join("\n") + "\n");
+          ' || true
