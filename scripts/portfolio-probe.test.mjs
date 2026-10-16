@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classify, observe } from "./portfolio-probe.mjs";
+import { classify, observe, TARGETS } from "./portfolio-probe.mjs";
 
 const conduit = { name: "conduit", url: "https://x/ready", expectService: "conduit" };
 const resonance = { name: "resonance", url: "https://y/api/ready", expectService: "resonance-nexus" };
@@ -56,4 +56,43 @@ test("challenge: Cloudflare managed challenge is its own fail-closed outcome", (
 test("edge 503 with empty body from Cloudflare is unknown (origin unavailable), not ok", () => {
   const r = classify(conduit, { status: 503, headers: { server: "cloudflare" }, body: "" });
   assert.equal(r.outcome, "unknown"); assert.equal(r.reason, "edge_503_empty_origin_unavailable"); assert.equal(r.ok, false);
+});
+
+const pinnedConduit = { ...conduit, expect: { contractRevision: "2026-10-03-ready-surface" } };
+const pinnedRes = { ...resonance, expect: { missingRequired: ["SUPABASE_SERVICE_ROLE_KEY"] } };
+const resBody = (missingRequired) => ({ status: 503, body: JSON.stringify({ status: "not_ready", service: "resonance-nexus", missingRequired }) });
+
+test("drift: pinned contractRevision matches -> ready, no drift", () => {
+  const r = classify(pinnedConduit, { status: 200, body: JSON.stringify({ status: "ready", service: "conduit", contractRevision: "2026-10-03-ready-surface" }) });
+  assert.equal(r.outcome, "ready"); assert.equal(r.ok, true); assert.equal(r.drift, false);
+});
+
+test("drift: contractRevision changed or absent -> contract_changed, fail closed", () => {
+  for (const extra of [{ contractRevision: "2026-11-01-new" }, {}]) {
+    const r = classify(pinnedConduit, { status: 200, body: JSON.stringify({ status: "ready", service: "conduit", ...extra }) });
+    assert.equal(r.outcome, "contract_changed"); assert.equal(r.ok, false); assert.equal(r.drift, true);
+  }
+});
+
+test("drift: Resonance missing exactly the service role key is the known owner gate", () => {
+  const r = classify(pinnedRes, resBody(["SUPABASE_SERVICE_ROLE_KEY"]));
+  assert.equal(r.outcome, "not_ready"); assert.equal(r.ok, false); assert.equal(r.drift, false); assert.equal(r.reason, "known_owner_gate");
+});
+
+test("drift: any other missing set is a regression", () => {
+  for (const m of [["SUPABASE_SERVICE_ROLE_KEY", "NEXT_PUBLIC_SUPABASE_URL"], ["NEXT_PUBLIC_SUPABASE_URL"], [], ["SUPABASE_SERVICE_ROLE_KEY", "bad value"], "SUPABASE_SERVICE_ROLE_KEY"]) {
+    const r = classify(pinnedRes, resBody(m));
+    assert.equal(r.outcome, "regression", JSON.stringify(m)); assert.equal(r.ok, false); assert.equal(r.drift, true);
+  }
+});
+
+test("drift: pinned gate cleared (ready) asks for pin update; unknown outcomes drift", () => {
+  const ready = classify(pinnedRes, { status: 200, body: JSON.stringify({ status: "ready", service: "resonance-nexus" }) });
+  assert.equal(ready.ok, true); assert.equal(ready.drift, true); assert.equal(ready.reason, "owner_gate_cleared_update_pin");
+  for (const obs of [{ error: "timeout" }, { status: 500, body: "" }, { status: 200, body: "<html/>" }]) assert.equal(classify(pinnedRes, obs).drift, true);
+});
+
+test("drift: production targets pin the noon owner-probe values", () => {
+  assert.equal(TARGETS.find((t) => t.name === "conduit").expect.contractRevision, "2026-10-03-ready-surface");
+  assert.deepEqual(TARGETS.find((t) => t.name === "resonance-netlify").expect.missingRequired, ["SUPABASE_SERVICE_ROLE_KEY"]);
 });
