@@ -12,7 +12,7 @@
  * Usage: node scripts/portfolio-probe.mjs [--json]   (exit 1 if any target is not ok)
  */
 
-export const TARGETS = [
+const TARGETS = [
   { name: "conduit", url: "https://conduit-feco.onrender.com/ready", expectService: "conduit" },
   { name: "resonance-netlify", url: "https://resonancenexus.netlify.app/api/ready", expectService: "resonance-nexus" },
   { name: "resonance-vercel", url: "https://resonance.vercel.app/api/ready", expectService: "resonance-nexus" },
@@ -74,7 +74,7 @@ export async function observe(url, { timeoutMs = 20_000, fetchImpl = fetch } = {
   } finally { clearTimeout(timer); }
 }
 
-export async function probeAll(targets = TARGETS, options) {
+async function probeAll(targets = TARGETS, options) {
   return Promise.all(targets.map(async (t) => classify(t, await observe(t.url, options))));
 }
 
