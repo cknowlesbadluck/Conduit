@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classify, observe, TARGETS } from "./portfolio-probe.mjs";
+import { attachParity, classify, observe, RESONANCE_MAIN_READY, TARGETS } from "./portfolio-probe.mjs";
 
 const conduit = { name: "conduit", url: "https://x/ready", expectService: "conduit" };
 const resonance = { name: "resonance", url: "https://y/api/ready", expectService: "resonance-nexus" };
@@ -95,4 +95,27 @@ test("drift: pinned gate cleared (ready) asks for pin update; unknown outcomes d
 test("drift: production targets pin the noon owner-probe values", () => {
   assert.equal(TARGETS.find((t) => t.name === "conduit").expect.contractRevision, "2026-10-03-ready-surface");
   assert.deepEqual(TARGETS.find((t) => t.name === "resonance-netlify").expect.missingRequired, ["SUPABASE_SERVICE_ROLE_KEY"]);
+});
+
+test("parity: Resonance live body lacking main's fields is behindMain, without changing ok/drift", () => {
+  const target = TARGETS.find((t) => t.name === "resonance-netlify");
+  const body = JSON.stringify({ status: "not_ready", service: "resonance-nexus", stage: "deployment", production: true, authMode: "required", authModeOk: true, persistenceConfigured: false, githubAdapterConfigured: false, missingRequired: ["SUPABASE_SERVICE_ROLE_KEY"], timestamp: "2026-10-16T22:02:05.533Z" });
+  const obs = { status: 503, body };
+  const base = classify(target, obs);
+  const r = attachParity(target, obs, base);
+  assert.equal(r.behindMain, true);
+  assert.deepEqual(r.missingContractFields, ["ownerActionRequired", "contractRevision", "ownerKeys", "agentActionRequired", "posture"]);
+  assert.equal(r.ok, base.ok); assert.equal(r.drift, base.drift); assert.equal(r.outcome, base.outcome);
+});
+
+test("parity: a body with main's full contract is not behind; unanswered targets are untouched", () => {
+  const target = { ...resonance, parity: RESONANCE_MAIN_READY };
+  const full = Object.fromEntries(RESONANCE_MAIN_READY.fields.map((f) => [f, f === "contractRevision" ? RESONANCE_MAIN_READY.contractRevision : f === "service" ? "resonance-nexus" : f === "status" ? "not_ready" : f === "missingRequired" ? [] : null]));
+  const obs = { status: 503, body: JSON.stringify(full) };
+  assert.equal(attachParity(target, obs, classify(target, obs)).behindMain, false);
+  const stale = { ...full, contractRevision: "old" };
+  const obs2 = { status: 503, body: JSON.stringify(stale) };
+  assert.equal(attachParity(target, obs2, classify(target, obs2)).behindMain, true);
+  const t = classify(target, { error: "timeout" });
+  assert.equal(attachParity(target, { error: "timeout" }, t), t);
 });
