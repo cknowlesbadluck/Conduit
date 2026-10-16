@@ -1,5 +1,24 @@
-/** Query parameter names that look like credentials and must never be echoed. */
-const SECRET_PARAM = /(token|secret|key|password|passwd|pwd|auth|signature|sig|credential|session|code)/i;
+/**
+ * Credential-like query parameter name tokens. A parameter is dropped only when one of its
+ * name tokens (split on separators and camelCase) matches exactly, so ordinary names that
+ * merely contain a substring (`zipcode`, `author`, `monkey`) are preserved. This matters
+ * because the redacted MCP_RESOURCE_URL is also the JWT audience.
+ */
+const SECRET_TOKENS = new Set([
+  "token", "secret", "key", "apikey", "password", "passwd", "pwd", "auth", "authorization",
+  "signature", "sig", "credential", "credentials", "session", "sessionid", "code", "jwt",
+  "accesstoken", "refreshtoken", "idtoken", "clientsecret",
+]);
+
+export function isSecretParamName(name: string): boolean {
+  const tokens = name
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+  if (tokens.some((t) => SECRET_TOKENS.has(t))) return true;
+  return SECRET_TOKENS.has(tokens.join(""));
+}
 
 /**
  * Return a URL safe to echo (diagnostics, logs, OAuth metadata): userinfo is removed
@@ -17,7 +36,7 @@ export function redactUrl(value: string | URL | undefined | null): string {
   url.username = "";
   url.password = "";
   for (const name of [...url.searchParams.keys()]) {
-    if (SECRET_PARAM.test(name)) url.searchParams.delete(name);
+    if (isSecretParamName(name)) url.searchParams.delete(name);
   }
   return url.toString();
 }

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { redactUrl } from "./url-redact.js";
+import { isSecretParamName, redactUrl } from "./url-redact.js";
 import { runDiagnostics } from "./diagnostics.js";
 
 test("redactUrl strips userinfo and token-like query params", () => {
@@ -25,5 +25,19 @@ test("diagnostics never echoes credentials embedded in PUBLIC_URL", async () => 
     assert.ok(!body.includes("leak"), body);
   } finally {
     if (previous === undefined) delete process.env.PUBLIC_URL; else process.env.PUBLIC_URL = previous;
+  }
+});
+
+test("redactUrl keeps ordinary params whose names merely contain a secret-like substring", () => {
+  const url = "https://conduit.example.com/mcp?zipcode=12345&author=alice&monkey=v&keyboard=1";
+  assert.equal(redactUrl(url), url);
+});
+
+test("isSecretParamName matches credential names by token, not substring", () => {
+  for (const name of ["token", "access_token", "apiKey", "api-key", "X-Amz-Signature", "client_secret", "sessionId", "code", "AUTH"]) {
+    assert.equal(isSecretParamName(name), true, name);
+  }
+  for (const name of ["zipcode", "author", "monkey", "keyboard", "region", "codec", "signal"]) {
+    assert.equal(isSecretParamName(name), false, name);
   }
 });
