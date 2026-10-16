@@ -50,13 +50,27 @@ async function governingAgent(extra: ToolExtra) {
   }
   return actorSubject(extra);
 }
+/**
+ * Grant-admin matching for CONDUIT_GRANT_ADMIN_SUBJECTS entries:
+ *  - `client::sub`     composite key: that user of that OAuth client.
+ *  - `sub`             bare value: matches the token's `sub`. For a client-credentials token
+ *                      (no sub, or sub === clientId) it also matches the clientId, because the
+ *                      client *is* the subject. It never admits other users of a client.
+ *  - `client:<id>`     explicit client-scoped form: every subject of OAuth client <id>.
+ * Before this change a bare clientId admitted every user of that client (see #237).
+ */
 export function isGrantAdmin(extra: ToolExtra) {
   const info = extra.http?.authInfo;
-  const sub = typeof info?.extra?.sub === "string" ? info.extra.sub : undefined;
-  const clientId = typeof info?.clientId === "string" ? info.clientId : undefined;
-  const keys = actorBindingLookupKeys(clientId, sub);
+  const rawSub = typeof info?.extra?.sub === "string" && info.extra.sub.length > 0 ? info.extra.sub : undefined;
+  const clientId = typeof info?.clientId === "string" && info.clientId.length > 0 ? info.clientId : undefined;
   const adminSet = getGrantAdminSet();
-  return keys.some((key) => adminSet.has(key)) || Boolean(sub && adminSet.has(sub)) || Boolean(clientId && adminSet.has(clientId));
+  if (adminSet.size === 0 || (!rawSub && !clientId)) return false;
+  if (clientId && adminSet.has(`client:${clientId}`)) return true;
+  const clientIsSubject = !rawSub || rawSub === clientId;
+  const subject = clientIsSubject ? clientId : rawSub;
+  if (subject && adminSet.has(subject)) return true;
+  if (clientId && rawSub && !clientIsSubject && adminSet.has(`${clientId}::${rawSub}`)) return true;
+  return false;
 }
 
 async function canGovern(extra: ToolExtra, projectId?: string) {
@@ -81,12 +95,12 @@ export function registerGrantTools(server: McpServer, authConfig?: ConduitAuthCo
     } catch (error) { return rejected(error instanceof Error ? error.message : "grant_create_failed"); }
   });
 
-  server.registerTool("grant_revoke", { description: "Revoke an existing capability grant. Project owners and configured grant administrators can revoke grants they govern.", inputSchema: z.object({ grantId: z.string().min(1).max(200), projectId: z.string().min(1).max(200).optional() }), annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false } }, async ({ grantId, projectId }, extra) => {
+  server.registerTool("grant_revoke", { description: "Revoke an existing capability grant. Creators can revoke their own grants; configured grant administrators can revoke any grant.", inputSchema: z.object({ grantId: z.string().min(1).max(200), projectId: z.string().min(1).max(200).optional() }), annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false } }, async ({ grantId, projectId }, extra) => {
     if (writeScope) requireScope(extra.http?.authInfo, writeScope);
     const extraAuth = extra as ToolExtra;
     if (!(await canGovern(extraAuth, projectId))) return rejected("grant_admin_required", { projectId: projectId ?? null });
     const creator = await governingAgent(extraAuth);
-    return creator && (await revokeCapabilityGrant(grantId, creator)) ? json({ revoked: true, grantId }) : rejected("grant_not_found_or_not_owned", { grantId });
+    return creator && (await revokeCapabilityGrant(grantId, creator, { asAdmin: isGrantAdmin(extraAuth) })) ? json({ revoked: true, grantId }) : rejected("grant_not_found_or_not_owned", { grantId });
   });
 
   server.registerTool("grants_list", { description: "List capability grants visible to the caller. Revoked grants are excluded unless explicitly requested by a project owner or administrator.", inputSchema: z.object({ agentId: z.string().min(1).max(200).optional(), projectId: z.string().min(1).max(200).optional(), provider: z.enum(["github", "render", "supabase", "mcp_bridge"] as const).optional(), includeRevoked: z.boolean().optional() }), annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ agentId, projectId, provider, includeRevoked }, extra) => {
