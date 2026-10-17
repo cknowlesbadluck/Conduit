@@ -34,4 +34,6 @@ test("the pinned https bridge transport keeps an idle timeout and a total deadli
   assert.match(text, /timeout: REQUEST_TIMEOUT_MS/);
   assert.match(text, /totalDeadline = setTimeout\(/);
   assert.match(text, /withDeadline\(bridgeTransport\(/);
+  assert.match(text, /withDeadline\(validateEndpoint\(/, "DNS resolution is inside the deadline");
+  assert.match(text, /signal\?\.addEventListener\("abort", onAbort/, "transport destroys the socket on the caller deadline");
 });
