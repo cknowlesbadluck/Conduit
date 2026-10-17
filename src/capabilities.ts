@@ -76,7 +76,11 @@ export function matchesCapability(grant: CapabilityGrant, request: CapabilityReq
   if (grant.provider !== request.provider) return false;
   if (grant.projectId && grant.projectId !== request.projectId) return false;
   if (normalizeMethod(grant.method) !== "*" && normalizeMethod(grant.method) !== normalizeMethod(request.method)) return false;
-  if (grant.expiresAt && Date.parse(grant.expiresAt) <= Date.now()) return false;
+  if (grant.expiresAt !== undefined && grant.expiresAt !== null) {
+    // Fail closed: an unparseable expiry (NaN) must not behave as "never expires".
+    const expiry = Date.parse(grant.expiresAt);
+    if (!Number.isFinite(expiry) || expiry <= Date.now()) return false;
+  }
   return matchPattern(grant.pathPattern, request.path);
 }
 
