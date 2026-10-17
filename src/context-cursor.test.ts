@@ -4,9 +4,11 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import { CONTEXT_SECTIONS, registerPaginationTools } from "./pagination-tools.js";
 import { createTask, registerAgent } from "./store.js";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test helper reads arbitrary result shapes
 type Handler = (input: Record<string, unknown>, extra: Record<string, unknown>) => Promise<{ isError?: boolean; structuredContent: any }>;
 
 function contextTool() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test helper reads arbitrary result shapes
   const tools = new Map<string, { config: any; handler: Handler }>();
   const server = { registerTool: (name: string, config: unknown, handler: Handler) => { tools.set(name, { config, handler }); } } as unknown as McpServer;
   registerPaginationTools(server);
