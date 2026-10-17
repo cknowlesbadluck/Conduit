@@ -1,10 +1,13 @@
 import type { ConduitAuthConfig } from "./auth.js";
+import { bridgeDestinationStatus } from "./bridge-destinations.js";
 
 type ConduitDiagnostics = {
   resource: string;
   checks: Record<string, { ok: boolean; status?: number; detail?: string }>;
   scopeParity: { ok: boolean; configured: string[]; advertised: string[]; missing: string[] };
   discovery: { cimd: boolean; dcr: boolean };
+  /** mcp_bridge_call destination rule: mode and in-process violation count (no hosts). */
+  bridgeDestinations?: ReturnType<typeof bridgeDestinationStatus>;
 };
 
 type AuthorizationServerMetadata = {
@@ -193,5 +196,5 @@ export async function runDiagnostics(authConfig?: ConduitAuthConfig, baseUrl?: s
     checks.issuer = { ok: false, detail: "oauth_not_configured" };
   }
 
-  return { ...metadata, checks };
+  return { ...metadata, checks, bridgeDestinations: bridgeDestinationStatus() };
 }

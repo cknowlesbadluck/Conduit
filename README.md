@@ -46,6 +46,25 @@ Project creators or subjects listed in `CONDUIT_GRANT_ADMIN_SUBJECTS` govern pro
 
 A registered resource or tool is never an authorization grant. The existing MCP bridge SSRF protections remain authoritative even when a capability grant exists.
 
+### MCP bridge destination rule
+
+`mcp_bridge_call` takes its endpoint from tool input. On top of the SSRF guard (HTTPS only, private/loopback/link-local targets refused, DNS pinned, no redirects) and capability grants, a destination rule checks whether the endpoint is *known*. An endpoint is known when it matches:
+
+- an entry in `CONDUIT_BRIDGE_ALLOWED_DESTINATIONS` (comma-separated): an exact HTTPS origin (`https://mcp.example.com` or `https://mcp.example.com:8443`, port-exact), an exact host (`mcp.example.com`, any port), or a leading `*.` subdomain rule (`*.example.com` matches `a.example.com` and `a.b.example.com` but **not** `example.com`). No other wildcards; invalid entries are ignored and counted.
+- the exact HTTPS origin of a registered, non-archived tool or resource endpoint.
+
+`CONDUIT_BRIDGE_DESTINATION_MODE` selects the behaviour:
+
+| Mode | Behaviour |
+| --- | --- |
+| `report` (default) | Unknown destinations are still forwarded. Each one logs `mcp.bridge.destination.violation` with a redacted host (`*.example.com#<sha256-8>`) and increments a counter. |
+| `enforce` | Unknown destinations are refused with `mcp_endpoint_not_allowlisted` before any network call. If the registry lookup fails, enforce fails closed. |
+| `off` | No check, no lookup. |
+
+Unknown mode values fall back to `report`, so a typo never starts refusing traffic. `/diagnostics` and `conduit_diagnostics` include `bridgeDestinations: { mode, modeValid, allowlistEntries, invalidAllowlistEntries, violations, lastViolationAt }`. The counter is per process and contains no hosts. The rule never relaxes the SSRF guard or grants: an allowlisted private address is still refused. Registering a tool or resource is still not an authorization grant. It only marks the origin as known for this rule.
+
+Rollout: run `report` for a while, add the hosts from the violation logs to the allowlist or register them, then set `enforce`.
+
 ### Rate limiting
 
 Authenticated actors and outbound external calls are rate-limited. Exceeding limits returns HTTP 429 with Retry-After.
