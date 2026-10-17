@@ -1,9 +1,8 @@
-import { DATABASE_CONNECT_TIMEOUT_MS } from "./db-timeouts.js";
-import pg from "pg";
+import type pg from "pg";
+import { getSharedPool } from "./db-pool.js";
 import { cursorCodec, cursorOrder, pageLimit, type CursorCollection, type Page } from "./pagination.js";
 import { redactRecord } from "./redact.js";
 
-const { Pool } = pg;
 
 export type TaskStatus = "open" | "claimed" | "blocked" | "completed";
 export type Agent = { id: string; name: string; description?: string; createdAt: string };
@@ -27,15 +26,8 @@ const tasks = new Map<string, Task>();
 const contacts = new Map<string, Contact>();
 const tools = new Map<string, Tool>();
 const activity: ActivityEvent[] = [];
-const useDatabase = Boolean(process.env.DATABASE_URL) && process.env.CONDUIT_TEST_MEMORY !== "true";
-const sslRejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === "true";
-const sslOption = process.env.DATABASE_SSL === "false"
-  ? false
-  : { rejectUnauthorized: sslRejectUnauthorized };
-
-const pool = useDatabase
-  ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: sslOption, max: 5, connectionTimeoutMillis: DATABASE_CONNECT_TIMEOUT_MS })
-  : null;
+// Shared with capability-store.ts and binding-subjects.ts (see db-pool.ts).
+const pool = getSharedPool();
 
 let ready = false;
 const now = () => new Date().toISOString();
@@ -55,12 +47,28 @@ async function log(type: string, raw: Record<string, string>) {
 /** Bounds unbounded audit-log growth: keeps the most recent ACTIVITY_RETENTION_LIMIT rows. Hygiene pass, not a per-write op — safe to run occasionally (e.g. at startup, or on demand via activity_prune). */
 export async function pruneActivity() {
   if (!pool) return 0;
-  const result = await pool.query(
-    "DELETE FROM activity WHERE id IN (SELECT id FROM activity ORDER BY at DESC, id DESC OFFSET $1)",
-    [ACTIVITY_RETENTION_LIMIT],
-  );
-  return result.rowCount ?? 0;
+  // Find the newest row that falls outside the retention window (one index-only probe on
+  // activity_at_keyset_idx), then delete everything at or below that (at, id) boundary in
+  // bounded batches. Same rows removed as the old OFFSET-subquery delete, but without
+  // materialising every surplus id in one statement or holding one long lock. The boundary
+  // timestamp round-trips as text so microsecond precision is never truncated by JS Date.
+  const boundary = (await pool.query(ACTIVITY_PRUNE_BOUNDARY_SQL, [ACTIVITY_RETENTION_LIMIT])).rows[0] as { at: string; id: string } | undefined;
+  if (!boundary) return 0;
+  let deleted = 0;
+  for (let i = 0; i < ACTIVITY_PRUNE_MAX_BATCHES; i++) {
+    const count = (await pool.query(ACTIVITY_PRUNE_BATCH_SQL, [boundary.at, boundary.id, ACTIVITY_PRUNE_BATCH_SIZE])).rowCount ?? 0;
+    deleted += count;
+    if (count < ACTIVITY_PRUNE_BATCH_SIZE) break;
+  }
+  return deleted;
 }
+
+/** Exported for tests. Row-value comparison matches the (at DESC, id DESC) keyset index. */
+export const ACTIVITY_PRUNE_BOUNDARY_SQL = "SELECT at::text AS at, id FROM activity ORDER BY at DESC, id DESC OFFSET $1 LIMIT 1";
+export const ACTIVITY_PRUNE_BATCH_SQL = "DELETE FROM activity WHERE id IN (SELECT id FROM activity WHERE (at, id) <= ($1::timestamptz, $2) ORDER BY at, id LIMIT $3)";
+export const ACTIVITY_PRUNE_BATCH_SIZE = 5000;
+/** Caps one pass at 500k rows; the periodic retention timer picks up any remainder. */
+const ACTIVITY_PRUNE_MAX_BATCHES = 100;
 
 const DEFAULT_RETENTION_INTERVAL_MS = 6 * 60 * 60 * 1000;
 let retentionTimer: ReturnType<typeof setInterval> | undefined;
@@ -211,9 +219,28 @@ export async function getBoundAgentId(actorSubject: string) {
   return agentBindings.get(actorSubject);
 }
 
-export async function listAgents() {
-  if (pool) return (await pool.query("SELECT id,name,description,created_at AS \"createdAt\" FROM agents ORDER BY created_at DESC, id DESC")).rows;
-  return [...agents.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+/** Default and hard cap for listAgents. Override the default with CONDUIT_AGENT_LIST_LIMIT. Use listAgentsPage for full traversal. */
+export const AGENT_LIST_MAX = 1000;
+export function agentListLimit(limit?: number): number {
+  const configured = Number(process.env.CONDUIT_AGENT_LIST_LIMIT);
+  const fallback = Number.isFinite(configured) && configured >= 1 ? Math.floor(configured) : 500;
+  const requested = limit !== undefined && Number.isFinite(limit) ? Math.floor(limit) : fallback;
+  return Math.min(AGENT_LIST_MAX, Math.max(1, requested));
+}
+
+/** Newest-first agents, bounded (default 500, max 1000) so dashboards and status never load an unbounded table. */
+export async function listAgents(limit?: number) {
+  const bounded = agentListLimit(limit);
+  if (pool) return (await pool.query("SELECT id,name,description,created_at AS \"createdAt\" FROM agents ORDER BY created_at DESC, id DESC LIMIT $1", [bounded])).rows;
+  return [...agents.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, bounded);
+}
+
+/** Which of these ids are registered agents. Bounded by the caller's id list (activity window). */
+export async function existingAgentIds(ids: string[]): Promise<Set<string>> {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return new Set();
+  if (pool) return new Set(((await pool.query("SELECT id FROM agents WHERE id = ANY($1)", [unique])).rows as { id: string }[]).map((r) => r.id));
+  return new Set(unique.filter((agentId) => agents.has(agentId)));
 }
 
 export async function agentExists(agentId: string) { if (pool) return Boolean((await pool.query("SELECT 1 FROM agents WHERE id=$1", [agentId])).rowCount); return agents.has(agentId); }
