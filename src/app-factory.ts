@@ -14,6 +14,7 @@ import { checkPersistence } from "./db-ready.js";
 import { isReady } from "./store.js";
 import { createDiagnosticsHandler } from "./diagnostics-route.js";
 import { replayRecentEvents, subscribeEvents } from "./events.js";
+import { createEventStreamHandler } from "./sse.js";
 import { conduitUiHtml, CONDUIT_UI_CSS, CONDUIT_UI_JS } from "./ui.js";
 import { isDevelopmentRuntime } from "./runtime.js";
 
@@ -150,32 +151,9 @@ export function createConduitApp(options: ConduitAppOptions = {}) {
   const tokenVerifier = authConfig ? options.tokenVerifier ?? createTokenVerifier(authConfig) : undefined;
 
   // /events: Server-Sent Events task lifecycle stream.
-  const eventHandler = async (req: Request, res: Response) => {
-    const projectId = typeof req.query.projectId === "string" ? req.query.projectId : undefined;
-    const seen = new Set<string>();
-    let open = true;
-    const emit = (event: Record<string, string>) => { if (!open || seen.has(event.id)) return; seen.add(event.id); if (seen.size > 200) seen.delete(seen.values().next().value as string); res.write(`id: ${event.id}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`); };
-    // Admission happens BEFORE the 200/headers are flushed: at the subscriber cap the
-    // client gets an honest 503 + Retry-After instead of a hung 200 stream and an
-    // unhandled rejection from the async handler.
-    let unsubscribe: () => unknown;
-    try { unsubscribe = subscribeEvents({ projectId }, emit); }
-    catch { res.status(503).set("Retry-After", "5").json({ error: "event_subscriber_limit_reached" }); return; }
-    // Declared before cleanup (which closes over them) and assigned once the stream is open.
-    // eslint-disable-next-line prefer-const
-    let poll: ReturnType<typeof setInterval> | undefined;
-    // eslint-disable-next-line prefer-const
-    let heartbeat: ReturnType<typeof setInterval> | undefined;
-    const cleanup = () => { if (!open) return; open = false; clearInterval(poll); clearInterval(heartbeat); unsubscribe(); };
-    req.on("close", cleanup);
-    res.status(200);
-    res.set({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive", "X-Accel-Buffering": "no" });
-    res.flushHeaders?.();
-    try { for (const event of await replayRecentEvents(projectId)) emit(event); } catch { /* replay is best-effort; live events still flow */ }
-    if (!open) return;
-    poll = setInterval(async () => { try { for (const event of await replayRecentEvents(projectId)) emit(event); } catch { /* connection remains alive */ } }, 2000);
-    heartbeat = setInterval(() => { if (open) res.write(`: heartbeat ${Date.now()}\n\n`); }, 15000);
-  };
+  // Single-flight, backed-off replay polling + write backpressure + pre-header admission
+  // (honest 503 + Retry-After at the subscriber cap). Shared with #262 via src/sse.ts.
+  const eventHandler = createEventStreamHandler({ replay: replayRecentEvents, subscribe: subscribeEvents });
   const eventAuth = authConfig
     ? async (req: Request, res: Response, next: NextFunction) => {
         const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(new URL(authConfig.resourceUrl)).toString();
