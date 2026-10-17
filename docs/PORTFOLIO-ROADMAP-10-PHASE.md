@@ -50,7 +50,7 @@ Tags: **[passed]** = exit check met on main · **[in progress]** = PRs open, CI 
 | C6 Transport/data security | [blocked] | #155 now builds on #251 (one `src/db-pool.ts`); owner sets Render `DATABASE_SSL_CA` (or explicit opt-out), then #251 → #155, and `/ready` still 200 |
 | C7 Honest posture | [in progress] | `/ready` 200 ✓; #247 commitSha and #245 shape contract open |
 | C8 Contracts + coverage | [in progress] | #252 lint gate (`eslint . --max-warnings=0` in CI) and #254 dual-mode store tests merged |
-| C9 Low entropy | [in progress] | ≤8 open non-draft PRs. 30 open at 12:00 EDT → 26 after this pass (5 merged, +1 #260). Every open PR must now pass lint when it's next updated from main |
+| C9 Low entropy | [in progress] | ≤8 open non-draft PRs. 33 open at 12:00 EDT → 29 after this pass (5 merged, +1 #260; 21 open PRs brought up to date with main and lint-clean). Every open PR must now pass lint when it's next updated from main |
 | C10 Operable release 0.9.0 | not started | tag 0.9.0 after C3–C5; 7 days of probe drift=false |
 | Innovation: merge-train health | [in progress] | **#260** `npm run merge-train`: green/mergeable/not-owner-gated order, duplicate-new-file and overlap detection, conflict hotspots (report-only) |
 | Innovation: stale-claim recovery | [in progress] | **#259** `task_reclaim` (opt-in) + `task_health` idle-age counts (owner review) |
