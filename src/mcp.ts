@@ -1,3 +1,4 @@
+import { checkBridgeDestination, redactHost } from "./bridge-destinations.js";
 import { redactString } from "./redact.js";
 const sanitizeForLog = redactString;
 import { McpServer, type AuthInfo } from "@modelcontextprotocol/server";
@@ -5,7 +6,7 @@ import { z } from "zod";
 import {
   registerAgent, getBoundAgentId, createProject, registerResource,
   getProject, archiveProject, archiveResource, createTask, getTask, claimTask, blockTask, releaseTask, completeTask, handoff, addContact, registerTool,
-  archiveContact, archiveTool, pruneActivity,
+  archiveContact, archiveTool, pruneActivity, listRegisteredEndpoints,
 } from "./store.js";
 import { listSubjectsForAgent } from "./binding-subjects.js";
 import { getDevelopmentContext } from "./development.js";
@@ -159,6 +160,9 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
       const target = new URL(endpoint);
       const agentId = await resolveBoundAgent(extra);
       await enforceExternalCapability({ agentId: agentId ?? undefined, provider: "mcp_bridge", method, path: `${target.origin}${target.pathname}${target.search}`, projectId });
+      const destination = await checkBridgeDestination(target, () => listRegisteredEndpoints());
+      if (destination.violation) console.warn(JSON.stringify({ type: "mcp.bridge.destination.violation", mode: destination.mode, host: redactHost(target.hostname), method, projectId: projectId ?? null, actor: actorSubject(extra) ?? null, action: destination.allowed ? "allowed_report_only" : "refused" }));
+      if (!destination.allowed) throw new Error("mcp_endpoint_not_allowlisted");
       const result = await callMcpBridge({ endpoint, request: { jsonrpc: "2.0", id, method, params } });
       console.info(JSON.stringify({ type: "mcp.bridge.call", endpoint: target.origin, method, status: result.status, ok: result.ok, projectId: projectId ?? null, actor: actorSubject(extra) ?? null }));
       return json(result);

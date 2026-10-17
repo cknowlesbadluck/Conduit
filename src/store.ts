@@ -676,3 +676,21 @@ export async function countActivity() {
   if (pool) return Number((await pool.query("SELECT COUNT(*)::int AS n FROM activity")).rows[0].n);
   return activity.length;
 }
+
+/** Distinct HTTPS endpoints of non-archived tools and resources (bounded). Used by the mcp_bridge_call destination rule. */
+export async function listRegisteredEndpoints(limit = 1000): Promise<string[]> {
+  const cap = Math.max(1, Math.min(5000, Math.trunc(limit) || 1000));
+  if (pool) {
+    const result = await pool.query(
+      "SELECT endpoint FROM (SELECT endpoint FROM tools WHERE endpoint IS NOT NULL AND archived_at IS NULL UNION SELECT endpoint FROM resources WHERE endpoint IS NOT NULL AND archived_at IS NULL) e WHERE endpoint LIKE 'https://%' LIMIT $1",
+      [cap],
+    );
+    return result.rows.map((row: { endpoint: string }) => row.endpoint);
+  }
+  const out = new Set<string>();
+  for (const item of [...tools.values(), ...resources.values()]) {
+    if (out.size >= cap) break;
+    if (item.endpoint && !item.archivedAt && item.endpoint.toLowerCase().startsWith("https://")) out.add(item.endpoint);
+  }
+  return [...out];
+}
