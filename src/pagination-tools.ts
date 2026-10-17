@@ -41,7 +41,7 @@ export function registerPaginationTools(server: McpServer, authConfig?: ConduitA
     }).optional(),
   });
 
-  server.registerTool("conduit_context", { description: "Return a bounded snapshot of Conduit coordination state with per-section cursors", inputSchema: contextSchema, annotations: readOnly }, async ({ projectId, limit, cursor: _cursor, cursors }, extra) => {
+  server.registerTool("conduit_context", { description: "Return a bounded snapshot of Conduit coordination state with per-section cursors", inputSchema: contextSchema, annotations: readOnly }, async ({ projectId, limit, cursor, cursors }, extra) => {
     if (readScope) auth(extra, readScope);
     if (cursor !== undefined) return errorResult("context_cursor_unsupported", { field: "cursor", use: "cursors", sections: CONTEXT_SECTIONS });
     const project = projectId ? await getProject(projectId) : null;
