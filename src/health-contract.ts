@@ -18,7 +18,24 @@ export type ReadyBody = {
   version: string;
   contractRevision: string;
   persistence: PersistenceMode;
+  /** Deployed git commit (Render's RENDER_GIT_COMMIT), or "unknown" when absent/malformed. */
+  commitSha: string;
 };
+
+const COMMIT_SHA = /^[0-9a-f]{7,40}$/;
+
+/**
+ * Deployed commit from Render's standard RENDER_GIT_COMMIT (not a secret).
+ * Only a hex SHA is echoed; anything else (absent, empty, odd value) reports "unknown".
+ */
+export function deployedCommitSha(env: Record<string, string | undefined> | undefined = runtimeEnv()): string {
+  const raw = env?.RENDER_GIT_COMMIT?.trim().toLowerCase();
+  return raw && COMMIT_SHA.test(raw) ? raw : "unknown";
+}
+
+function runtimeEnv(): Record<string, string | undefined> | undefined {
+  return typeof process === "undefined" ? undefined : process.env;
+}
 
 export type SurfaceSplit =
   | "aligned"
@@ -48,6 +65,7 @@ export function readyBody(input: {
   initialized: boolean;
   persistenceOk: boolean;
   persistence: PersistenceMode;
+  commitSha?: string;
 }): ReadyBody {
   const ready = input.initialized && input.persistenceOk;
   return {
@@ -56,6 +74,7 @@ export function readyBody(input: {
     version: VERSION,
     contractRevision: HEALTH_CONTRACT_REVISION,
     persistence: input.persistence,
+    commitSha: input.commitSha ?? deployedCommitSha(),
   };
 }
 
