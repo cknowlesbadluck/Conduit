@@ -11,6 +11,7 @@ import { VERSION, SERVICE_NAME } from "./version.js";
 import { healthBody, readyBody } from "./health-contract.js";
 import { MCP_RATE_LIMITER, TOOL_RATE_LIMITER } from "./rate-limit.js";
 import { timingSafeEqual } from "node:crypto";
+import { isDevelopmentRuntime } from "./runtime.js";
 import { replayRecentEvents, subscribeEvents } from "./events.js";
 import { getPublicConduitStatus } from "./status.js";
 import { runDiagnostics } from "./diagnostics.js";
@@ -36,7 +37,7 @@ app.use(hostHeaderValidation([...allowedHostnames]));
 if (allowedOriginHostnames.length) app.use(originValidation(allowedOriginHostnames));
 app.use((req, res, next) => { applyCors(req, res); if (req.method === "OPTIONS") { res.sendStatus(204); return; } next(); });
 const port = Number(process.env.PORT || 3000);
-const allowAnonymous = process.env.CONDUIT_ALLOW_ANONYMOUS === "true" && process.env.NODE_ENV !== "production";
+const allowAnonymous = process.env.CONDUIT_ALLOW_ANONYMOUS === "true" && isDevelopmentRuntime();
 function protectedResourceMetadataResponse(res: express.Response, metadata: ReturnType<typeof buildProtectedResourceMetadata>) { res.type("application/json").json(metadata); }
 function unauthorizedBearer(res: express.Response, metadataUrl?: string) { const resourceMetadata = metadataUrl ? `, resource_metadata="${metadataUrl}"` : ""; res.set("WWW-Authenticate", `Bearer realm="${SERVICE_NAME}", error="invalid_token"${resourceMetadata}`); res.status(401).json({ error: "unauthorized" }); }
 function timingSafeTokenMatch(expected: string, supplied: string | undefined) { if (!supplied) return false; const left = Buffer.from(expected, "utf8"); const right = Buffer.from(supplied, "utf8"); return left.length === right.length && timingSafeEqual(left, right); }
@@ -99,7 +100,7 @@ async function boot() {
         } catch { unauthorizedBearer(res, resourceMetadataUrl); }
       }
     : (req: express.Request, res: express.Response, next: express.NextFunction) => {
-        if (process.env.CONDUIT_TOKEN && process.env.NODE_ENV !== "production") {
+        if (process.env.CONDUIT_TOKEN && isDevelopmentRuntime()) {
           const supplied = req.header("authorization")?.replace(/^Bearer\s+/i, "");
           if (!timingSafeTokenMatch(process.env.CONDUIT_TOKEN, supplied)) { unauthorizedBearer(res); return; }
           req.auth = createDevelopmentAuthInfo(DEVELOPMENT_TOKEN_SUBJECT, process.env.CONDUIT_TOKEN); next(); return;
@@ -118,7 +119,7 @@ async function boot() {
     const nodeHandler = toNodeHandler(handler, { onerror: console.error });
     app.all("/mcp", requireBearerAuth({ verifier: tokenVerifier!, resourceMetadataUrl }), rateLimitMcp, (req, res) => nodeHandler(req, res, req.body));
     console.log(`Conduit OAuth enabled for ${authConfig.resourceUrl}`);
-  } else if (process.env.CONDUIT_TOKEN && process.env.NODE_ENV !== "production") {
+  } else if (process.env.CONDUIT_TOKEN && isDevelopmentRuntime()) {
     const token = process.env.CONDUIT_TOKEN;
     const handler = createMcpHandler(() => createConduitServer());
     const nodeHandler = toNodeHandler(handler, { onerror: console.error });
