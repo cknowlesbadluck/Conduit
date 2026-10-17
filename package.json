@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "test": "npm run compile && NODE_ENV=test CONDUIT_TEST_MEMORY=true node --test $(find dist -name '*.test.js') scripts/*.test.mjs",
     "test:coverage": "npm run compile && NODE_ENV=test CONDUIT_TEST_MEMORY=true node --test --experimental-test-coverage --test-coverage-exclude='dist/**/*.test.js' --test-coverage-lines=64 --test-coverage-branches=70 --test-coverage-functions=66 $(find dist -name '*.test.js')",
-    "verify:production": "node scripts/verify-production.mjs"
+    "verify:production": "node scripts/verify-production.mjs",
+    "lint": "eslint . --max-warnings=0"
   },
   "dependencies": {
     "@modelcontextprotocol/express": "^2.0.0",
@@ -28,5 +29,9 @@
     "typescript": "^5.9.3",
     "zod": "^4.4.3"
   },
-  "main": "dist/index.js"
+  "main": "dist/index.js",
+  "devDependencies": {
+    "eslint": "^10.13.0",
+    "typescript-eslint": "^8.71.2"
+  }
 }

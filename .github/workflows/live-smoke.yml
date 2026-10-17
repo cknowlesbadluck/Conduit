@@ -11,7 +11,7 @@ permissions:
 jobs:
   live-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 12
     env:
       CONDUIT_URL: ${{ vars.CONDUIT_URL || 'https://conduit-feco.onrender.com' }}
       MCP_RESOURCE: ${{ vars.MCP_RESOURCE || 'https://conduit-feco.onrender.com/mcp' }}
@@ -20,25 +20,28 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
-      - name: Verify public production endpoints
+      - name: Verify public production endpoints (cold-start tolerant)
+        env:
+          CONDUIT_VERIFY_TIMEOUT_MS: "45000"
+          CONDUIT_VERIFY_ATTEMPTS: "5"
         run: node scripts/verify-production.mjs
       - name: Verify service health
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --max-time 30 "$CONDUIT_URL/health" | tee /tmp/health.json
+          curl --fail --silent --show-error --max-time 30 --retry 3 --retry-delay 5 --retry-all-errors "$CONDUIT_URL/health" | tee /tmp/health.json
           grep -q '"status":"ok"' /tmp/health.json
 
       - name: Verify readiness
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --max-time 30 "$CONDUIT_URL/ready" | tee /tmp/ready.json
+          curl --fail --silent --show-error --max-time 30 --retry 3 --retry-delay 5 --retry-all-errors "$CONDUIT_URL/ready" | tee /tmp/ready.json
           grep -q '"status":"ready"' /tmp/ready.json
 
       - name: Verify protected-resource metadata parity
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --max-time 30 "$CONDUIT_URL/.well-known/oauth-protected-resource" | tee /tmp/resource-root.json
-          curl --fail --silent --show-error --max-time 30 "$CONDUIT_URL/.well-known/oauth-protected-resource/mcp" | tee /tmp/resource-path.json
+          curl --fail --silent --show-error --max-time 30 --retry 3 --retry-delay 5 --retry-all-errors "$CONDUIT_URL/.well-known/oauth-protected-resource" | tee /tmp/resource-root.json
+          curl --fail --silent --show-error --max-time 30 --retry 3 --retry-delay 5 --retry-all-errors "$CONDUIT_URL/.well-known/oauth-protected-resource/mcp" | tee /tmp/resource-path.json
           python - <<'PY'
           import json
           root = json.load(open('/tmp/resource-root.json', encoding='utf-8'))
@@ -56,7 +59,7 @@ jobs:
       - name: Verify MCP requires OAuth
         run: |
           set -euo pipefail
-          status=$(curl --silent --show-error --max-time 30 -D /tmp/mcp.headers -o /tmp/mcp.json -w '%{http_code}' -X POST "$CONDUIT_URL/mcp" -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"live-smoke","version":"1.0.0"}}}')
+          status=$(curl --silent --show-error --max-time 30 --retry 3 --retry-delay 5 -D /tmp/mcp.headers -o /tmp/mcp.json -w '%{http_code}' -X POST "$CONDUIT_URL/mcp" -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"live-smoke","version":"1.0.0"}}}')
           test "$status" = "401"
           grep -qi '^www-authenticate:.*Bearer' /tmp/mcp.headers
           grep -qi '^www-authenticate:.*resource_metadata' /tmp/mcp.headers
@@ -64,7 +67,7 @@ jobs:
       - name: Verify authorization-server metadata and registration interoperability
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --max-time 30 "$CONDUIT_URL/.well-known/oauth-authorization-server" | tee /tmp/as.json
+          curl --fail --silent --show-error --max-time 30 --retry 3 --retry-delay 5 --retry-all-errors "$CONDUIT_URL/.well-known/oauth-authorization-server" | tee /tmp/as.json
           python - <<'PY'
           import json
           data = json.load(open('/tmp/as.json', encoding='utf-8'))
@@ -91,6 +94,6 @@ jobs:
       - name: Verify authenticated event stream is protected
         run: |
           set -euo pipefail
-          status=$(curl --silent --show-error --max-time 30 -D /tmp/events.headers -o /tmp/events.json -w '%{http_code}' "$CONDUIT_URL/events")
+          status=$(curl --silent --show-error --max-time 30 --retry 3 --retry-delay 5 -D /tmp/events.headers -o /tmp/events.json -w '%{http_code}' "$CONDUIT_URL/events")
           test "$status" = "401"
           grep -qi '^www-authenticate:.*Bearer' /tmp/events.headers
