@@ -10,6 +10,7 @@ const coreTools = [
   "tool_register", "contact_archive", "tool_archive", "activity_prune",
 ];
 const policyTools = ["grant_create", "grant_revoke", "grants_list", "conduit_diagnostics"];
+const recoveryTools = ["task_health", "task_reclaim"];
 const paginatedTools = ["agents_list", "projects_list", "resources_list", "task_list", "contacts_list", "tools_list", "activity_list", "conduit_context"];
 
 test("public MCP tool surface remains explicit and complete", async () => {
@@ -19,6 +20,8 @@ test("public MCP tool surface remains explicit and complete", async () => {
   for (const name of coreTools) assert.match(source, new RegExp(`registerTool\\("${name}"`), name);
   for (const name of policyTools) assert.match(policySource, new RegExp(`registerTool\\("${name}"`), name);
   for (const name of paginatedTools) assert.match(paginationSource, new RegExp(`registerTool\\("${name}"`), name);
+  const recoverySource = await readFile(new URL("../src/task-recovery-tools.ts", import.meta.url), "utf8");
+  for (const name of recoveryTools) assert.match(recoverySource, new RegExp(`registerTool\\("${name}"`), name);
   assert.match(source, /registerPaginationTools\(server, authConfig\)/);
   assert.doesNotMatch(policySource, /registerPaginationTools/);
   assert.match(source, /new McpServer\(\{ name: SERVICE_NAME, version: VERSION/);

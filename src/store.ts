@@ -681,3 +681,97 @@ export async function countActivity() {
   if (pool) return Number((await pool.query("SELECT COUNT(*)::int AS n FROM activity")).rows[0].n);
   return activity.length;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Stale-claim recovery (opt-in). A claimed or blocked task whose last update is older than
+// CONDUIT_TASK_STALE_CLAIM_MINUTES can be taken over by another registered agent, atomically and
+// with an audit record naming the previous claimer. Unset = disabled (no behaviour change).
+// ---------------------------------------------------------------------------------------------
+
+export const STALE_CLAIM_MAX_MINUTES = 7 * 24 * 60;
+
+/** Stale threshold in ms, or null when recovery is disabled. */
+export function staleClaimMs(env: NodeJS.ProcessEnv = process.env): number | null {
+  const minutes = Number(env.CONDUIT_TASK_STALE_CLAIM_MINUTES);
+  if (!Number.isFinite(minutes) || minutes < 1) return null;
+  return Math.min(STALE_CLAIM_MAX_MINUTES, Math.floor(minutes)) * 60_000;
+}
+
+export type ReclaimResult = { task: Task; previousAgentId: string; idleMs: number };
+
+/** Take over a stale claimed/blocked task. Null when the task is missing, open, completed, fresh, already ours, or the agent is unknown. */
+export async function reclaimStaleTask(taskId: string, agentId: string, staleMs: number): Promise<ReclaimResult | null> {
+  if (!(staleMs >= 60_000)) return null;
+  if (!(await agentExists(agentId))) return null;
+  if (pool) {
+    return withTransaction(async client => {
+      const before = (await client.query(`SELECT claimed_by AS "claimedBy", (EXTRACT(EPOCH FROM (now() - updated_at)) * 1000)::bigint AS "idleMs" FROM tasks WHERE id=$1 FOR UPDATE`, [taskId])).rows[0] as { claimedBy: string | null; idleMs: string | number } | undefined;
+      if (!before || !before.claimedBy) return null;
+      const r = await client.query(`UPDATE tasks SET status='claimed',claimed_by=$2,updated_at=now() WHERE id=$1 AND status IN ('claimed','blocked') AND claimed_by IS DISTINCT FROM $2 AND updated_at < now() - ($3::bigint * interval '1 millisecond') RETURNING ${taskSelect}`, [taskId, agentId, staleMs]);
+      if (!r.rowCount) return null;
+      const task = normalizeTask(r.rows[0]);
+      await logWithClient(client, "task.reclaim", { taskId, agentId, previousAgentId: before.claimedBy, ...(task.projectId ? { projectId: task.projectId } : {}) });
+      return { task, previousAgentId: before.claimedBy, idleMs: Number(before.idleMs) };
+    });
+  }
+  const t = tasks.get(taskId);
+  if (!t || (t.status !== "claimed" && t.status !== "blocked") || !t.claimedBy || t.claimedBy === agentId) return null;
+  const idleMs = Date.now() - Date.parse(t.updatedAt);
+  if (!(idleMs > staleMs)) return null;
+  const previous = { ...t };
+  const previousAgentId = t.claimedBy;
+  t.status = "claimed"; t.claimedBy = agentId; t.updatedAt = now();
+  try { await log("task.reclaim", { taskId, agentId, previousAgentId, ...(t.projectId ? { projectId: t.projectId } : {}) }); }
+  catch (error) { Object.assign(t, previous); throw error; }
+  return { task: { ...t }, previousAgentId, idleMs };
+}
+
+export type TaskHealth = {
+  counts: Record<TaskStatus, number>;
+  /** Claimed + blocked tasks bucketed by time since their last update. */
+  heldByAge: { under15m: number; under1h: number; under24h: number; over24h: number };
+  staleClaimMinutes: number | null;
+  /** Claimed/blocked tasks older than the stale threshold (0 when recovery is disabled). */
+  reclaimable: number;
+};
+
+/** Bounded aggregate (no rows returned), optionally per project. */
+export async function taskHealth(projectId?: string, staleMs: number | null = staleClaimMs()): Promise<TaskHealth> {
+  const empty: TaskHealth = { counts: { open: 0, claimed: 0, blocked: 0, completed: 0 }, heldByAge: { under15m: 0, under1h: 0, under24h: 0, over24h: 0 }, staleClaimMinutes: staleMs ? staleMs / 60_000 : null, reclaimable: 0 };
+  if (pool) {
+    const params: unknown[] = [staleMs ?? 0];
+    const where = projectId ? (params.push(projectId), " WHERE project_id=$2") : "";
+    const row = (await pool.query(`SELECT
+      count(*) FILTER (WHERE status='open')::int AS open,
+      count(*) FILTER (WHERE status='claimed')::int AS claimed,
+      count(*) FILTER (WHERE status='blocked')::int AS blocked,
+      count(*) FILTER (WHERE status='completed')::int AS completed,
+      count(*) FILTER (WHERE status IN ('claimed','blocked') AND updated_at >= now() - interval '15 minutes')::int AS "under15m",
+      count(*) FILTER (WHERE status IN ('claimed','blocked') AND updated_at < now() - interval '15 minutes' AND updated_at >= now() - interval '1 hour')::int AS "under1h",
+      count(*) FILTER (WHERE status IN ('claimed','blocked') AND updated_at < now() - interval '1 hour' AND updated_at >= now() - interval '24 hours')::int AS "under24h",
+      count(*) FILTER (WHERE status IN ('claimed','blocked') AND updated_at < now() - interval '24 hours')::int AS "over24h",
+      count(*) FILTER (WHERE $1::bigint > 0 AND status IN ('claimed','blocked') AND updated_at < now() - ($1::bigint * interval '1 millisecond'))::int AS reclaimable
+      FROM tasks${where}`, params)).rows[0] as Record<string, number>;
+    return { ...empty, counts: { open: row.open, claimed: row.claimed, blocked: row.blocked, completed: row.completed }, heldByAge: { under15m: row.under15m, under1h: row.under1h, under24h: row.under24h, over24h: row.over24h }, reclaimable: row.reclaimable };
+  }
+  const out = structuredClone(empty);
+  const nowMs = Date.now();
+  for (const t of tasks.values()) {
+    if (projectId && t.projectId !== projectId) continue;
+    out.counts[t.status] += 1;
+    if (t.status !== "claimed" && t.status !== "blocked") continue;
+    const age = nowMs - Date.parse(t.updatedAt);
+    if (age < 15 * 60_000) out.heldByAge.under15m += 1;
+    else if (age < 60 * 60_000) out.heldByAge.under1h += 1;
+    else if (age < 24 * 60 * 60_000) out.heldByAge.under24h += 1;
+    else out.heldByAge.over24h += 1;
+    if (staleMs && age > staleMs) out.reclaimable += 1;
+  }
+  return out;
+}
+
+/** Test hook (memory mode only): backdate a task's last update. */
+export function backdateTaskForTests(taskId: string, ms: number): void {
+  const t = tasks.get(taskId);
+  if (t) t.updatedAt = new Date(Date.parse(t.updatedAt) - ms).toISOString();
+}

@@ -16,6 +16,7 @@ import { VERSION, SERVICE_NAME } from "./version.js";
 import { errorResult } from "./errors.js";
 import { isGrantAdmin, registerGrantTools } from "./grant-tools.js";
 import { registerPaginationTools } from "./pagination-tools.js";
+import { registerTaskRecoveryTools } from "./task-recovery-tools.js";
 import { enforceExternalCapability } from "./external-policy.js";
 import { actorBindingKey, actorBindingLookupKeys } from "./actor-binding.js";
 
@@ -233,5 +234,6 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
 
   registerGrantTools(server, authConfig);
   registerPaginationTools(server, authConfig);
+  registerTaskRecoveryTools(server, authConfig, resolveBoundAgent);
   return server;
 }
