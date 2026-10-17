@@ -8,10 +8,20 @@
  * Env:
  *   CONDUIT_URL — override base (default https://conduit-feco.onrender.com)
  *   CONDUIT_EXPECT_VERSION — optional exact version string (e.g. 0.8.0)
+ *   CONDUIT_VERIFY_TIMEOUT_MS — per-request timeout (default 30000)
+ *   CONDUIT_VERIFY_ATTEMPTS — attempts per request for cold starts (default 4;
+ *     retries only network errors/timeouts and 502/503/504)
  */
+
+import { fetchWithRetry, readPositiveInt } from "./fetch-retry.mjs";
 
 const base = (process.argv[2] || process.env.CONDUIT_URL || "https://conduit-feco.onrender.com").replace(/\/$/, "");
 const expectVersion = process.env.CONDUIT_EXPECT_VERSION?.trim();
+const retry = {
+  timeoutMs: readPositiveInt(process.env.CONDUIT_VERIFY_TIMEOUT_MS, 30000),
+  attempts: readPositiveInt(process.env.CONDUIT_VERIFY_ATTEMPTS, 4),
+  onRetry: ({ attempt, reason }) => console.log(`retry: attempt ${attempt} failed (${reason}); host may be cold-starting`),
+};
 
 function fail(msg) {
   console.error(`FAIL: ${msg}`);
@@ -19,7 +29,7 @@ function fail(msg) {
 }
 
 async function getJson(path) {
-  const res = await fetch(`${base}${path}`, { signal: AbortSignal.timeout(15000), redirect: "error" });
+  const res = await fetchWithRetry(`${base}${path}`, { redirect: "error" }, retry);
   const text = await res.text();
   let body;
   try {
@@ -60,7 +70,7 @@ async function main() {
   if (prmPath.status !== 200) fail(`PRM path status ${prmPath.status}`);
   console.log("OK protected-resource path metadata");
 
-  const mcp = await fetch(`${base}/mcp`, {
+  const mcp = await fetchWithRetry(`${base}/mcp`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -77,9 +87,8 @@ async function main() {
         clientInfo: { name: "verify-production", version: "1.0.0" },
       },
     }),
-    signal: AbortSignal.timeout(15000),
     redirect: "error",
-  });
+  }, retry);
   if (mcp.status !== 401) fail(`MCP expected 401, got ${mcp.status}`);
   const www = mcp.headers.get("www-authenticate") || "";
   if (!/Bearer/i.test(www)) fail(`WWW-Authenticate missing Bearer: ${www}`);
