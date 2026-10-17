@@ -57,7 +57,13 @@ jobs:
           node-version: 22
       - run: npm ci
       - run: npm run typecheck
+      # Separate step (not appended to the coordination line) so it doesn't textually collide with
+      # other PRs that add their own Postgres test files to that line (e.g. #251/#155).
+      - name: Run stale-claim recovery tests against Postgres
+        run: |
+          npm run compile
+          node --test --test-concurrency=1 dist/task-recovery.postgres.test.js
       - name: Run coordination concurrency tests against Postgres
         run: |
           npm run compile
-          node --test --test-concurrency=1 dist/coordination.test.js dist/store.lifecycle.test.js dist/store.coverage.test.js dist/task-recovery.postgres.test.js
+          node --test --test-concurrency=1 dist/coordination.test.js dist/store.lifecycle.test.js dist/store.coverage.test.js
