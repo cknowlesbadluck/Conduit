@@ -1,7 +1,7 @@
 import type { ConduitAuthConfig } from "./auth.js";
 import { bridgeDestinationStatus } from "./bridge-destinations.js";
 
-export type ConduitDiagnostics = {
+type ConduitDiagnostics = {
   resource: string;
   checks: Record<string, { ok: boolean; status?: number; detail?: string }>;
   scopeParity: { ok: boolean; configured: string[]; advertised: string[]; missing: string[] };
