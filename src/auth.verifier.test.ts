@@ -61,7 +61,8 @@ async function sign(claims: JWTPayload, opts: { key?: CryptoKey; iss?: string; a
   return jwt.sign(opts.key ?? signingKey);
 }
 
-const isInvalidToken = (error: unknown) => error instanceof OAuthError && error.code === 'invalid_token';
+const isInvalidToken = (error: unknown) =>
+  error instanceof OAuthError && error.code === 'invalid_token' && error.message === 'Invalid access token';
 
 test('verifier accepts a valid RS256 token and maps identity, scopes and expiry', async () => {
   const exp = Math.floor(Date.now() / 1000) + 300;
@@ -119,7 +120,7 @@ test('verifier rejects HS256 (alg confusion) and garbage tokens with a generic i
   const hs = await new SignJWT({ sub: 'u' }).setProtectedHeader({ alg: 'HS256' }).setIssuer(issuer).setAudience(RESOURCE).setExpirationTime('5m').sign(hmac);
   const verifier = createTokenVerifier(config());
   await assert.rejects(verifier.verifyAccessToken(hs), isInvalidToken);
-  await assert.rejects(verifier.verifyAccessToken('not.a.jwt'), (error: unknown) => isInvalidToken(error) && (error as Error).message === 'Invalid access token');
+  await assert.rejects(verifier.verifyAccessToken('not.a.jwt'), isInvalidToken);
 });
 
 // ---- loadAuthConfig paths not covered by auth.test.ts ----
