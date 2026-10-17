@@ -16,6 +16,8 @@ const messages: Record<string, string> = {
   task_not_claimed_by_agent: "Task is not claimed by the authenticated agent",
   task_not_found: "Task not found",
   task_not_owned_or_not_claimed: "Task is not owned by or claimed by the authenticated agent",
+  stale_reclaim_disabled: "Stale-claim recovery is disabled; set CONDUIT_TASK_STALE_CLAIM_MINUTES to enable it",
+  task_not_reclaimable: "Task is not claimed or blocked, is held by the caller, or has been updated within the stale threshold",
   task_not_owned_or_not_releasable: "Task is not owned by the authenticated agent or cannot be released",
   task_unavailable_or_agent_unregistered: "Task is unavailable or agent is not registered",
 };

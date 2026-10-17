@@ -179,10 +179,22 @@
     "idempotentHint": false,
     "openWorldHint": false
   },
+  "task_health": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  },
   "task_list": {
     "readOnlyHint": true,
     "destructiveHint": false,
     "idempotentHint": true,
+    "openWorldHint": false
+  },
+  "task_reclaim": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
     "openWorldHint": false
   },
   "task_release": {
