@@ -1,21 +1,21 @@
-# Conduit — 10-Phase Roadmap to a hardened 0.8+ (updated in place 2026-10-17 03:30 EDT)
+# Conduit — 10-Phase Roadmap to a hardened 0.8+ (updated in place 2026-10-17 04:10 EDT)
 
 Target: hardened Conduit 0.8+ → 0.9.0 with reliable grants and low PR entropy. Cross-repo view: `ROADMAP.md`. Current audit: `docs/AUDIT-2026-10-15.md`. Repos stay separate; Conduit talks to Resonance only through HTTP/MCP contracts.
 These are **Conduit workstreams C1–C10**, numbered separately from the canonical portfolio phases 1–10 in `ROADMAP.md`. "C10" means the Conduit release workstream, not portfolio phase 10.
-Status: **[passed]** · **[in progress]** · **[blocked]** (owner action).
+Status vocabulary: **done** · **in review** (PRs open, CI green) · **blocked on owner** (owner action or env) · **not started**.
 
-| # | Workstream | Exit criteria | Status |
+| # | Workstream | Exit criteria | Status (2026-10-17 04:10 EDT) |
 |---|---|---|---|
-| C1 | Green, pinned CI | main CI + Live Smoke green; actions SHA-pinned; no owner-side red check on PRs | **[blocked]**: green ✓, pinned ✓; Cloudflare Workers Builds still red on every PR (owner: disconnect) |
-| C2 | Lean code | no unreferenced modules; no TODO/FIXME in src | **[passed]** (#210, #232, #233) |
-| C3 | Reliable grants | admin actions subject-matched; admins can revoke any grant (#238); expiry fails closed + refuse expired (#234); authz matrix tested (#235 ✓); token verifier fail-closed paths tested (#250) | **[in progress]**: #238, #234, #250 open, need owner review |
-| C4 | Fail-closed production | lockdown + capabilities-required independent of `NODE_ENV` (#206 → #212) | **[in progress]**: #206 changes requested; #212 conflicting |
-| C5 | Bounded surface | retention/redaction/timeouts ✓; SSE cap → 503 (#217); pageLimit clamp (#231); diagnostics cache (#208); one shared pg pool, bounded listAgents, batched prune (#251); `conduit_context` rejects an ambiguous top-level `cursor` (#253) | **[in progress]** |
-| C6 | Transport + data security | Postgres TLS verified by default (#155), after the owner sets the Render env | **[blocked]** (owner env) |
-| C7 | Honest posture + drift | `/ready` 200 + contractRevision ✓; scheduled probe on main (#239 ✓); drift detection (#241 ✓); Workers handler honest (#213) | **[in progress]** |
-| C8 | Contracts + coverage | tool-surface snapshot ✓; coverage ≥70% lines; JSON-typed schemas (#207); dual-mode store tests run in the Postgres CI job, which also fixes the Postgres Agent shape (#254); ESLint baseline (#252) | **[in progress]**: store.js 74.9→77.7% lines in Postgres mode with #254 |
-| C9 | Low entropy | ≤8 open non-draft PRs; nothing conflicting for more than 3 days; stacks rebased onto main; red drafts (#119/#120) decided | **[in progress]**: 23 open PRs on 2026-10-16 18:10 EDT (#244 closed as duplicate of #242; #204/#231 pagination are complementary, not duplicates) |
-| C10 | Operable release 0.9.0 | runbook; SSE drain; tag 0.9.0; contractRevision change policy in SPEC.md; 7 days of probe drift=false | **[in progress]** |
+| C1 | Green, pinned CI | main CI + Live Smoke green; actions SHA-pinned; no owner-side red check on PRs | **blocked on owner**: main CI, Live Smoke and portfolio-probe green on d30e7dc; actions pinned. Cloudflare "Workers Builds: conduit" still fails on every PR (#250–#256); owner must disconnect it |
+| C2 | Lean code | no unreferenced modules; no TODO/FIXME in src | **done** (#210, #232, #233); #248 knip type un-exports in review |
+| C3 | Reliable grants | admin actions subject-matched (#238); expiry fails closed (#234); authz matrix (#235 ✓); token verifier fail-closed paths (#250) | **in review**: #238, #234, #250 green (#250 CodeRabbit finding fixed in 546c86d; its stale CHANGES_REQUESTED clears on re-review) |
+| C4 | Fail-closed production | lockdown + capabilities-required independent of `NODE_ENV` (#206 → #212) | **in review**: #206 (CodeRabbit changes requested), #212 now mergeable; both conflict on `src/index.ts` with #209/#211/#213/#217/#243, so rebase in merge order |
+| C5 | Bounded surface | retention/redaction/timeouts ✓; SSE cap 503 (#217); pageLimit clamp (#231); diagnostics cache (#208); shared pool + bounded reads (#251); `conduit_context` rejects top-level `cursor` (#253); **bridge destination rule (#256)** | **in review**: #253 CodeRabbit finding fixed (9083fd7); #256 new, `report` by default |
+| C6 | Transport + data security | Postgres TLS verified by default (#155) after the owner sets the Render env | **blocked on owner** (Render env); #155 conflicts with #251 (db-pool/store) |
+| C7 | Honest posture + drift | `/ready` 200 + contractRevision ✓; scheduled probe (#239 ✓); drift detection (#241 ✓); commitSha on `/ready` (#247); Workers handler honest (#213) | **in review** (#247, #213, #245) |
+| C8 | Contracts + coverage | tool-surface snapshot ✓; coverage ≥70% lines (main memory mode 74.6%); JSON-typed schemas (#207); dual-mode store tests + Postgres Agent shape fix (#254); ESLint baseline (#252) | **in review**: #252, #254, #207 green |
+| C9 | Low entropy | ≤8 open non-draft PRs; nothing conflicting for more than 3 days; red drafts (#119/#120) decided | **in review / off target**: 32 open (04:07 EDT). Conflicting with main: #119, #120, #162. Duplicate Bolt redaction PRs #230 and #255 conflict (`src/redact.ts`), so keep one |
+| C10 | Operable release 0.9.0 | runbook; SSE drain; tag 0.9.0; contractRevision change policy; 7 days of probe drift=false | **not started** (blocked behind C3–C5 merges) |
 
 ## Composition and coordination principles (no party dominates)
 
@@ -31,14 +31,14 @@ Conduit is the coordination bridge. It records who is doing what, and it must ne
 ## Integration hygiene rules
 
 - **Off by default.** An integration or MCP bridge target is inert until it's explicitly configured *and* granted. Missing configuration means absent, not present-and-broken.
-- **Destination from config only (target; partly met).** `integration_call` resolves providers server-side. **Gap:** `mcp_bridge_call` still takes `endpoint` from tool input. It's guarded (HTTPS only, no credentials in the URL, SSRF block on private, loopback and link-local addresses with a pinned DNS answer, and a capability grant on origin+path when grants are required), but the rule is not met until the endpoint must match a registered `tool`/`resource` or a configured allowlist. Tracked as roadmap C5. Echoed URLs are redacted (#243).
+- **Destination from config only (in review: #256).** `integration_call` resolves providers server-side. `mcp_bridge_call` still takes `endpoint` from tool input. It is guarded: HTTPS only, no credentials in the URL, an SSRF block on private, loopback and link-local addresses with a pinned DNS answer, and a capability grant on origin+path when grants are required. #256 adds the destination rule: the endpoint must match a registered tool or resource origin, or `CONDUIT_BRIDGE_ALLOWED_DESTINATIONS` (exact origin, exact host, or a leading `*.` only). The default mode is `report`, which logs and counts with a redacted host and blocks nothing. `enforce` is opt-in through `CONDUIT_BRIDGE_DESTINATION_MODE`. The mode and violation count show in `/diagnostics`. The rule is fully met once the owner flips to `enforce` after a clean report window. Echoed URLs are redacted (#243).
 - **Approval-gated outbound.** In production (grants required), outbound calls need a grant for that capability and subject, and are rate limited per agent and provider. Admin grants are subject-matched, and expired or unparseable grants fail closed.
 - **Idempotent delivery.** Writes are claim-checked and transition-guarded, so a retried claim, complete or handoff is a no-op or a refusal, never a double effect. Callers retry only on 429/503.
 - **No secrets in flight records.** Activity, diagnostics and errors are redacted (#228, #226). Tokens never appear in logs or responses.
 
 ## Merge order (grants train first)
 
-Done: #241 (merged 2026-10-16 14:08 EDT), #246 report-only deploy-parity annotation (merged 2026-10-16 18:45 EDT, d30e7dc). Pending: #250 (tests) → #253/#254 (tests + small fixes) → #252 (lint) → #251 (perf) → #238 → #234 → #206 → #212 (rebase) → #211/#217 (rebase) → #213 → #208/#209 → #231 → #243 (URL redaction) → #245 (probe shape; already on top of #246) → #155 (after owner env). **Merge authorization (single policy):** agents may merge only Conduit docs/test/CI-only PRs that are green (ignoring the owner-side Workers Builds check) with no outstanding changes-requested or unaddressed bot findings, then verify `/ready` returns 200. Runtime/auth PRs and every Resonance/QuicksilverV1 PR need the owner. This supersedes any older "agents never merge" wording preserved below.
+Done: #241 (merged 2026-10-16 14:08 EDT), #246 report-only deploy-parity annotation (merged 2026-10-16 18:45 EDT, d30e7dc). Pending: #250 (tests) → #253/#254 (tests + small fixes) → #252 (lint) → #251 (perf; rebase after #254, both edit `ci.yml` + `src/store.ts`) → #256 (bridge destination rule, report-only; one-line `ci.yml` rebase after #251/#254) → #238 → #234 → #206 → #212 (rebase) → #211/#217 (rebase) → #213 → #208/#209 → #231 → #243 (URL redaction) → #245 (probe shape; already on top of #246) → #155 (after owner env). **Merge authorization (single policy):** agents may merge only Conduit docs/test/CI-only PRs that are green (ignoring the owner-side Workers Builds check) with no outstanding changes-requested or unaddressed bot findings, then verify `/ready` returns 200. Runtime/auth PRs and every Resonance/QuicksilverV1 PR need the owner. This supersedes any older "agents never merge" wording preserved below.
 
 ## Portfolio status and cross-repo merge order (preserved from the 2026-10-15 22:30 EDT refinement)
 
@@ -46,9 +46,18 @@ Done: #241 (merged 2026-10-16 14:08 EDT), #246 report-only deploy-parity annotat
 
 Products: **QuicksilverV1** (primary product, iOS, owned by Quicksilver Dev), **Resonance** (provider-neutral integration plane), **Conduit** (MCP coordination bridge). These are separate repos with no shared runtime; they talk only through documented HTTP/MCP contracts. Agents never apply migrations or change prod config, and merge only under the single policy above. Current audit: `docs/AUDIT-2026-10-15.md`.
 
-### Live evidence (22:05 EDT)
+### Live evidence (2026-10-17 04:02 EDT)
 
-Conduit `conduit-feco.onrender.com/ready` 200 (0.8.0, contractRevision 2026-10-03-ready-surface, postgres) after #222/#225/#227 merges · Resonance Netlify `/api/ready` 503, missing [SUPABASE_SERVICE_ROLE_KEY]; prod still deploy 6ab8ea11 (main 5aeffb4, 09-27): the 15:15 merges of #161/#162/#164 (main 7b662a0) produced **no** new Netlify production deploy (no Netlify commit status on 7b662a0; PR previews still run): either production builds fail (stale lockfile) or the production Git link is inactive. Still deploy 6ab8ea11 at 22:05 (Netlify API currentDeploy). Owner to check the Netlify deploy log · Supabase Resonance/Quicksilver/WhereamI? INACTIVE · resonance/quicksilver.vercel.app stranger_occupant · resonancenexus/quicksilverv1.vercel.app alias_absent · CHR-55 not_recorded.
+- **Conduit:** `conduit-feco.onrender.com/ready` returns **200** in 0.35 s with `{status: ready, version 0.8.0, contractRevision 2026-10-03-ready-surface, persistence: postgres}`; `/health` returns 200. main d30e7dc: CI, Live Smoke and portfolio-probe all green.
+- **Resonance:** `resonancenexus.netlify.app/api/ready` returns **503** with `missingRequired: [SUPABASE_SERVICE_ROLE_KEY]`, `production: true`, `authMode: required`. The edge `age` header is about 19.9 days, which is still the 2026-09-27 deploy (owner: restore Netlify publishing and set the key). `resonanceplane.netlify.app` is behind Netlify edge access (401), and `resonanceplane.vercel.app` returns DEPLOYMENT_NOT_FOUND.
+- **QuicksilverV1 (read-only):** main "Quicksilver CI" green (90a9bc6, 2026-10-16 19:52 EDT); 21 open PRs.
+- **Conduit PR conflicts:** these are pairwise and exclude #119/#120/#162, which already conflict with main.
+  - `src/index.ts`: #206×#209, #206×#243, #209×#211, #209×#212, #209×#217, #211×#213, #211×#243, #212×#243, #213×#217, #217×#243.
+  - `src/app-factory.ts`: #211×#252, #217×#252.
+  - `src/store.ts`: #204×#251, #204×#254, #251×#254 (also `ci.yml`).
+  - #155×#251 (db pool).
+  - #230×#255 (duplicate Bolt redaction).
+  - #256×#251 and #256×#254 (`ci.yml` one-liner).
 
 ### Phases
 
