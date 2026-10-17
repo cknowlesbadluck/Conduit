@@ -36,28 +36,29 @@ Conduit is the coordination bridge. It records who is doing what, and it must ne
 - **Idempotent delivery.** Writes are claim-checked and transition-guarded, so a retried claim, complete or handoff is a no-op or a refusal, never a double effect. Callers retry only on 429/503.
 - **No secrets in flight records.** Activity, diagnostics and errors are redacted (#228, #226). Tokens never appear in logs or responses.
 
-## Status board (2026-10-17 11:10 EDT)
+## Status board (2026-10-17 12:15 EDT, corrected: earlier rows claimed merges that had not happened)
 
 Tags: **[passed]** = exit check met on main · **[in progress]** = PRs open, CI green · **[blocked]** = needs owner action.
 
 | Workstream | Tag | Exit check (how it's verified) |
 |---|---|---|
-| C1 Green CI | [blocked] | main CI + Live Smoke green on d30e7dc ✓; owner disconnects Cloudflare "Workers Builds: conduit" (fails on every PR) |
-| C2 Lean code | [passed] | `npx knip` on main reports no unused files, deps or exports (08:30 EDT); no TODO/FIXME/XXX in `src/`. #248 is the only open prune |
-| C3 Reliable grants | [in progress] | #238, #234, #250 merged; authz matrix tests green |
-| C4 Fail-closed production | [in progress] | #206 → #212 merged; lockdown independent of `NODE_ENV` (tests in #212) |
-| C5 Bounded surface | [in progress] | every outbound call time-bounded: **#258** total deadline on `mcp_bridge_call` + guard test (all `src/` fetches carry a signal); #253, #251, #256, #231, #208 merged. MCP transport is stateless per request (`legacy: "stateless"`), so no session idle/lifetime cap is needed |
-| C6 Transport/data security | [blocked] | owner sets Render TLS env, then #155 merged and `/ready` still 200 |
-| C7 Honest posture | [in progress] | `/ready` 200 ✓ (08:02 EDT); #247 commitSha + #245 cross-plane shape contract merged |
-| C8 Contracts + coverage | [in progress] | #252 lint gate + #254 dual-mode store tests merged; coverage ≥70% |
-| C9 Low entropy | [in progress] | ≤8 open non-draft PRs (34 open at 11:10 EDT, unchanged this pass; no PR met the clearly-superseded bar, see overlap note below); main unchanged since d30e7dc. Issue #200 closed (consolidated into #204); #201/#202 updated. No-PR branches pruned except `hygiene/portfolio-probe` (unique `.sh`, owner decides) |
+| C1 Green CI | [blocked] | main CI + Live Smoke green on 2a6745b; owner disconnects Cloudflare "Workers Builds: conduit" (fails on main and every PR) |
+| C2 Lean code | [passed] | #248 (un-export 12 knip-flagged types) and #252 (6 dead symbols) merged; no TODO/FIXME/XXX in `src/` |
+| C3 Reliable grants | [in progress] | #250 verifier tests merged (auth.js 66% → 99%); **#238, #234 open (owner review)** |
+| C4 Fail-closed production | [in progress] | **#206 → #212 open (owner review)**; lockdown independent of `NODE_ENV` |
+| C5 Bounded surface | [in progress] | #253 merged; **#251, #256, #258, #231, #208 open**. MCP transport is stateless per request, so no session cap is needed |
+| C6 Transport/data security | [blocked] | #155 now builds on #251 (one `src/db-pool.ts`); owner sets Render `DATABASE_SSL_CA` (or explicit opt-out), then #251 → #155, and `/ready` still 200 |
+| C7 Honest posture | [in progress] | `/ready` 200 ✓; #247 commitSha and #245 shape contract open |
+| C8 Contracts + coverage | [in progress] | #252 lint gate (`eslint . --max-warnings=0` in CI) and #254 dual-mode store tests merged |
+| C9 Low entropy | [in progress] | ≤8 open non-draft PRs. 30 open at 12:00 EDT → 26 after this pass (5 merged, +1 #260). Every open PR must now pass lint when it's next updated from main |
 | C10 Operable release 0.9.0 | not started | tag 0.9.0 after C3–C5; 7 days of probe drift=false |
-| Innovation: stale-claim recovery | [in progress] | **#259** `task_reclaim` (off unless `CONDUIT_TASK_STALE_CLAIM_MINUTES`) + `task_health` idle-age counts; Postgres tests (backdated `updated_at`, row-locked reclaim, 6-way race gives exactly one winner, reclaim vs complete never both win) are now in the postgres-coordination job; `task_reclaim` marked `destructiveHint` (CodeRabbit) |
-| Innovation: signed bridge receipts | [in progress] | **#257** merged after #256; `scripts/verify-receipts.mjs` verifies an exported log window (owner sets `CONDUIT_RECEIPT_SECRET` only when ready). Hardened 11:00 EDT: constant-time hash compares, secret kept in a `#private` field (never serialized), `head()` + `--head` detect tail truncation, ring clamp tested |
+| Innovation: merge-train health | [in progress] | **#260** `npm run merge-train`: green/mergeable/not-owner-gated order, duplicate-new-file and overlap detection, conflict hotspots (report-only) |
+| Innovation: stale-claim recovery | [in progress] | **#259** `task_reclaim` (opt-in) + `task_health` idle-age counts (owner review) |
+| Innovation: signed bridge receipts | [in progress] | **#257** (opt-in, offline verifier; owner review, after #256) |
 
-New since 07:20 EDT: #258 (bridge total deadline) slots into the train after #257; it overlaps #248 only on different lines of `mcp-bridge.ts`. At 11:00 EDT the #258 deadline was widened to cover DNS resolution, and the transport now gets the remaining budget plus an abort signal that destroys the socket at the deadline.
+Merged 2026-10-17 (agent, CI green, `/ready` 200 after each): #250 → 4ca764f, #253 → ff5f7e4, #254 → af315da, #252 → a1c84b3, #248 → 2a6745b.
 
-Overlap check (11:00 EDT): no open PR is fully contained in main. Added-file collisions are all stacks (#206/#211/#212/#217 `src/runtime.ts`, #252/#253 `context-cursor.test.ts`) except **#155 × #251 `src/db-pool.ts`** (different contents: #155 verified TLS, #251 shared pool). When #155 is unblocked, fold its TLS policy into #251's pool module rather than adding a second file.
+Overlap check (12:10 EDT, `npm run merge-train` from #260): the only duplicate new file, **#155 × #251 `src/db-pool.ts`**, is resolved. #251's shared-pool module wins, and #155 now merges #251 and adds only the verify-by-default TLS policy. Conflict hotspots: `.env.example` and `src/store.ts` (8 PRs each), `src/capability-store.ts` and `src/index.ts` (7 each).
 
 ## Merge train (2026-10-17 07:20 EDT, replaces the earlier "grants train first" order)
 
@@ -65,10 +66,8 @@ Nothing here is merged by agents. Every step was simulated locally on main d30e7
 
 | Step | PR | Depends on | Expected conflict and exact resolution |
 |---|---|---|---|
-| 1 | #250 auth verifier tests | main | none |
-| 2 | #253 `conduit_context` rejects top-level `cursor` | main | none |
-| 3 | #254 Postgres Agent shape + store tests | main | none |
-| 4 | #252 ESLint baseline | #253 (contained) | **#252 contains #253** (merge commit 45e0b0c + fd48a06). Without it, the pair merged silently into code that fails `tsc` (`_cursor` rename vs #253's use of `cursor`). If #253 lands first, #252's diff shrinks to the lint baseline |
+| 1–3 | ~~#250, #253, #254~~ | | **merged 2026-10-17** |
+| 4 | ~~#252 ESLint baseline~~ (**merged**; #248 also merged) | #253 (contained) | **#252 contains #253** (merge commit 45e0b0c + fd48a06). Without it, the pair merged silently into code that fails `tsc` (`_cursor` rename vs #253's use of `cursor`). If #253 lands first, #252's diff shrinks to the lint baseline |
 | 5 | #251 shared pool + bounded reads | #254, #252 | `src/store.ts` `listAgents`: take #251's block (`AGENT_LIST_MAX`, `agentListLimit`, bounded `listAgents`, `existingAgentIds`) **and keep #254's `.rows.map(normalizeAgent)`** on the Postgres path. `ci.yml` Postgres job: union `dist/coordination.test.js dist/store.lifecycle.test.js dist/store.coverage.test.js dist/store.bounds.postgres.test.js` |
 | 6 | #256 bridge destination rule (report-only) | #251 | `ci.yml` union: `… dist/store.coverage.test.js dist/store.bounds.postgres.test.js dist/bridge-destinations.test.js`; `src/store.ts` auto-merges |
 | 7 | #238 grant admin subject match | main | none |
