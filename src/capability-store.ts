@@ -200,3 +200,47 @@ export async function listCapabilityGrants(
 export async function getCapabilityGrantsForAgent(agentId: string, projectId?: string) {
   return listCapabilityGrants({ agentId, projectId });
 }
+
+/** Upper bound on candidate grants loaded for one enforcement decision. Exceeding it fails closed (deny), never open. */
+export const ENFORCEMENT_GRANT_LIMIT = 1000;
+
+/**
+ * Only the grants that could possibly authorise an external call, for `enforceExternalCapability`.
+ * Applies in SQL the same narrowing `matchesCapability` applies in JS (same agent, same provider,
+ * not revoked, not expired as of the JS clock, and unscoped or same-project; with no project only
+ * unscoped grants can match), and bounds the result. `assertCapability` still runs on the result,
+ * so the decision is unchanged; previously every grant the agent ever had (all providers, revoked
+ * history excluded but expired and other-project grants included) was loaded on every call.
+ */
+export async function getEnforceableGrants(agentId: string, provider: CapabilityProvider, projectId?: string, nowMs: number = Date.now()): Promise<CapabilityGrant[]> {
+  await initCapabilityStore();
+  const nowIso = new Date(nowMs).toISOString();
+  if (pool) {
+    const params: unknown[] = [agentId, provider, nowIso, ENFORCEMENT_GRANT_LIMIT];
+    const scope = projectId ? "(project_id IS NULL OR project_id=$5)" : "project_id IS NULL";
+    if (projectId) params.push(projectId);
+    const rows = (
+      await pool.query(
+        `SELECT id, project_id AS "projectId", agent_id AS "agentId", provider, method, path_pattern AS "pathPattern", expires_at AS "expiresAt", created_by AS "createdBy", created_at AS "createdAt", revoked_at AS "revokedAt" FROM capability_grants WHERE agent_id=$1 AND provider=$2 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > $3::timestamptz) AND ${scope} ORDER BY created_at DESC LIMIT $4`,
+        params,
+      )
+    ).rows;
+    return rows.map((row) => ({
+      ...row,
+      expiresAt: row.expiresAt ? new Date(row.expiresAt).toISOString() : undefined,
+      createdAt: new Date(row.createdAt).toISOString(),
+      revokedAt: undefined,
+    })) as CapabilityGrant[];
+  }
+  return [...memory.values()]
+    .filter(
+      (grant) =>
+        grant.agentId === agentId &&
+        grant.provider === provider &&
+        !grant.revokedAt &&
+        (!grant.expiresAt || Date.parse(grant.expiresAt) > nowMs) &&
+        (projectId ? !grant.projectId || grant.projectId === projectId : !grant.projectId),
+    )
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, ENFORCEMENT_GRANT_LIMIT);
+}

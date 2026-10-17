@@ -63,3 +63,40 @@ test("pruneActivity: no OFFSET in the DELETE; keyset boundary + bounded batches"
   assert.match(ACTIVITY_PRUNE_BOUNDARY_SQL, /at::text/, "boundary keeps microsecond precision");
   if (memory) assert.equal(await pruneActivity(), 0, "memory mode trims on write instead");
 });
+
+test("getEnforceableGrants: only grants that could authorise the call, same decisions as before", { skip: !memory }, async () => {
+  const { createCapabilityGrant, revokeCapabilityGrant, getCapabilityGrantsForAgent, getEnforceableGrants } = await import("./capability-store.js");
+  const { createProject } = await import("./store.js");
+  const { matchesCapability } = await import("./capabilities.js");
+  const s = crypto.randomUUID().slice(0, 8);
+  const a = `enf-a-${s}`; const b = `enf-b-${s}`;
+  await registerAgent({ id: a, name: a }); await registerAgent({ id: b, name: b });
+  const p1 = (await createProject({ name: `enf-p1-${s}`, createdBy: a }))!;
+  const p2 = (await createProject({ name: `enf-p2-${s}`, createdBy: a }))!;
+  const g = (extra: Partial<Parameters<typeof createCapabilityGrant>[0]>) => createCapabilityGrant({ agentId: a, provider: "github", method: "GET", pathPattern: "/repos/**", createdBy: a, ...extra });
+  const unscoped = await g({});
+  const inP1 = await g({ projectId: p1.id });
+  const inP2 = await g({ projectId: p2.id });
+  const otherProvider = await g({ provider: "render" });
+  const expiring = await g({ expiresAt: "2099-01-01T00:00:00.000Z" });
+  const revoked = await g({});
+  await revokeCapabilityGrant(revoked.id, a);
+  await createCapabilityGrant({ agentId: b, provider: "github", method: "GET", pathPattern: "/repos/**", createdBy: b });
+  const ids = (list: { id: string }[]) => list.map((x) => x.id).sort();
+
+  assert.deepEqual(ids(await getEnforceableGrants(a, "github", p1.id)), ids([unscoped, inP1, expiring]));
+  assert.deepEqual(ids(await getEnforceableGrants(a, "github")), ids([unscoped, expiring]), "no project: only unscoped grants can match");
+  assert.deepEqual(ids(await getEnforceableGrants(a, "github", p1.id, Date.parse("2100-01-01T00:00:00Z"))), ids([unscoped, inP1]), "expired excluded");
+  assert.deepEqual(ids(await getEnforceableGrants(a, "render")), ids([otherProvider]));
+  assert.ok(!ids(await getEnforceableGrants(a, "github", p2.id)).includes(inP1.id));
+
+  // Equivalence: for each request shape, a grant matches iff it was in the narrowed set or would never have matched.
+  for (const projectId of [undefined, p1.id, p2.id]) {
+    for (const provider of ["github", "render"] as const) {
+      const request = { agentId: a, provider, method: "GET", path: "/repos/x/y", projectId };
+      const before = (await getCapabilityGrantsForAgent(a, projectId)).filter((grant) => matchesCapability(grant, request)).map((x) => x.id).sort();
+      const after = (await getEnforceableGrants(a, provider, projectId)).filter((grant) => matchesCapability(grant, request)).map((x) => x.id).sort();
+      assert.deepEqual(after, before, `${provider} ${projectId ?? "unscoped"}`);
+    }
+  }
+});

@@ -27,6 +27,20 @@ test("PostgreSQL activity prune keeps exactly the newest N rows (ties broken by 
     for (const agentId of ids) await registerAgent({ id: agentId, name: agentId });
     assert.equal((await listAgents(1)).length, 1);
     assert.deepEqual([...(await existingAgentIds([...ids, "nope"]))].sort(), ids);
+
+    const { createCapabilityGrant, revokeCapabilityGrant, getEnforceableGrants } = await import("./capability-store.js");
+    const { createProject } = await import("./store.js");
+    const [a] = ids;
+    const project = (await createProject({ name: `bounds-p-${suffix}`, createdBy: a }))!;
+    const mk = (extra: Record<string, unknown>) => createCapabilityGrant({ agentId: a, provider: "github", method: "GET", pathPattern: "/repos/**", createdBy: a, ...extra } as Parameters<typeof createCapabilityGrant>[0]);
+    const unscoped = await mk({}); const scoped = await mk({ projectId: project.id }); const expiring = await mk({ expiresAt: "2099-01-01T00:00:00.000Z" });
+    const render = await mk({ provider: "render" }); const revoked = await mk({});
+    await revokeCapabilityGrant(revoked.id, a);
+    const got = (list: { id: string }[]) => list.map((x) => x.id).sort();
+    assert.deepEqual(got(await getEnforceableGrants(a, "github", project.id)), [unscoped.id, scoped.id, expiring.id].sort());
+    assert.deepEqual(got(await getEnforceableGrants(a, "github")), [unscoped.id, expiring.id].sort());
+    assert.deepEqual(got(await getEnforceableGrants(a, "github", project.id, Date.parse("2100-01-01T00:00:00Z"))), [unscoped.id, scoped.id].sort());
+    assert.deepEqual(got(await getEnforceableGrants(a, "render")), [render.id]);
   } finally {
     await client.end();
     await closeSharedPool();
