@@ -11,7 +11,8 @@
     "build": "npm run compile",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "test": "npm run compile && CONDUIT_TEST_MEMORY=true node --test $(find dist -name '*.test.js')",
+    "test": "npm run compile && CONDUIT_TEST_MEMORY=true node --test $(find dist -name '*.test.js') scripts/*.test.mjs",
+    "test:coverage": "npm run compile && NODE_ENV=test CONDUIT_TEST_MEMORY=true node --test --experimental-test-coverage --test-coverage-exclude='dist/**/*.test.js' --test-coverage-lines=64 --test-coverage-branches=70 --test-coverage-functions=66 $(find dist -name '*.test.js')",
     "verify:production": "node scripts/verify-production.mjs"
   },
   "dependencies": {
