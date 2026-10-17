@@ -6,6 +6,7 @@ import { createConduitServer } from "./mcp.js";
 import { buildProtectedResourceMetadata, createDevelopmentAuthInfo, createTokenVerifier, DEVELOPMENT_ANONYMOUS_SUBJECT, type ConduitAuthConfig } from "./auth.js";
 import type { OAuthTokenVerifier } from "@modelcontextprotocol/server";
 import { healthBody, readyBody } from "./health-contract.js";
+import { jsonErrorHandler } from "./http-errors.js";
 import { MCP_RATE_LIMITER, TOOL_RATE_LIMITER } from "./rate-limit.js";
 import { getPublicConduitStatus } from "./status.js";
 import { checkPersistence } from "./db-ready.js";
@@ -96,5 +97,6 @@ export function createConduitApp(options: ConduitAppOptions = {}) {
     app.all("/mcp", (_req, res) => res.status(503).json({ error: "auth_not_configured" }));
   }
 
+  app.use(jsonErrorHandler);
   return app;
 }

@@ -9,6 +9,7 @@ import { buildProtectedResourceMetadata, createDevelopmentAuthInfo, createTokenV
 import { createConduitServer } from "./mcp.js";
 import { VERSION, SERVICE_NAME } from "./version.js";
 import { healthBody, readyBody } from "./health-contract.js";
+import { jsonErrorHandler } from "./http-errors.js";
 import { MCP_RATE_LIMITER, TOOL_RATE_LIMITER } from "./rate-limit.js";
 import { timingSafeEqual } from "node:crypto";
 import { isDevelopmentRuntime } from "./runtime.js";
@@ -134,6 +135,7 @@ async function boot() {
     app.all("/mcp", (_req, res) => res.status(503).json({ error: "auth_not_configured", message: "Configure DESCOPE_MCP_SERVER_WELL_KNOWN_URL in production" }));
     console.error("No MCP OAuth authentication configured; /mcp is disabled");
   }
+  app.use(jsonErrorHandler); // last: after every route registered in boot()
   const server = app.listen(port, "0.0.0.0", () => console.log(`Conduit listening on ${port}`));
   const shutdown = async () => { server.close(); process.exit(0); };
   process.once("SIGTERM", shutdown); process.once("SIGINT", shutdown);
