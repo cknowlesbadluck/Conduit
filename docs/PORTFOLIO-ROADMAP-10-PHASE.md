@@ -1,4 +1,4 @@
-# Conduit — 10-Phase Roadmap to a hardened 0.8+ (updated in place 2026-10-17 08:35 EDT)
+# Conduit — 10-Phase Roadmap to a hardened 0.8+ (updated in place 2026-10-17 09:40 EDT)
 
 Target: hardened Conduit 0.8+ → 0.9.0 with reliable grants and low PR entropy. Cross-repo view: `ROADMAP.md`. Current audit: `docs/AUDIT-2026-10-15.md`. Repos stay separate; Conduit talks to Resonance only through HTTP/MCP contracts.
 These are **Conduit workstreams C1–C10**, numbered separately from the canonical portfolio phases 1–10 in `ROADMAP.md`. "C10" means the Conduit release workstream, not portfolio phase 10.
@@ -36,7 +36,7 @@ Conduit is the coordination bridge. It records who is doing what, and it must ne
 - **Idempotent delivery.** Writes are claim-checked and transition-guarded, so a retried claim, complete or handoff is a no-op or a refusal, never a double effect. Callers retry only on 429/503.
 - **No secrets in flight records.** Activity, diagnostics and errors are redacted (#228, #226). Tokens never appear in logs or responses.
 
-## Status board (2026-10-17 08:35 EDT)
+## Status board (2026-10-17 09:40 EDT)
 
 Tags: **[passed]** = exit check met on main · **[in progress]** = PRs open, CI green · **[blocked]** = needs owner action.
 
@@ -50,8 +50,9 @@ Tags: **[passed]** = exit check met on main · **[in progress]** = PRs open, CI 
 | C6 Transport/data security | [blocked] | owner sets Render TLS env, then #155 merged and `/ready` still 200 |
 | C7 Honest posture | [in progress] | `/ready` 200 ✓ (08:02 EDT); #247 commitSha + #245 cross-plane shape contract merged |
 | C8 Contracts + coverage | [in progress] | #252 lint gate + #254 dual-mode store tests merged; coverage ≥70% |
-| C9 Low entropy | [in progress] | ≤8 open non-draft PRs (33 open at 08:35 EDT incl. #257, #258); merge train below |
+| C9 Low entropy | [in progress] | ≤8 open non-draft PRs (34 open at 09:40 EDT incl. #257, #258, #259); main unchanged since d30e7dc. Issue #200 closed (consolidated into #204); #201/#202 updated. No-PR branches pruned except `hygiene/portfolio-probe` (unique `.sh`, owner decides) |
 | C10 Operable release 0.9.0 | not started | tag 0.9.0 after C3–C5; 7 days of probe drift=false |
+| Innovation: stale-claim recovery | [in progress] | **#259** `task_reclaim` (off unless `CONDUIT_TASK_STALE_CLAIM_MINUTES`) + `task_health` idle-age counts; follow-up: Postgres CI test that backdates `updated_at` |
 | Innovation: signed bridge receipts | [in progress] | **#257** merged after #256; `scripts/verify-receipts.mjs` verifies an exported log window (owner sets `CONDUIT_RECEIPT_SECRET` only when ready) |
 
 New since 07:20 EDT: #258 (bridge total deadline) slots into the train after #257; it overlaps #248 only on different lines of `mcp-bridge.ts`.
@@ -72,7 +73,7 @@ Nothing here is merged by agents. Every step was simulated locally on main d30e7
 | 8 | #234 grant expiry fails closed | main | none |
 | 9 | #206 production lockdown | main | none against steps 1–8; `src/index.ts` conflicts with #209/#211/#243/#217 later |
 | 10 | #212 capabilities on any prod runtime | #206 (based on `audit/prod-lockdown`) | none after #206 |
-| next | #257 signed bridge receipts (opt-in), then #258 bridge total deadline | #256 | both edit the `mcp_bridge_call` handler in `src/mcp.ts`: keep #256's destination check and #257's `recordBridgeReceipt` calls |
+| next | #257 signed bridge receipts (opt-in), then #258 bridge total deadline, then #259 stale-claim recovery (appends to `store.ts`; rebase after #251/#254) | #256 | both edit the `mcp_bridge_call` handler in `src/mcp.ts`: keep #256's destination check and #257's `recordBridgeReceipt` calls |
 | later | #255 (Bolt redaction), #243 (redactUrl), #231, #208/#209, #213, #211→#217, #245, #247, #248, #249 | rebase in this order | `src/index.ts` pairs listed under Live evidence; #155 only after the owner sets the Render TLS env |
 
 Held (owner decisions, not closed): #119, #120 (red drafts), #162 (split), #155 (Render env), #187/#190 (experiments). Closed as duplicate: #230 → #255.
