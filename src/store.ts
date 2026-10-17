@@ -193,7 +193,7 @@ export async function registerAgent(input: { id: string; name: string; descripti
       }
       await client.query("INSERT INTO agents(id,name,description) VALUES($1,$2,$3) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,description=EXCLUDED.description", [input.id, input.name, input.description ?? null]);
       if (input.actorSubject) await client.query("INSERT INTO agent_bindings(subject,agent_id) VALUES($1,$2) ON CONFLICT(subject) DO UPDATE SET agent_id=EXCLUDED.agent_id", [input.actorSubject, input.id]);
-      const row = (await client.query("SELECT id,name,description,created_at AS \"createdAt\" FROM agents WHERE id=$1", [input.id])).rows[0] as Agent;
+      const row = normalizeAgent((await client.query("SELECT id,name,description,created_at AS \"createdAt\" FROM agents WHERE id=$1", [input.id])).rows[0]);
       await logWithClient(client, "agent.register", { agentId: input.id });
       return row;
     });
@@ -231,7 +231,7 @@ export function agentListLimit(limit?: number): number {
 /** Newest-first agents, bounded (default 500, max 1000) so dashboards and status never load an unbounded table. */
 export async function listAgents(limit?: number) {
   const bounded = agentListLimit(limit);
-  if (pool) return (await pool.query("SELECT id,name,description,created_at AS \"createdAt\" FROM agents ORDER BY created_at DESC, id DESC LIMIT $1", [bounded])).rows;
+  if (pool) return (await pool.query("SELECT id,name,description,created_at AS \"createdAt\" FROM agents ORDER BY created_at DESC, id DESC LIMIT $1", [bounded])).rows.map(normalizeAgent);
   return [...agents.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, bounded);
 }
 
@@ -453,6 +453,11 @@ function normalizeTimestamp(value: unknown): string | undefined {
   return new Date(value as string | Date).toISOString();
 }
 
+/** Postgres returns created_at as a Date and description as null; the Agent contract (and the memory store) use an ISO string and undefined. */
+function normalizeAgent(row: Record<string, unknown>): Agent {
+  return { id: row.id as string, name: row.name as string, description: (row.description as string | null) ?? undefined, createdAt: new Date(row.createdAt as string | Date).toISOString() };
+}
+
 function normalizeProject(row: Record<string, unknown>): Project {
   return {
     id: row.id as string,
@@ -656,7 +661,7 @@ const resourceSelect = `SELECT id,project_id AS "projectId",name,description,kin
 const contactSelect = `SELECT id,project_id AS "projectId",name,value,kind,created_by AS "createdBy",created_at AS "createdAt",archived_at AS "archivedAt" FROM contacts`;
 const toolSelect = `SELECT id,project_id AS "projectId",name,description,endpoint,created_by AS "createdBy",created_at AS "createdAt",archived_at AS "archivedAt" FROM tools`;
 
-export const listAgentsPage = (options: PageOptions = {}) => keysetPage<Agent>({ ...options, collection: "agents", sql: agentSelect, normalize: row => ({ id: row.id as string, name: row.name as string, description: (row.description as string | null) ?? undefined, createdAt: new Date(row.createdAt as string | Date).toISOString() }), memory: agents.values() });
+export const listAgentsPage = (options: PageOptions = {}) => keysetPage<Agent>({ ...options, collection: "agents", sql: agentSelect, normalize: normalizeAgent, memory: agents.values() });
 export const listProjectsPage = (options: PageOptions = {}) => keysetPage<Project>({ ...options, collection: "projects", sql: projectSelect, conditions: [["archived_at IS NULL", undefined]], normalize: normalizeProject, memory: [...projects.values()].filter(row => !row.archivedAt), filters: { archived: "false" } });
 
 async function scopedPage<T extends KeysetRow>(spec: Omit<PageSpec<T>, "conditions">) {
