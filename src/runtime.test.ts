@@ -34,3 +34,12 @@ test("development modes require an explicit opt-in and no production signal (fai
   assert.equal(isDevelopmentRuntime({ CONDUIT_DEV_MODE: "true", RENDER: "true" }), false);
   assert.equal(isDevelopmentRuntime({ NODE_ENV: "development", CONDUIT_PRODUCTION: "true" }), false);
 });
+
+test("capability grants are required on any production runtime unless explicitly overridden", async () => {
+  const { capabilitiesRequired } = await import("./capabilities.js");
+  assert.equal(capabilitiesRequired({}), false);
+  assert.equal(capabilitiesRequired({ NODE_ENV: "production" }), true);
+  assert.equal(capabilitiesRequired({ RENDER: "true" }), true, "hosting marker alone now requires grants");
+  assert.equal(capabilitiesRequired({ RENDER: "true", CONDUIT_CAPABILITIES_REQUIRED: "false" }), false);
+  assert.equal(capabilitiesRequired({ CONDUIT_CAPABILITIES_REQUIRED: "true" }), true);
+});

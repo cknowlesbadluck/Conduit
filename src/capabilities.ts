@@ -1,3 +1,4 @@
+import { isProductionRuntime } from "./runtime.js";
 export type CapabilityProvider = "github" | "render" | "supabase" | "mcp_bridge";
 
 export type CapabilityGrant = {
@@ -89,7 +90,11 @@ export function assertCapability(grants: CapabilityGrant[], request: CapabilityR
   }
 }
 
-export function capabilitiesRequired(): boolean {
-  if (process.env.CONDUIT_CAPABILITIES_REQUIRED !== undefined) return process.env.CONDUIT_CAPABILITIES_REQUIRED === "true";
-  return process.env.NODE_ENV === "production";
+/**
+ * Capability grants are required on any production runtime (see isProductionRuntime), not only
+ * when NODE_ENV=production. An explicit CONDUIT_CAPABILITIES_REQUIRED=true|false still wins.
+ */
+export function capabilitiesRequired(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (env.CONDUIT_CAPABILITIES_REQUIRED !== undefined) return env.CONDUIT_CAPABILITIES_REQUIRED === "true";
+  return isProductionRuntime(env);
 }
