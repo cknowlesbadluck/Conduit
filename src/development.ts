@@ -1,4 +1,4 @@
-export type DevelopmentContext = {
+type DevelopmentContext = {
   purpose: string;
   status: "active";
   scope: string;
