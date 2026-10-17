@@ -1,8 +1,7 @@
-import { DATABASE_CONNECT_TIMEOUT_MS } from "./db-timeouts.js";
-import { createPgPool, databaseConfigured } from "./db-pool.js";
+import { getSharedPool } from "./db-pool.js";
 
-const useDatabase = databaseConfigured();
-const pool = createPgPool({ max: 2, connectionTimeoutMillis: DATABASE_CONNECT_TIMEOUT_MS });
+// Shared with store.ts (see db-pool.ts); previously a separate pool of 2.
+const pool = getSharedPool();
 
 /** In-memory fallback used when CONDUIT_TEST_MEMORY=true. registerAgent in store.ts also maintains boundAgentSubjects; this map is filled by rememberSubjectBinding. */
 const memorySubjects = new Map<string, Set<string>>();

@@ -6,9 +6,13 @@ import { AUTH_DISCOVERY_TIMEOUT_MS, DATABASE_CONNECT_TIMEOUT_MS } from "./db-tim
 test("database and discovery timeouts are finite and wired into every pool", async () => {
   assert.ok(DATABASE_CONNECT_TIMEOUT_MS >= 1000 && Number.isFinite(DATABASE_CONNECT_TIMEOUT_MS));
   assert.ok(AUTH_DISCOVERY_TIMEOUT_MS > 0);
+  // One shared work pool carries the connect timeout; the stores must use it, not their own pools.
+  const shared = await readFile(new URL("../src/db-pool.ts", import.meta.url), "utf8");
+  assert.match(shared, /connectionTimeoutMillis: DATABASE_CONNECT_TIMEOUT_MS/);
   for (const file of ["store", "capability-store", "binding-subjects"]) {
     const src = await readFile(new URL(`../src/${file}.ts`, import.meta.url), "utf8");
-    assert.match(src, /connectionTimeoutMillis: DATABASE_CONNECT_TIMEOUT_MS/, file);
+    assert.match(src, /getSharedPool\(\)/, file);
+    assert.doesNotMatch(src, /new (pg\.)?Pool\(/, `${file} must not open its own pool`);
   }
   const auth = await readFile(new URL("../src/auth.ts", import.meta.url), "utf8");
   assert.match(auth, /AbortSignal\.timeout\(AUTH_DISCOVERY_TIMEOUT_MS\)/);
