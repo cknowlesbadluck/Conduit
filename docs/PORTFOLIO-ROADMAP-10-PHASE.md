@@ -1,4 +1,4 @@
-# Conduit — 10-Phase Roadmap to a hardened 0.8+ (updated in place 2026-10-16 18:10 EDT)
+# Conduit — 10-Phase Roadmap to a hardened 0.8+ (updated in place 2026-10-17 03:30 EDT)
 
 Target: hardened Conduit 0.8+ → 0.9.0 with reliable grants and low PR entropy. Cross-repo view: `ROADMAP.md`. Current audit: `docs/AUDIT-2026-10-15.md`. Repos stay separate; Conduit talks to Resonance only through HTTP/MCP contracts.
 These are **Conduit workstreams C1–C10**, numbered separately from the canonical portfolio phases 1–10 in `ROADMAP.md`. "C10" means the Conduit release workstream, not portfolio phase 10.
@@ -8,18 +8,37 @@ Status: **[passed]** · **[in progress]** · **[blocked]** (owner action).
 |---|---|---|---|
 | C1 | Green, pinned CI | main CI + Live Smoke green; actions SHA-pinned; no owner-side red check on PRs | **[blocked]**: green ✓, pinned ✓; Cloudflare Workers Builds still red on every PR (owner: disconnect) |
 | C2 | Lean code | no unreferenced modules; no TODO/FIXME in src | **[passed]** (#210, #232, #233) |
-| C3 | Reliable grants | admin actions subject-matched; admins can revoke any grant (#238); expiry fails closed + refuse expired (#234); authz matrix tested (#235 ✓) | **[in progress]**: #238 and #234 open, need owner review |
+| C3 | Reliable grants | admin actions subject-matched; admins can revoke any grant (#238); expiry fails closed + refuse expired (#234); authz matrix tested (#235 ✓); token verifier fail-closed paths tested (#250) | **[in progress]**: #238, #234, #250 open, need owner review |
 | C4 | Fail-closed production | lockdown + capabilities-required independent of `NODE_ENV` (#206 → #212) | **[in progress]**: #206 changes requested; #212 conflicting |
-| C5 | Bounded surface | retention/redaction/timeouts ✓; SSE cap → 503 (#217); pageLimit clamp (#231); diagnostics cache (#208) | **[in progress]** |
+| C5 | Bounded surface | retention/redaction/timeouts ✓; SSE cap → 503 (#217); pageLimit clamp (#231); diagnostics cache (#208); one shared pg pool, bounded listAgents, batched prune (#251); `conduit_context` rejects an ambiguous top-level `cursor` (#253) | **[in progress]** |
 | C6 | Transport + data security | Postgres TLS verified by default (#155), after the owner sets the Render env | **[blocked]** (owner env) |
 | C7 | Honest posture + drift | `/ready` 200 + contractRevision ✓; scheduled probe on main (#239 ✓); drift detection (#241 ✓); Workers handler honest (#213) | **[in progress]** |
-| C8 | Contracts + coverage | tool-surface snapshot ✓; coverage ≥70% lines; JSON-typed schemas (#207) | **[in progress]** |
+| C8 | Contracts + coverage | tool-surface snapshot ✓; coverage ≥70% lines; JSON-typed schemas (#207); dual-mode store tests run in the Postgres CI job, which also fixes the Postgres Agent shape (#254); ESLint baseline (#252) | **[in progress]**: store.js 74.9→77.7% lines in Postgres mode with #254 |
 | C9 | Low entropy | ≤8 open non-draft PRs; nothing conflicting for more than 3 days; stacks rebased onto main; red drafts (#119/#120) decided | **[in progress]**: 23 open PRs on 2026-10-16 18:10 EDT (#244 closed as duplicate of #242; #204/#231 pagination are complementary, not duplicates) |
 | C10 | Operable release 0.9.0 | runbook; SSE drain; tag 0.9.0; contractRevision change policy in SPEC.md; 7 days of probe drift=false | **[in progress]** |
 
+## Composition and coordination principles (no party dominates)
+
+Conduit is the coordination bridge. It records who is doing what, and it must never become the party that decides for everyone.
+
+1. **Claims, not commands.** Agents claim, block, release and hand off tasks. Conduit enforces transitions atomically (one winner per claim or handoff) but never assigns work on its own initiative.
+2. **Bounded by construction.** Every list and context read is paged and capped (`pageLimit` 1..200, per-section `cursors` in `conduit_context`). Ambiguous input is rejected, not guessed (#253). One shared pool and bounded reads (#251) mean one caller can't exhaust the database for everyone.
+3. **Fair admission.** Per-IP rate limits and the SSE subscriber cap (#217) return 429/503 with `Retry-After` instead of hanging, so a noisy client degrades alone.
+4. **Identity is bound, scope is explicit.** A subject binds to one logical agent and every tool is scope-gated. Grants are subject-matched and expire fail-closed (#238, #234).
+5. **Honest posture.** `/ready` and `/health` report what is true (`contractRevision`, persistence), never a fake ready.
+6. **Separate planes.** Conduit talks to Resonance only over HTTP/MCP contracts. It shares no runtime, database or secrets with Resonance or QuicksilverV1.
+
+## Integration hygiene rules
+
+- **Off by default.** An integration or MCP bridge target is inert until it's explicitly configured *and* granted. Missing configuration means absent, not present-and-broken.
+- **Destination from config only.** Outbound targets (`integration_call`, `mcp_bridge_call`) resolve from server-side registered tools and resources plus the external policy allowlist, never from a URL in tool input. Echoed URLs are redacted (#243).
+- **Approval-gated outbound.** Outbound calls need a grant for that capability and subject. Admin grants are subject-matched, and expired or unparseable grants fail closed.
+- **Idempotent delivery.** Writes are claim-checked and transition-guarded, so a retried claim, complete or handoff is a no-op or a refusal, never a double effect. Callers retry only on 429/503.
+- **No secrets in flight records.** Activity, diagnostics and errors are redacted (#228, #226). Tokens never appear in logs or responses.
+
 ## Merge order (grants train first)
 
-Done: #241 (merged 2026-10-16 14:08 EDT), #246 report-only deploy-parity annotation (merged 2026-10-16 18:45 EDT, d30e7dc). Pending: #238 → #234 → #206 → #212 (rebase) → #211/#217 (rebase) → #213 → #208/#209 → #231 → #243 (URL redaction) → #245 (probe shape; already on top of #246) → #155 (after owner env). **Merge authorization (single policy):** agents may merge only Conduit docs/test/CI-only PRs that are green (ignoring the owner-side Workers Builds check) with no outstanding changes-requested or unaddressed bot findings, then verify `/ready` returns 200. Runtime/auth PRs and every Resonance/QuicksilverV1 PR need the owner. This supersedes any older "agents never merge" wording preserved below.
+Done: #241 (merged 2026-10-16 14:08 EDT), #246 report-only deploy-parity annotation (merged 2026-10-16 18:45 EDT, d30e7dc). Pending: #250 (tests) → #253/#254 (tests + small fixes) → #252 (lint) → #251 (perf) → #238 → #234 → #206 → #212 (rebase) → #211/#217 (rebase) → #213 → #208/#209 → #231 → #243 (URL redaction) → #245 (probe shape; already on top of #246) → #155 (after owner env). **Merge authorization (single policy):** agents may merge only Conduit docs/test/CI-only PRs that are green (ignoring the owner-side Workers Builds check) with no outstanding changes-requested or unaddressed bot findings, then verify `/ready` returns 200. Runtime/auth PRs and every Resonance/QuicksilverV1 PR need the owner. This supersedes any older "agents never merge" wording preserved below.
 
 ## Portfolio status and cross-repo merge order (preserved from the 2026-10-15 22:30 EDT refinement)
 
