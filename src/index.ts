@@ -11,6 +11,7 @@ import { VERSION, SERVICE_NAME } from "./version.js";
 import { healthBody, readyBody } from "./health-contract.js";
 import { MCP_RATE_LIMITER, TOOL_RATE_LIMITER } from "./rate-limit.js";
 import { timingSafeEqual } from "node:crypto";
+import { resolveTrustProxy } from "./trust-proxy.js";
 import { replayRecentEvents, subscribeEvents } from "./events.js";
 import { getPublicConduitStatus } from "./status.js";
 import { runDiagnostics } from "./diagnostics.js";
@@ -19,6 +20,7 @@ import { conduitUiHtml, CONDUIT_UI_CSS, CONDUIT_UI_JS } from "./ui.js";
 
 const app = express();
 app.disable("x-powered-by");
+app.set("trust proxy", resolveTrustProxy());
 app.use((_req, res, next) => {
   res.set({ "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer", "Cache-Control": "no-store", "Cross-Origin-Resource-Policy": "same-origin", "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()", "Content-Security-Policy": "default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'" });
   next();
