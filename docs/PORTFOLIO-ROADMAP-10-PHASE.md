@@ -31,8 +31,8 @@ Conduit is the coordination bridge. It records who is doing what, and it must ne
 ## Integration hygiene rules
 
 - **Off by default.** An integration or MCP bridge target is inert until it's explicitly configured *and* granted. Missing configuration means absent, not present-and-broken.
-- **Destination from config only.** Outbound targets (`integration_call`, `mcp_bridge_call`) resolve from server-side registered tools and resources plus the external policy allowlist, never from a URL in tool input. Echoed URLs are redacted (#243).
-- **Approval-gated outbound.** Outbound calls need a grant for that capability and subject. Admin grants are subject-matched, and expired or unparseable grants fail closed.
+- **Destination from config only (target; partly met).** `integration_call` resolves providers server-side. **Gap:** `mcp_bridge_call` still takes `endpoint` from tool input. It's guarded (HTTPS only, no credentials in the URL, SSRF block on private, loopback and link-local addresses with a pinned DNS answer, and a capability grant on origin+path when grants are required), but the rule is not met until the endpoint must match a registered `tool`/`resource` or a configured allowlist. Tracked as roadmap C5. Echoed URLs are redacted (#243).
+- **Approval-gated outbound.** In production (grants required), outbound calls need a grant for that capability and subject, and are rate limited per agent and provider. Admin grants are subject-matched, and expired or unparseable grants fail closed.
 - **Idempotent delivery.** Writes are claim-checked and transition-guarded, so a retried claim, complete or handoff is a no-op or a refusal, never a double effect. Callers retry only on 429/503.
 - **No secrets in flight records.** Activity, diagnostics and errors are redacted (#228, #226). Tokens never appear in logs or responses.
 
