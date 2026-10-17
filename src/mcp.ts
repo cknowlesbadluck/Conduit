@@ -17,6 +17,7 @@ import { errorResult } from "./errors.js";
 import { isGrantAdmin, registerGrantTools } from "./grant-tools.js";
 import { registerPaginationTools } from "./pagination-tools.js";
 import { enforceExternalCapability } from "./external-policy.js";
+import { matchedGrantId, recordBridgeReceipt } from "./receipts.js";
 import { actorBindingKey, actorBindingLookupKeys } from "./actor-binding.js";
 
 /** Soft-gate for cross-project / GATE-style tasks. Returns a warning string when the convention is incomplete; never blocks creation. */
@@ -155,11 +156,15 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
   server.registerTool("mcp_bridge_call", { description: "Forward one JSON-RPC request to a remote HTTPS MCP endpoint. Discovery/list methods require read scope; tools/call and other methods require write scope. Private, loopback, and link-local targets are rejected, DNS is pinned after validation, and redirects are not followed.", inputSchema: z.object({ endpoint: z.string().url(), method: z.string().min(1).max(200), id: z.union([z.string(), z.number(), z.null()]).optional(), params: z.unknown().optional(), projectId: z.string().min(1).max(200).optional() }), annotations: openWorldWrite }, async ({ endpoint, method, id, params, projectId }, extra) => {
     const readMethods = new Set(["initialize", "notifications/initialized", "ping", "tools/list", "resources/list", "resources/templates/list", "prompts/list", "resources/read"]);
     if (readMethods.has(method)) { if (readScope) auth(extra, readScope); } else { if (writeScope) auth(extra, writeScope); }
+    let grantId: string | null = null;
     try {
       const target = new URL(endpoint);
       const agentId = await resolveBoundAgent(extra);
-      await enforceExternalCapability({ agentId: agentId ?? undefined, provider: "mcp_bridge", method, path: `${target.origin}${target.pathname}${target.search}`, projectId });
+      const capabilityRequest = { agentId: agentId ?? undefined, provider: "mcp_bridge" as const, method, path: `${target.origin}${target.pathname}${target.search}`, projectId };
+      await enforceExternalCapability(capabilityRequest);
+      grantId = await matchedGrantId(capabilityRequest);
       const result = await callMcpBridge({ endpoint, request: { jsonrpc: "2.0", id, method, params } });
+      recordBridgeReceipt({ endpoint, method, grantId, decision: "allowed", status: result.status });
       console.info(JSON.stringify({ type: "mcp.bridge.call", endpoint: target.origin, method, status: result.status, ok: result.ok, projectId: projectId ?? null, actor: actorSubject(extra) ?? null }));
       return json(result);
     } catch (error) {
@@ -167,6 +172,7 @@ export function createConduitServer(authConfig?: ConduitAuthConfig) {
       let origin: string | null = null;
       try { origin = new URL(endpoint).origin; } catch { origin = null; }
       console.warn(JSON.stringify({ type: "mcp.bridge.call.failed", endpoint: origin, method, projectId: projectId ?? null, actor: actorSubject(extra) ?? null, error: message }));
+      recordBridgeReceipt({ endpoint, method, grantId, decision: message.startsWith("capability_denied") ? "denied" : "error" });
       return rejected(message.startsWith("capability_denied") ? "capability_denied" : "mcp_bridge_call_failed", { message });
     }
   });
