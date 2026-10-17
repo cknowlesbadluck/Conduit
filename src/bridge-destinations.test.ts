@@ -132,6 +132,7 @@ test("listRegisteredEndpoints returns non-archived HTTPS tool and resource endpo
   assert.ok(!endpoints.includes("http://plain-reg.example.com/mcp"));
 });
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test helper reads arbitrary result shapes
 type Result = { isError?: boolean; structuredContent?: any; content?: Array<{ text?: string }> };
 type Handler = (input: unknown, extra: unknown) => Promise<Result>;
 
