@@ -76,7 +76,7 @@ test("getEnforceableGrants: only grants that could authorise the call, same deci
   const g = (extra: Partial<Parameters<typeof createCapabilityGrant>[0]>) => createCapabilityGrant({ agentId: a, provider: "github", method: "GET", pathPattern: "/repos/**", createdBy: a, ...extra });
   const unscoped = await g({});
   const inP1 = await g({ projectId: p1.id });
-  const inP2 = await g({ projectId: p2.id });
+  const _inP2 = await g({ projectId: p2.id }); // created only to prove a grant in another project is excluded
   const otherProvider = await g({ provider: "render" });
   const expiring = await g({ expiresAt: "2099-01-01T00:00:00.000Z" });
   const revoked = await g({});
