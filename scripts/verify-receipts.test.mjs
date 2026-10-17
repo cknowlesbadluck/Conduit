@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseReceipts, sign, verifyChains, GENESIS_HASH } from "./verify-receipts.mjs";
+import { parseReceipts, sign, verifyChains, hashesEqual, GENESIS_HASH } from "./verify-receipts.mjs";
 import { MemoryReceiptStore, ReceiptChain } from "../dist/receipts.js";
 
 function chain(secret, n, chainId = "c1") {
@@ -36,4 +36,19 @@ test("the offline verifier accepts what the server signs (dist/receipts.js)", ()
   const text = server.store.list().map((receipt) => JSON.stringify({ type: "mcp.bridge.receipt", receipt })).join("\n");
   assert.equal(verifyChains(parseReceipts(text), "shared").ok, true);
   assert.equal(verifyChains(parseReceipts(text), "not-shared").ok, false);
+});
+
+test("--head pins the last record: truncated tails and missing chains fail; constant-time compare is strict", () => {
+  const a = chain("s", 4, "a");
+  const heads = new Map([["a", { seq: 4, hash: a[3].hash }]]);
+  assert.equal(verifyChains(a, "s", { heads }).ok, true);
+  const cut = verifyChains(a.slice(0, 3), "s", { heads });
+  assert.equal(cut.ok, false);
+  assert.equal(cut.chains[0].reason, "truncated");
+  const gone = verifyChains([], "s", { heads });
+  assert.equal(gone.ok, false);
+  assert.equal(gone.chains[0].reason, "truncated");
+  assert.equal(hashesEqual(a[0].hash, a[0].hash), true);
+  assert.equal(hashesEqual(a[0].hash, a[1].hash), false);
+  assert.equal(hashesEqual(a[0].hash, a[0].hash.slice(2)), false);
 });

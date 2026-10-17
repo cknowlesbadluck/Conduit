@@ -1,4 +1,4 @@
-import { createHmac, randomUUID } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { redactString } from "./redact.js";
 import { capabilitiesRequired, matchesCapability, type CapabilityProvider } from "./capabilities.js";
 import { getCapabilityGrantsForAgent } from "./capability-store.js";
@@ -48,6 +48,12 @@ export function signReceipt(receipt: Omit<Receipt, "hash">, secret: string): str
   return createHmac("sha256", secret).update(canonicalReceipt(receipt)).digest("hex");
 }
 
+/** Constant-time comparison of two hex digests (length mismatch returns false without early exit on content). */
+export function hashesEqual(a: string, b: string): boolean {
+  if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length || !/^[0-9a-f]*$/.test(a) || !/^[0-9a-f]*$/.test(b)) return false;
+  return timingSafeEqual(Buffer.from(a, "hex"), Buffer.from(b, "hex"));
+}
+
 /** Origin + pathname only; userinfo and query are dropped, then the generic redactor runs. Never throws. */
 export function redactDestination(endpoint: string): string {
   try {
@@ -77,9 +83,18 @@ export class ReceiptChain {
   readonly chainId = randomUUID();
   private seq = 0;
   private prevHash = GENESIS_HASH;
-  constructor(private readonly secret: string, readonly store: ReceiptStore, private readonly now: () => Date = () => new Date()) {
+  /** ES private field: not enumerable, so JSON.stringify / util.inspect / structured logs of the chain never include it. */
+  readonly #secret: string;
+  constructor(secret: string, readonly store: ReceiptStore, private readonly now: () => Date = () => new Date()) {
     if (!secret) throw new Error("receipt_secret_required");
+    this.#secret = secret;
   }
+  /**
+   * The latest (seq, hash). Safe to publish (an HMAC output reveals nothing about the secret); pass it to
+   * verifyReceiptChain({ head }) / verify-receipts.mjs --head to detect tail truncation, which a hash
+   * chain alone cannot see.
+   */
+  head(): { chainId: string; seq: number; hash: string } { return { chainId: this.chainId, seq: this.seq, hash: this.prevHash }; }
   /** Synchronous so concurrent calls in one process always chain in a single order. */
   append(input: ReceiptInput): Receipt {
     const unsigned: Omit<Receipt, "hash"> = {
@@ -94,30 +109,34 @@ export class ReceiptChain {
       decision: input.decision,
       status: input.status ?? null,
     };
-    const receipt: Receipt = { ...unsigned, hash: signReceipt(unsigned, this.secret) };
+    const receipt: Receipt = { ...unsigned, hash: signReceipt(unsigned, this.#secret) };
     this.prevHash = receipt.hash;
     this.store.append(receipt);
     return receipt;
   }
 }
 
-export type ChainVerdict = { ok: true; count: number } | { ok: false; count: number; brokenAt: number; reason: "bad_hash" | "bad_link" | "bad_seq" | "bad_genesis" };
+export type ChainVerdict = { ok: true; count: number } | { ok: false; count: number; brokenAt: number; reason: "bad_hash" | "bad_link" | "bad_seq" | "bad_genesis" | "truncated" };
 
 /**
  * Verify one chain's receipts (in seq order). `partial` accepts a window that starts mid-chain
  * (for example after the ring buffer evicted older entries): the first record's link is not checked.
  */
-export function verifyReceiptChain(receipts: Receipt[], secret: string, options: { partial?: boolean } = {}): ChainVerdict {
+export function verifyReceiptChain(receipts: Receipt[], secret: string, options: { partial?: boolean; head?: { seq: number; hash: string } } = {}): ChainVerdict {
   for (let i = 0; i < receipts.length; i++) {
     const r = receipts[i];
     const { hash, ...unsigned } = r;
-    if (signReceipt(unsigned, secret) !== hash) return { ok: false, count: receipts.length, brokenAt: i, reason: "bad_hash" };
+    if (!hashesEqual(signReceipt(unsigned, secret), hash)) return { ok: false, count: receipts.length, brokenAt: i, reason: "bad_hash" };
     if (i === 0) {
-      if (!options.partial && (r.prevHash !== GENESIS_HASH || r.seq !== 1)) return { ok: false, count: receipts.length, brokenAt: 0, reason: "bad_genesis" };
+      if (!options.partial && (!hashesEqual(r.prevHash, GENESIS_HASH) || r.seq !== 1)) return { ok: false, count: receipts.length, brokenAt: 0, reason: "bad_genesis" };
       continue;
     }
-    if (r.prevHash !== receipts[i - 1].hash) return { ok: false, count: receipts.length, brokenAt: i, reason: "bad_link" };
+    if (!hashesEqual(r.prevHash, receipts[i - 1].hash)) return { ok: false, count: receipts.length, brokenAt: i, reason: "bad_link" };
     if (r.seq !== receipts[i - 1].seq + 1 || r.chainId !== receipts[i - 1].chainId) return { ok: false, count: receipts.length, brokenAt: i, reason: "bad_seq" };
+  }
+  if (options.head) {
+    const last = receipts[receipts.length - 1];
+    if (!last || last.seq !== options.head.seq || !hashesEqual(last.hash, options.head.hash)) return { ok: false, count: receipts.length, brokenAt: receipts.length, reason: "truncated" };
   }
   return { ok: true, count: receipts.length };
 }
