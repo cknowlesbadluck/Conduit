@@ -1,9 +1,9 @@
 import { SERVICE_NAME, VERSION } from "./version.js";
 
-export type IntegrationProvider = "github" | "render" | "supabase";
-export type IntegrationMethod = "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE";
+type IntegrationProvider = "github" | "render" | "supabase";
+type IntegrationMethod = "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE";
 
-export type IntegrationDefinition = {
+type IntegrationDefinition = {
   provider: IntegrationProvider;
   description: string;
   baseUrl: string;
@@ -13,7 +13,7 @@ export type IntegrationDefinition = {
   writeMethods: IntegrationMethod[];
 };
 
-export type IntegrationResult = {
+type IntegrationResult = {
   provider: IntegrationProvider;
   method: IntegrationMethod;
   path: string;
