@@ -64,7 +64,7 @@ List tools accept `limit` + opaque `cursor` and return `{ items, nextCursor? }`.
 - Render-compatible HTTP deployment
 
 The MCP endpoint is `/mcp`.
-The service also exposes `/health`, `/ready`, unauthenticated rate-limited `/diagnostics`, authenticated `/events` (SSE), and OAuth protected-resource metadata at `/.well-known/oauth-protected-resource` when OAuth is configured. Configuration names and defaults are listed in `.env.example`.
+The service also exposes `/health`, `/ready`, unauthenticated rate-limited `/diagnostics`, authenticated `/events` (SSE), and OAuth protected-resource metadata at `/.well-known/oauth-protected-resource` when OAuth is configured. Configuration names and defaults are listed in `.env.example`. `/ready` also reports `commitSha`, the deployed commit from Render's standard `RENDER_GIT_COMMIT` (hex SHA only; `"unknown"` when absent).
 
 ## Deployment
 

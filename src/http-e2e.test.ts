@@ -132,8 +132,9 @@ test("black-box MCP HTTP authentication path challenges then accepts a test veri
 
     const ready = await fetch(`${baseUrl}/ready`);
     assert.equal(ready.status, 200);
-    const readyBody = await ready.json() as { status: string; version: string; persistence: string; contractRevision: string };
+    const readyBody = await ready.json() as { status: string; version: string; persistence: string; contractRevision: string; commitSha: string };
     assert.equal(readyBody.status, "ready");
+    assert.match(readyBody.commitSha, /^(unknown|[0-9a-f]{7,40})$/);
     assert.equal(readyBody.persistence, "memory");
     assert.equal(typeof readyBody.contractRevision, "string");
     assert.equal(readyBody.contractRevision.length > 0, true);
