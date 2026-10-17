@@ -20,16 +20,27 @@
  * is a JSON service payload (ready / not_ready), it must validate; a violation becomes outcome
  * `shape_changed`, ok=false, drift=true. See scripts/ready-shape.mjs.
  *
+ * Deploy parity (report-only annotation): a target may pin `parity` = the /ready field set and
+ * contractRevision its repo's main declares (for Resonance: `Readiness` in src/deploy/health.ts,
+ * mirrored by Resonance scripts/deploy-parity.mjs). When the service answered with JSON, the
+ * result gains `behindMain` + `missingContractFields`. It never changes ok/drift/exit code.
+ *
  * Usage: node scripts/portfolio-probe.mjs [--json] [--drift-only]
  *   default: exit 1 if any target is not ok; --drift-only: exit 1 only if any pinned target drifted.
  */
 
 import { checkShape } from "./ready-shape.mjs";
 
+/** Resonance main's /api/ready contract (src/deploy/health.ts `Readiness`, deployLag.ts revision). */
+export const RESONANCE_MAIN_READY = Object.freeze({
+  contractRevision: "2026-10-03-owner-gate",
+  fields: Object.freeze(["status", "service", "stage", "production", "authMode", "authModeOk", "persistenceConfigured", "githubAdapterConfigured", "missingRequired", "ownerActionRequired", "contractRevision", "ownerKeys", "agentActionRequired", "posture", "timestamp"]),
+});
+
 export const TARGETS = [
   { name: "conduit", url: "https://conduit-feco.onrender.com/ready", expectService: "conduit", schema: "conduit-ready", expect: { contractRevision: "2026-10-03-ready-surface" } },
   // Owner gate: the service role key is the ONLY thing Resonance prod may be missing.
-  { name: "resonance-netlify", url: "https://resonancenexus.netlify.app/api/ready", expectService: "resonance-nexus", schema: "resonance-ready", expect: { missingRequired: ["SUPABASE_SERVICE_ROLE_KEY"] } },
+  { name: "resonance-netlify", url: "https://resonancenexus.netlify.app/api/ready", expectService: "resonance-nexus", schema: "resonance-ready", expect: { missingRequired: ["SUPABASE_SERVICE_ROLE_KEY"] }, parity: RESONANCE_MAIN_READY },
   { name: "resonance-vercel", url: "https://resonance.vercel.app/api/ready", expectService: "resonance-nexus" },
   { name: "resonancenexus-vercel", url: "https://resonancenexus.vercel.app/api/ready", expectService: "resonance-nexus" },
   { name: "quicksilver-vercel", url: "https://quicksilver.vercel.app/", expectService: "quicksilver" },
@@ -128,15 +139,27 @@ export function attachShape(target, observation, result) {
   return { ...result, outcome: "shape_changed", ok: false, drift: true, shapeOk: false, shapeErrors: errors.slice(0, 10), previousOutcome: result.outcome };
 }
 
+/** Report-only: compare the answered body's field names with the pinned main contract. */
+export function attachParity(target, observation, result) {
+  if (!target.parity || !["ready", "not_ready", "contract_changed", "regression"].includes(result.outcome)) return result;
+  let json;
+  try { json = JSON.parse(observation?.body ?? ""); } catch { return result; }
+  if (!json || typeof json !== "object" || Array.isArray(json)) return result;
+  const keys = Object.keys(json);
+  const missingContractFields = target.parity.fields.filter((f) => !keys.includes(f));
+  const revisionMatches = json.contractRevision === target.parity.contractRevision;
+  return { ...result, behindMain: missingContractFields.length > 0 || !revisionMatches, missingContractFields };
+}
+
 export async function probeAll(targets = TARGETS, options) {
-  return Promise.all(targets.map(async (t) => { const o = await observe(t.url, options); return attachShape(t, o, classify(t, o)); }));
+  return Promise.all(targets.map(async (t) => { const o = await observe(t.url, options); return attachShape(t, o, attachParity(t, o, classify(t, o))); }));
 }
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 if (isMain) {
   const results = await probeAll();
   if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), results }, null, 2));
-  else for (const r of results) console.log(`${r.ok ? "OK  " : "FAIL"} ${r.name.padEnd(22)} ${r.outcome}${r.missing?.length ? ` missing=[${r.missing.join(",")}]` : ""}${r.reason ? ` reason=${r.reason}` : ""}${r.drift ? " DRIFT" : ""}${r.status ? ` (${r.status})` : ""}`);
+  else for (const r of results) console.log(`${r.ok ? "OK  " : "FAIL"} ${r.name.padEnd(22)} ${r.outcome}${r.missing?.length ? ` missing=[${r.missing.join(",")}]` : ""}${r.reason ? ` reason=${r.reason}` : ""}${r.drift ? " DRIFT" : ""}${r.behindMain ? ` BEHIND_MAIN(missing=${r.missingContractFields.join(",") || "contractRevision"})` : ""}${r.status ? ` (${r.status})` : ""}`);
   const pass = process.argv.includes("--drift-only") ? results.every((r) => !r.drift || !TARGETS.find((t) => t.name === r.name)?.expect) : results.every((r) => r.ok);
   process.exitCode = pass ? 0 : 1;
 }
