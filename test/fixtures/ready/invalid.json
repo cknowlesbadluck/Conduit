@@ -4,6 +4,7 @@
     { "why": "missing contractRevision", "body": {"status":"ready","service":"conduit","version":"0.8.0","persistence":"postgres"} },
     { "why": "unknown status", "body": {"status":"online","service":"conduit","version":"0.8.0","contractRevision":"2026-10-03-ready-surface","persistence":"postgres"} },
     { "why": "wrong service", "body": {"status":"ready","service":"other","version":"0.8.0","contractRevision":"2026-10-03-ready-surface","persistence":"postgres"} },
+    { "why": "commitSha echoes a non-SHA value", "body": {"status":"ready","service":"conduit","version":"0.8.0","contractRevision":"2026-10-03-ready-surface","persistence":"postgres","commitSha":"postgres://u:p@h/db"} },
     { "why": "not an object", "body": ["ready"] }
   ],
   "resonance": [
