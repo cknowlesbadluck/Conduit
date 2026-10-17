@@ -90,3 +90,19 @@ test("request ids are opt-in", async () => {
     assert.equal((await call(port, "/health")).headers["x-request-id"], undefined);
   });
 });
+
+test("/events at the subscriber cap: honest 503 + Retry-After before any stream headers", async () => {
+  const { subscribeEvents, subscriberCount } = await import("./events.js");
+  const held: Array<() => unknown> = [];
+  try {
+    for (;;) { try { held.push(subscribeEvents({}, () => {})); } catch { break; } if (held.length > 10_000) throw new Error("cap not enforced"); }
+    await withApp({ anonymous: true }, async (port) => {
+      const full = await call(port, "/events");
+      assert.equal(full.status, 503);
+      assert.equal(full.headers["retry-after"], "5");
+      assert.doesNotMatch(String(full.headers["content-type"]), /event-stream/);
+      assert.match(full.body, /event_subscriber_limit_reached/);
+    });
+  } finally { for (const off of held) off(); }
+  assert.ok(subscriberCount() < 100);
+});
