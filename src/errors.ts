@@ -4,6 +4,7 @@ const messages: Record<string, string> = {
   agent_identity_not_bound: "Agent identity is not bound to the authenticated actor. Register this agent first.",
   agent_identity_not_bound_or_impersonation: "Agent identity is not bound to the authenticated actor, or the requested agent does not match the binding",
   agent_unregistered: "Agent is not registered",
+  context_cursor_unsupported: "conduit_context does not accept a top-level cursor; pass per-section cursors as cursors.<section> (agents, tasks, contacts, tools, resources, activity, projects)",
   creator_not_registered: "Task creator is not registered",
   handoff_rejected: "Task handoff was rejected because the caller does not own the task or the target agent is unregistered",
   integration_call_failed: "Integration call failed",

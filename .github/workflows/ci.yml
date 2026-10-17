@@ -25,6 +25,7 @@ jobs:
           node-version: 22
       - run: npm ci
       - run: npm run typecheck
+      - run: npm run lint
       # Coverage gate pinned just under the current baseline (Node 22: lines 65.4, branches 75.2, functions 67.9).
       # Raise these when coverage improves; never lower them to make a PR pass.
       - run: npm run test:coverage
@@ -59,4 +60,4 @@ jobs:
       - name: Run coordination concurrency tests against Postgres
         run: |
           npm run compile
-          node --test --test-concurrency=1 dist/coordination.test.js dist/store.lifecycle.test.js dist/task-recovery.postgres.test.js
+          node --test --test-concurrency=1 dist/coordination.test.js dist/store.lifecycle.test.js dist/store.coverage.test.js dist/task-recovery.postgres.test.js
