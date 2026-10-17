@@ -18,11 +18,30 @@ export type ReadyBody = {
   version: string;
   contractRevision: string;
   persistence: PersistenceMode;
+  /** Readiness gate this body describes. Portable readiness contract v1 field. */
+  stage: "deployment";
+  /** Names (never values) of required config keys that are absent. Portable readiness contract v1 field. */
+  missingRequired: string[];
   /** Deployed git commit (Render's RENDER_GIT_COMMIT), or "unknown" when absent/malformed. */
   commitSha: string;
 };
 
 const COMMIT_SHA = /^[0-9a-f]{7,40}$/;
+
+/** Portable readiness contract version this body conforms to (schemas/readiness/v1.schema.json). */
+export const READINESS_CONTRACT_VERSION = "v1";
+
+const CONFIG_KEY_NAME = /^[A-Z][A-Z0-9_]{0,127}$/;
+
+/**
+ * Only well-formed config key names are ever reported, de-duplicated and sorted,
+ * so a caller cannot accidentally reflect a value through missingRequired.
+ */
+export function sanitizeMissingRequired(names: readonly unknown[] | undefined): string[] {
+  if (!names) return [];
+  const keys = names.filter((name): name is string => typeof name === "string" && CONFIG_KEY_NAME.test(name));
+  return [...new Set(keys)].sort();
+}
 
 /**
  * Deployed commit from Render's standard RENDER_GIT_COMMIT (not a secret).
@@ -66,14 +85,18 @@ export function readyBody(input: {
   persistenceOk: boolean;
   persistence: PersistenceMode;
   commitSha?: string;
+  missingRequired?: readonly string[];
 }): ReadyBody {
-  const ready = input.initialized && input.persistenceOk;
+  const missingRequired = sanitizeMissingRequired(input.missingRequired);
+  const ready = input.initialized && input.persistenceOk && missingRequired.length === 0;
   return {
     status: ready ? "ready" : input.initialized ? "degraded" : "initializing",
     service: "conduit",
     version: VERSION,
     contractRevision: HEALTH_CONTRACT_REVISION,
     persistence: input.persistence,
+    stage: "deployment",
+    missingRequired,
     commitSha: input.commitSha ?? deployedCommitSha(),
   };
 }
