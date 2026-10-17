@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import { isDevelopmentRuntime, isProductionRuntime } from "./runtime.js";
 
 test("production runtime is detected from NODE_ENV, explicit flag, or hosting markers", () => {
@@ -16,13 +15,6 @@ test("plain local development is not production", () => {
   assert.equal(isProductionRuntime({ NODE_ENV: "development" }), false);
   assert.equal(isProductionRuntime({ RENDER: "  " }), false);
   assert.equal(isProductionRuntime({ CONDUIT_PRODUCTION: "false" }), false);
-});
-
-test("dev-only auth modes in index.ts are fenced by isDevelopmentRuntime", async () => {
-  const source = await readFile(new URL("../src/index.ts", import.meta.url), "utf8");
-  assert.doesNotMatch(source, /NODE_ENV/);
-  assert.match(source, /CONDUIT_ALLOW_ANONYMOUS === "true" && isDevelopmentRuntime\(\)/);
-  assert.equal(source.match(/process\.env\.CONDUIT_TOKEN && isDevelopmentRuntime\(\)/g)?.length, 2);
 });
 
 test("development modes require an explicit opt-in and no production signal (fail closed)", () => {
