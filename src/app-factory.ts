@@ -5,7 +5,6 @@ import { createMcpHandler } from "@modelcontextprotocol/server";
 import { createConduitServer } from "./mcp.js";
 import { buildProtectedResourceMetadata, createDevelopmentAuthInfo, createTokenVerifier, DEVELOPMENT_ANONYMOUS_SUBJECT, type ConduitAuthConfig } from "./auth.js";
 import type { OAuthTokenVerifier } from "@modelcontextprotocol/server";
-import { VERSION, SERVICE_NAME } from "./version.js";
 import { healthBody, readyBody } from "./health-contract.js";
 import { MCP_RATE_LIMITER, TOOL_RATE_LIMITER } from "./rate-limit.js";
 import { getPublicConduitStatus } from "./status.js";
@@ -33,12 +32,6 @@ function rateLimitMcp(req: Request, res: Response, next: NextFunction) {
     return;
   }
   next();
-}
-
-function unauthorizedBearer(res: Response, metadataUrl?: string) {
-  const resourceMetadata = metadataUrl ? `, resource_metadata="${metadataUrl}"` : "";
-  res.set("WWW-Authenticate", `Bearer realm="${SERVICE_NAME}", error="invalid_token"${resourceMetadata}`);
-  res.status(401).json({ error: "unauthorized" });
 }
 
 export function createConduitApp(options: ConduitAppOptions = {}) {
