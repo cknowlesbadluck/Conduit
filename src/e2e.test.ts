@@ -5,7 +5,6 @@ import { initCapabilityStore, createCapabilityGrant, listCapabilityGrants, revok
 import { assertCapability } from "./capabilities.js";
 import { subscribeEvents, replayRecentEvents, publishEvent } from "./events.js";
 import { buildDiagnosticsFromMetadata } from "./diagnostics.js";
-import { VERSION } from "./version.js";
 
 test("authenticated production E2E complete lifecycle proof", async () => {
   // 1. Initialize store & capability store

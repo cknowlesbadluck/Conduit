@@ -11,6 +11,8 @@ const json = (value: unknown) => ({ content: [{ type: "text" as const, text: JSO
 const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } as const;
 const auth = (extra: ToolExtra, scope: string) => requireScope(extra.http?.authInfo, scope);
 
+export const CONTEXT_SECTIONS = ["agents", "tasks", "contacts", "tools", "resources", "activity", "projects"] as const;
+
 export function registerPaginationTools(server: McpServer, authConfig?: ConduitAuthConfig) {
   const readScope = authConfig?.readScope;
   const schema = z.object({ limit: z.number().int().min(1).max(200).optional(), cursor: z.string().max(2000).optional() });
@@ -24,6 +26,9 @@ export function registerPaginationTools(server: McpServer, authConfig?: ConduitA
   server.registerTool("activity_list", { description: "List recent Conduit activity with bounded cursor pagination", inputSchema: schema.extend({ projectId: z.string().min(1).optional() }), annotations: readOnly }, async (input, extra) => { if (readScope) auth(extra, readScope); return json(await listActivityPage(input)); });
 
   const contextSchema = schema.extend({
+    // conduit_context pages each section independently. A single top-level cursor cannot say which
+    // section it belongs to, so it is rejected with a clear error instead of being silently ignored.
+    cursor: z.string().max(2000).optional().describe("Not supported: conduit_context pages per section. Pass cursors.<section> instead."),
     projectId: z.string().min(1).optional(),
     cursors: z.object({
       agents: z.string().max(2000).optional(),
@@ -38,6 +43,7 @@ export function registerPaginationTools(server: McpServer, authConfig?: ConduitA
 
   server.registerTool("conduit_context", { description: "Return a bounded snapshot of Conduit coordination state with per-section cursors", inputSchema: contextSchema, annotations: readOnly }, async ({ projectId, limit, cursor, cursors }, extra) => {
     if (readScope) auth(extra, readScope);
+    if (cursor !== undefined) return errorResult("context_cursor_unsupported", { field: "cursor", use: "cursors", sections: CONTEXT_SECTIONS });
     const project = projectId ? await getProject(projectId) : null;
     if (projectId && !project) return errorResult("project_not_found", { projectId });
     const sectionCursor = <T extends keyof NonNullable<typeof cursors>>(name: T) => cursors?.[name];
