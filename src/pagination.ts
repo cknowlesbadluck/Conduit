@@ -1,7 +1,7 @@
 export type Page<T> = { items: T[]; nextCursor?: string };
 
 export type CursorCollection = "agents" | "projects" | "resources" | "tasks" | "contacts" | "tools" | "activity";
-export type CursorOrder = { field: "createdAt" | "at"; direction: "desc"; tieBreaker: "id" };
+type CursorOrder = { field: "createdAt" | "at"; direction: "desc"; tieBreaker: "id" };
 export type CursorPayload = {
   version: 1;
   collection: CursorCollection;
