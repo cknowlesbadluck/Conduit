@@ -1,5 +1,4 @@
 import pg from "pg";
-import { postgresSsl } from "./postgres-ssl.js";
 
 const PROBE_TIMEOUT_MS = 2000;
 
@@ -13,7 +12,7 @@ function getProbePool(): pg.Pool {
   if (!probePool) {
     probePool = new pg.Pool({
       connectionString: process.env.DATABASE_URL,
-      ssl: postgresSsl(),
+      ssl: process.env.DATABASE_SSL === "false" ? false : { rejectUnauthorized: false },
       max: 1,
       connectionTimeoutMillis: PROBE_TIMEOUT_MS,
       idleTimeoutMillis: 10_000,

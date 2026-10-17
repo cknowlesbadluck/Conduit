@@ -7,11 +7,11 @@ const MAX_REQUEST_BYTES = 256 * 1024;
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 15_000;
 
-export type McpBridgeRequest = { jsonrpc: "2.0"; id?: string | number | null; method: string; params?: unknown };
-export type McpBridgeResult = { ok: boolean; status: number; headers: Record<string, string>; data: unknown };
-export type AddressRecord = { address: string; family: number };
-export type AddressLookup = (hostname: string) => Promise<AddressRecord[]>;
-export type BridgeTransport = (url: URL, init: { body: string; headers: Record<string, string>; addresses: AddressRecord[] }) => Promise<Response>;
+type McpBridgeRequest = { jsonrpc: "2.0"; id?: string | number | null; method: string; params?: unknown };
+type McpBridgeResult = { ok: boolean; status: number; headers: Record<string, string>; data: unknown };
+type AddressRecord = { address: string; family: number };
+type AddressLookup = (hostname: string) => Promise<AddressRecord[]>;
+type BridgeTransport = (url: URL, init: { body: string; headers: Record<string, string>; addresses: AddressRecord[] }) => Promise<Response>;
 
 let addressLookup: AddressLookup = (hostname) => dnsLookup(hostname, { all: true });
 let bridgeTransport: BridgeTransport = pinnedHttpsTransport;

@@ -2,8 +2,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 export type Page<T> = { items: T[]; nextCursor?: string };
 
 export type CursorCollection = "agents" | "projects" | "resources" | "tasks" | "contacts" | "tools" | "activity";
-export type CursorOrder = { field: "createdAt" | "at"; direction: "desc"; tieBreaker: "id" };
-export type CursorPayload = {
+type CursorOrder = { field: "createdAt" | "at"; direction: "desc"; tieBreaker: "id" };
+type CursorPayload = {
   version: 1;
   collection: CursorCollection;
   projectId: string | null;
@@ -12,7 +12,6 @@ export type CursorPayload = {
   sort: { time: string; id: string };
   mac?: string;
 };
-
 
 const orders: Record<CursorCollection, CursorOrder> = {
   agents: { field: "createdAt", direction: "desc", tieBreaker: "id" },
@@ -30,14 +29,17 @@ const sameRecord = (a: Record<string, string>, b: Record<string, string>) => {
   return ak.length === bk.length && ak.every((key, index) => key === bk[index] && a[key] === b[key]);
 };
 
-/** Opaque, versioned keyset cursor codec. Decode validates that a cursor belongs to this exact query. */
 function cursorSecret() {
   const secret = process.env.CONDUIT_CURSOR_SECRET;
   return secret && secret.length >= 16 ? secret : undefined;
 }
 
+/** MAC over a canonical field order, so the signature never depends on how a caller ordered object keys. */
 function signBody(body: Omit<CursorPayload, "mac">, secret: string) {
-  return createHmac("sha256", secret).update(JSON.stringify(body)).digest("base64url");
+  const filters = Object.fromEntries(Object.keys(body.filters).sort().map((key) => [key, body.filters[key]]));
+  const canonical = [body.version, body.collection, body.projectId ?? null, filters,
+    [body.order.field, body.order.direction, body.order.tieBreaker], [body.sort.time, body.sort.id]];
+  return createHmac("sha256", secret).update(JSON.stringify(canonical)).digest("base64url");
 }
 
 function macMatches(expected: string, actual: string) {
@@ -76,7 +78,7 @@ export const cursorCodec = {
           order: value.order as CursorOrder,
           sort: value.sort as { time: string; id: string },
         };
-        if (!value.mac || !macMatches(signBody(body, secret), value.mac)) throw new Error("invalid_cursor");
+        if (typeof value.mac !== "string" || !macMatches(signBody(body, secret), value.mac)) throw new Error("invalid_cursor");
       }
       return value as CursorPayload;
     } catch (error) {

@@ -4,11 +4,11 @@ import { toNodeHandler } from "@modelcontextprotocol/node";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { init, isReady } from "./store.js";
 import { checkPersistence } from "./db-ready.js";
-import { postgresTlsReport } from "./postgres-ssl.js";
 import { initCapabilityStore } from "./capability-store.js";
 import { buildProtectedResourceMetadata, createDevelopmentAuthInfo, createTokenVerifier, DEVELOPMENT_ANONYMOUS_SUBJECT, DEVELOPMENT_TOKEN_SUBJECT, loadAuthConfig, requireScope } from "./auth.js";
 import { createConduitServer } from "./mcp.js";
 import { VERSION, SERVICE_NAME } from "./version.js";
+import { healthBody, readyBody } from "./health-contract.js";
 import { MCP_RATE_LIMITER, TOOL_RATE_LIMITER } from "./rate-limit.js";
 import { timingSafeEqual } from "node:crypto";
 import { replayRecentEvents, subscribeEvents } from "./events.js";
@@ -20,7 +20,7 @@ import { conduitUiHtml, CONDUIT_UI_CSS, CONDUIT_UI_JS } from "./ui.js";
 const app = express();
 app.disable("x-powered-by");
 app.use((_req, res, next) => {
-  res.set({ "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer", "Cache-Control": "no-store", "Content-Security-Policy": "default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'" });
+  res.set({ "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer", "Cache-Control": "no-store", "Cross-Origin-Resource-Policy": "same-origin", "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()", "Content-Security-Policy": "default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'" });
   next();
 });
 app.use(express.json({ limit: process.env.MAX_JSON_BODY || "1mb" }));
@@ -55,18 +55,13 @@ app.get("/", (_req, res) => res.type("html").send(conduitUiHtml()));
 app.get("/ui.css", (_req, res) => res.type("css").send(CONDUIT_UI_CSS));
 app.get("/ui.js", (_req, res) => res.type("application/javascript").send(CONDUIT_UI_JS));
 app.get("/status", async (_req, res, next) => { try { res.json(await getPublicConduitStatus()); } catch (error) { next(error); } });
-app.get("/health", (_req, res) => res.json({ status: "ok", service: "conduit" }));
+app.get("/health", (_req, res) => res.json(healthBody()));
 app.get("/ready", async (_req, res) => {
   const initialized = isReady();
   const persistenceOk = initialized ? await checkPersistence() : false;
-  const ready = initialized && persistenceOk;
-  res.status(ready ? 200 : 503).json({
-    status: ready ? "ready" : (initialized ? "degraded" : "initializing"),
-    tls: postgresTlsReport(),
-    service: "conduit",
-    version: VERSION,
-    persistence: process.env.DATABASE_URL && process.env.CONDUIT_TEST_MEMORY !== "true" ? "postgres" : "memory",
-  });
+  const persistence = process.env.DATABASE_URL && process.env.CONDUIT_TEST_MEMORY !== "true" ? "postgres" : "memory";
+  const body = readyBody({ initialized, persistenceOk, persistence });
+  res.status(body.status === "ready" ? 200 : 503).json(body);
 });
 
 async function boot() {
@@ -166,13 +161,13 @@ export const fetchHandler = async (request: Request): Promise<Response> => {
     return new Response(JSON.stringify(diagnostics), { status: 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
   }
   if (url.pathname === "/health") {
-    return new Response(JSON.stringify({ status: "ok", service: "conduit" }), {
+    return new Response(JSON.stringify(healthBody()), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
   }
   if (url.pathname === "/ready") {
-    return new Response(JSON.stringify({ status: "ready", service: "conduit", version: VERSION, persistence: "memory" }), {
+    return new Response(JSON.stringify(readyBody({ initialized: true, persistenceOk: true, persistence: "memory" })), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });

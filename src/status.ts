@@ -1,8 +1,8 @@
 import { countActivity, countAgents, countTasks, countTools, listActivity, listAgents, listTasks, listTools } from "./store.js";
 import { SERVICE_NAME, VERSION } from "./version.js";
 
-export type ConduitConnectionStatus = "connected" | "registered";
-export type ConduitConnection = {
+type ConduitConnectionStatus = "connected" | "registered";
+type ConduitConnection = {
   id: string;
   label: string;
   status: ConduitConnectionStatus;
@@ -66,10 +66,6 @@ function sanitizeActivity(event: Record<string, string>) {
   return sanitized;
 }
 
-function activityMatchesAgent(event: Record<string, string>, agentId: string) {
-  if (event.type === "agent.register") return false;
-  return ACTOR_KEYS.some((key) => event[key] === agentId);
-}
 
 export async function getConduitStatus(): Promise<ConduitStatus> {
   const [agents, tasks, tools, activity] = await Promise.all([

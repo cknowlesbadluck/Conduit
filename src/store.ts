@@ -1,6 +1,7 @@
+import { DATABASE_CONNECT_TIMEOUT_MS } from "./db-timeouts.js";
 import pg from "pg";
 import { cursorCodec, cursorOrder, pageLimit, type CursorCollection, type Page } from "./pagination.js";
-import { postgresSsl } from "./postgres-ssl.js";
+import { redactRecord } from "./redact.js";
 
 const { Pool } = pg;
 
@@ -27,10 +28,13 @@ const contacts = new Map<string, Contact>();
 const tools = new Map<string, Tool>();
 const activity: ActivityEvent[] = [];
 const useDatabase = Boolean(process.env.DATABASE_URL) && process.env.CONDUIT_TEST_MEMORY !== "true";
-const sslOption = postgresSsl();
+const sslRejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === "true";
+const sslOption = process.env.DATABASE_SSL === "false"
+  ? false
+  : { rejectUnauthorized: sslRejectUnauthorized };
 
 const pool = useDatabase
-  ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: sslOption, max: 5 })
+  ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: sslOption, max: 5, connectionTimeoutMillis: DATABASE_CONNECT_TIMEOUT_MS })
   : null;
 
 let ready = false;
@@ -41,7 +45,8 @@ export function isReady() { return ready; }
 
 const ACTIVITY_RETENTION_LIMIT = Math.max(200, Number(process.env.CONDUIT_ACTIVITY_RETENTION) || 5000);
 
-async function log(type: string, data: Record<string, string>) {
+async function log(type: string, raw: Record<string, string>) {
+  const data = redactRecord(raw);
   const event = { id: id("evt"), type, at: now(), ...data };
   if (pool) await pool.query("INSERT INTO activity(id,type,at,data,project_id) VALUES($1,$2,$3,$4,$5)", [event.id, type, event.at, JSON.stringify(data), data.projectId ?? null]);
   else { activity.push(event); if (activity.length > ACTIVITY_RETENTION_LIMIT) activity.splice(0, activity.length - ACTIVITY_RETENTION_LIMIT); }
@@ -57,7 +62,28 @@ export async function pruneActivity() {
   return result.rowCount ?? 0;
 }
 
-async function logWithClient(client: pg.PoolClient, type: string, data: Record<string, string>) {
+const DEFAULT_RETENTION_INTERVAL_MS = 6 * 60 * 60 * 1000;
+let retentionTimer: ReturnType<typeof setInterval> | undefined;
+
+/**
+ * Keeps the Postgres activity table bounded on long-lived instances, not just at boot.
+ * Idempotent (one timer per process), unref'd (never keeps the process alive), and
+ * best-effort (a failed pass is retried next interval). CONDUIT_ACTIVITY_PRUNE_INTERVAL_MS=0 disables.
+ */
+export function startActivityRetention(options: { intervalMs?: number; prune?: () => Promise<unknown> } = {}) {
+  const configured = Number(process.env.CONDUIT_ACTIVITY_PRUNE_INTERVAL_MS);
+  const intervalMs = options.intervalMs ?? (Number.isFinite(configured) && process.env.CONDUIT_ACTIVITY_PRUNE_INTERVAL_MS !== undefined ? configured : DEFAULT_RETENTION_INTERVAL_MS);
+  if (retentionTimer || !(intervalMs > 0)) return retentionTimer;
+  const prune = options.prune ?? pruneActivity;
+  retentionTimer = setInterval(() => { prune().catch(() => { /* best-effort */ }); }, Math.max(60_000, intervalMs));
+  retentionTimer.unref?.();
+  return retentionTimer;
+}
+
+export function stopActivityRetention() { if (retentionTimer) clearInterval(retentionTimer); retentionTimer = undefined; }
+
+async function logWithClient(client: pg.PoolClient, type: string, raw: Record<string, string>) {
+  const data = redactRecord(raw);
   const event = { id: id("evt"), type, at: now(), ...data };
   await client.query("INSERT INTO activity(id,type,at,data,project_id) VALUES($1,$2,$3,$4,$5)", [event.id, type, event.at, JSON.stringify(data), data.projectId ?? null]);
 }
@@ -145,6 +171,7 @@ export async function init() {
       INSERT INTO schema_migrations(version) VALUES('0.8.4-keyset-pagination') ON CONFLICT (version) DO NOTHING;
     `);
     try { await pruneActivity(); } catch { /* hygiene pass is best-effort; never block startup on it */ }
+    startActivityRetention();
   }
   ready = true;
 }
@@ -158,7 +185,7 @@ export async function registerAgent(input: { id: string; name: string; descripti
       }
       await client.query("INSERT INTO agents(id,name,description) VALUES($1,$2,$3) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,description=EXCLUDED.description", [input.id, input.name, input.description ?? null]);
       if (input.actorSubject) await client.query("INSERT INTO agent_bindings(subject,agent_id) VALUES($1,$2) ON CONFLICT(subject) DO UPDATE SET agent_id=EXCLUDED.agent_id", [input.actorSubject, input.id]);
-      const row = (await client.query("SELECT id,name,description,created_at AS \"createdAt\" FROM agents WHERE id=$1", [input.id])).rows[0] as Agent;
+      const row = normalizeAgent((await client.query("SELECT id,name,description,created_at AS \"createdAt\" FROM agents WHERE id=$1", [input.id])).rows[0]);
       await logWithClient(client, "agent.register", { agentId: input.id });
       return row;
     });
@@ -185,7 +212,7 @@ export async function getBoundAgentId(actorSubject: string) {
 }
 
 export async function listAgents() {
-  if (pool) return (await pool.query("SELECT id,name,description,created_at AS \"createdAt\" FROM agents ORDER BY created_at DESC, id DESC")).rows;
+  if (pool) return (await pool.query("SELECT id,name,description,created_at AS \"createdAt\" FROM agents ORDER BY created_at DESC, id DESC")).rows.map(normalizeAgent);
   return [...agents.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
@@ -399,6 +426,11 @@ function normalizeTimestamp(value: unknown): string | undefined {
   return new Date(value as string | Date).toISOString();
 }
 
+/** Postgres returns created_at as a Date and description as null; the Agent contract (and the memory store) use an ISO string and undefined. */
+function normalizeAgent(row: Record<string, unknown>): Agent {
+  return { id: row.id as string, name: row.name as string, description: (row.description as string | null) ?? undefined, createdAt: new Date(row.createdAt as string | Date).toISOString() };
+}
+
 function normalizeProject(row: Record<string, unknown>): Project {
   return {
     id: row.id as string,
@@ -602,7 +634,7 @@ const resourceSelect = `SELECT id,project_id AS "projectId",name,description,kin
 const contactSelect = `SELECT id,project_id AS "projectId",name,value,kind,created_by AS "createdBy",created_at AS "createdAt",archived_at AS "archivedAt" FROM contacts`;
 const toolSelect = `SELECT id,project_id AS "projectId",name,description,endpoint,created_by AS "createdBy",created_at AS "createdAt",archived_at AS "archivedAt" FROM tools`;
 
-export const listAgentsPage = (options: PageOptions = {}) => keysetPage<Agent>({ ...options, collection: "agents", sql: agentSelect, normalize: row => ({ id: row.id as string, name: row.name as string, description: (row.description as string | null) ?? undefined, createdAt: new Date(row.createdAt as string | Date).toISOString() }), memory: agents.values() });
+export const listAgentsPage = (options: PageOptions = {}) => keysetPage<Agent>({ ...options, collection: "agents", sql: agentSelect, normalize: normalizeAgent, memory: agents.values() });
 export const listProjectsPage = (options: PageOptions = {}) => keysetPage<Project>({ ...options, collection: "projects", sql: projectSelect, conditions: [["archived_at IS NULL", undefined]], normalize: normalizeProject, memory: [...projects.values()].filter(row => !row.archivedAt), filters: { archived: "false" } });
 
 async function scopedPage<T extends KeysetRow>(spec: Omit<PageSpec<T>, "conditions">) {
