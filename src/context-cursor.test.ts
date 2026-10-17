@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { McpServer } from "@modelcontextprotocol/server";
 import { CONTEXT_SECTIONS, registerPaginationTools } from "./pagination-tools.js";
-import { registerAgent } from "./store.js";
+import { createTask, registerAgent } from "./store.js";
 
 type Handler = (input: Record<string, unknown>, extra: Record<string, unknown>) => Promise<{ isError?: boolean; structuredContent: any }>;
 
@@ -35,6 +35,7 @@ test("conduit_context still honours per-section cursors", async () => {
   const { handler } = contextTool();
   const prefix = `ctx-${crypto.randomUUID()}`;
   for (let i = 0; i < 3; i++) await registerAgent({ id: `${prefix}-${i}`, name: `ctx ${i}` });
+  for (let i = 0; i < 2; i++) assert.ok(await createTask({ title: `${prefix} task ${i}`, createdBy: `${prefix}-0` }));
   const first = await handler({ limit: 1 }, {});
   assert.notEqual(first.isError, true);
   const firstPage = first.structuredContent.coordination.agents;
@@ -43,6 +44,10 @@ test("conduit_context still honours per-section cursors", async () => {
   const second = await handler({ limit: 1, cursors: { agents: firstPage.nextCursor } }, {});
   assert.notEqual(second.isError, true);
   assert.notEqual(second.structuredContent.coordination.agents.items[0].id, firstPage.items[0].id);
+  // cursors.agents must only advance the agents section: tasks (deterministically seeded above) stay on page one.
+  const firstTasks = first.structuredContent.coordination.tasks;
+  assert.equal(firstTasks.items.length, 1);
+  assert.deepEqual(second.structuredContent.coordination.tasks.items.map((t: { id: string }) => t.id), firstTasks.items.map((t: { id: string }) => t.id));
 });
 
 test("conduit_context schema documents the per-section contract for cursor", () => {
