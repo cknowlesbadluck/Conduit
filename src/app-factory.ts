@@ -8,6 +8,7 @@ import { createConduitServer } from "./mcp.js";
 import { buildProtectedResourceMetadata, createDevelopmentAuthInfo, createTokenVerifier, DEVELOPMENT_ANONYMOUS_SUBJECT, DEVELOPMENT_TOKEN_SUBJECT, requireScope, type ConduitAuthConfig } from "./auth.js";
 import { SERVICE_NAME } from "./version.js";
 import { healthBody, readyBody } from "./health-contract.js";
+import { jsonErrorHandler } from "./http-errors.js";
 import { MCP_RATE_LIMITER, TOOL_RATE_LIMITER } from "./rate-limit.js";
 import { getPublicConduitStatus } from "./status.js";
 import { checkPersistence } from "./db-ready.js";
@@ -208,5 +209,6 @@ export function createConduitApp(options: ConduitAppOptions = {}) {
     log.error("No MCP OAuth authentication configured; /mcp is disabled");
   }
 
+  app.use(jsonErrorHandler);
   return app;
 }
