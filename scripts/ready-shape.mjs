@@ -46,11 +46,14 @@ export function validate(schema, value, path = "$") {
     if (schema.maxLength !== undefined && value.length > schema.maxLength) errors.push(`${path}: longer than ${schema.maxLength}`);
   }
   if (typeOf(value) === "object") {
-    for (const req of schema.required ?? []) if (!(req in value)) errors.push(`${path}: missing required ${req}`);
+    const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+    for (const req of schema.required ?? []) if (!own(value, req)) errors.push(`${path}: missing required ${req}`);
     const props = schema.properties ?? {};
     for (const [k, v] of Object.entries(value)) {
       // Field names only: values are never copied into errors (they may be secrets).
-      if (props[k]) errors.push(...validate(props[k], v, `${path}.${k}`));
+      // Own properties only: inherited names (constructor, toString, __proto__) must not
+      // resolve to Object.prototype members and bypass additionalProperties:false.
+      if (own(props, k)) errors.push(...validate(props[k], v, `${path}.${k}`));
       else if (schema.additionalProperties === false) errors.push(`${path}: unexpected field ${JSON.stringify(k.slice(0, 64))}`);
     }
   }

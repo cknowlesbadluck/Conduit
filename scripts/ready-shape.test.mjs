@@ -55,3 +55,13 @@ test("attachShape: shape violation marks drift; valid shape leaves classificatio
   assert.deepEqual(attachShape(target, { error: "timeout" }, r), r);
   assert.deepEqual(attachShape({ name: "x" }, { status: 200, body: "{}" }, r), r);
 });
+
+test("inherited property names are extra fields, not schema hits (CodeRabbit #245)", () => {
+  const schema = { type: "object", required: ["a"], properties: { a: { type: "string" } }, additionalProperties: false };
+  for (const k of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+    const body = JSON.parse(`{"a":"x",${JSON.stringify(k)}:1}`);
+    assert.ok(validate(schema, body).some((e) => e.includes("unexpected field")), k);
+  }
+  // A required name that only exists on Object.prototype is still missing.
+  assert.ok(validate({ type: "object", required: ["toString"] }, {}).some((e) => e.includes("missing required")));
+});
