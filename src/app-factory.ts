@@ -161,7 +161,10 @@ export function createConduitApp(options: ConduitAppOptions = {}) {
     let unsubscribe: () => unknown;
     try { unsubscribe = subscribeEvents({ projectId }, emit); }
     catch { res.status(503).set("Retry-After", "5").json({ error: "event_subscriber_limit_reached" }); return; }
+    // Declared before cleanup (which closes over them) and assigned once the stream is open.
+    // eslint-disable-next-line prefer-const
     let poll: ReturnType<typeof setInterval> | undefined;
+    // eslint-disable-next-line prefer-const
     let heartbeat: ReturnType<typeof setInterval> | undefined;
     const cleanup = () => { if (!open) return; open = false; clearInterval(poll); clearInterval(heartbeat); unsubscribe(); };
     req.on("close", cleanup);
