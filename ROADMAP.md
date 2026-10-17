@@ -1,8 +1,8 @@
 # Portfolio Roadmap — 10 phases
 
-Canonical, unified roadmap for **Conduit** (MCP bridge), **Resonance** (integration plane) and **QuicksilverV1** (iOS product, owned by Quicksilver Dev). The repos stay separate and talk only through documented HTTP/MCP contracts. Live status and PR merge order: `docs/PORTFOLIO-ROADMAP-10-PHASE.md`. Current audit: `docs/AUDIT-2026-10-15.md`. Update these in place; do not add dated audit files.
+Canonical, unified roadmap for **Conduit** (MCP bridge), **Resonance** (integration plane) and **QuicksilverV1** (iOS product, owned by Quicksilver Dev). The repos stay separate and talk only through documented HTTP/MCP contracts. Conduit 10-phase plan, live status and the cross-repo PR merge order: `docs/PORTFOLIO-ROADMAP-10-PHASE.md`. Current audit: `docs/AUDIT-2026-10-15.md` (updated in place 2026-10-16). Update these in place; do not add dated audit files.
 
-Ground rules: agents never apply migrations, change production config, or spend money. Each phase is done only when **every** exit check below is true for each project. Status tags: **[passed]** · **[in progress]** · **[blocked]** (needs owner action). Last observed 2026-10-16 10:05 EDT: Conduit main CI + Live Smoke green, `/ready` 200; Resonance main CI green, `/api/ready` 503 (missing `SUPABASE_SERVICE_ROLE_KEY`); QuicksilverV1 main CI green.
+Ground rules: agents never apply migrations, change production config, or spend money. Each phase is done only when **every** exit check below is true for each project. Status tags: **[passed]** · **[in progress]** · **[blocked]** (needs owner action). Last observed 2026-10-17 12:15 EDT: Conduit main 2a6745b CI + Live Smoke green, `/ready` 200 (#250, #253, #254, #252, #248 merged); Resonance main 7ac2ffc CI green, `/api/ready` 503 (missing `SUPABASE_SERVICE_ROLE_KEY`) and **prod behind main** (5 contract fields absent; `node scripts/deploy-parity.mjs --plan` from Resonance#202 prints the owner unblock steps); QuicksilverV1 main `Quicksilver CI` red on `6862c03` (iOS UI Smoke job; owned by Quicksilver Dev), green on the prior commit.
 
 ## Stabilization
 
@@ -18,7 +18,7 @@ Ground rules: agents never apply migrations, change production config, or spend 
 | # | Phase | Conduit exit check | Resonance exit check | Quicksilver exit check |
 |---|---|---|---|---|
 | 5 | Transport + data security | **[blocked]** Postgres TLS verified (#155, after Render env, owner) | **[blocked]** `search_path` fix (#173) applied by owner; RLS lint (#195) + read-only verify (#196) open, need review and an owner run | **[blocked]** own Supabase restored (owner) |
-| 6 | Honest posture | **[in progress]** `/ready` 200 with contractRevision ✓; scheduled probe: #219 merged but `.github/workflows/portfolio-probe.yml` is absent from main, so no schedule runs | **[blocked]** `/api/ready` 200 with commitSha (#178); live 503 with missing service-role key; Netlify prod deploying current main (owner) | — |
+| 6 | Honest posture | **[in progress]** `/ready` 200 with contractRevision ✓; scheduled report-only probe on main (#239 ✓); drift pins (#241 ✓, merged 2026-10-16) | **[blocked]** `/api/ready` 200 with commitSha (#178); live 503 with missing service-role key; Netlify prod deploying current main (owner) | — |
 | 7 | Contracts + coverage | **[in progress]** tool-surface snapshot (#225) ✓; coverage gate enforced (lines 64 / branches 70 / functions 66), target ≥70% lines (main 69.7%, 72.0% with #235) | **[in progress]** cross-plane contract (#184); route tests (#176/#180) open | **[in progress]** TSan job (#309); contract client tests |
 | 8 | Operable release | **[in progress]** runbook; tag 0.9.0; SSE drain (#119 draft) | **[blocked]** runbook (#197) open; CHR-54 closed only when `/api/ready` 200 (owner key) | **[blocked]** fresh Archive/IPA; CHR-55 device acceptance with real evidence (not recorded) |
 
