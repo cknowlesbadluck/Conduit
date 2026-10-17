@@ -1,4 +1,4 @@
-# Conduit — 10-Phase Roadmap to a hardened 0.8+ (updated in place 2026-10-17 11:10 EDT)
+# Conduit — 10-Phase Roadmap to a hardened 0.8+ (updated in place 2026-10-17 13:35 EDT)
 
 Target: hardened Conduit 0.8+ → 0.9.0 with reliable grants and low PR entropy. Cross-repo view: `ROADMAP.md`. Current audit: `docs/AUDIT-2026-10-15.md`. Repos stay separate; Conduit talks to Resonance only through HTTP/MCP contracts.
 These are **Conduit workstreams C1–C10**, numbered separately from the canonical portfolio phases 1–10 in `ROADMAP.md`. "C10" means the Conduit release workstream, not portfolio phase 10.
@@ -36,7 +36,7 @@ Conduit is the coordination bridge. It records who is doing what, and it must ne
 - **Idempotent delivery.** Writes are claim-checked and transition-guarded, so a retried claim, complete or handoff is a no-op or a refusal, never a double effect. Callers retry only on 429/503.
 - **No secrets in flight records.** Activity, diagnostics and errors are redacted (#228, #226). Tokens never appear in logs or responses.
 
-## Status board (2026-10-17 12:15 EDT, corrected: earlier rows claimed merges that had not happened)
+## Status board (2026-10-17 13:35 EDT; main 2a6745b, nothing merged since 12:15)
 
 Tags: **[passed]** = exit check met on main · **[in progress]** = PRs open, CI green · **[blocked]** = needs owner action.
 
@@ -47,18 +47,18 @@ Tags: **[passed]** = exit check met on main · **[in progress]** = PRs open, CI 
 | C3 Reliable grants | [in progress] | #250 verifier tests merged (auth.js 66% → 99%); **#238, #234 open (owner review)** |
 | C4 Fail-closed production | [in progress] | **#206 → #212 open (owner review)**; lockdown independent of `NODE_ENV` |
 | C5 Bounded surface | [in progress] | #253 merged; **#251, #256, #258, #231, #208 open**. MCP transport is stateless per request, so no session cap is needed |
-| C6 Transport/data security | [blocked] | #155 now builds on #251 (one `src/db-pool.ts`); owner sets Render `DATABASE_SSL_CA` (or explicit opt-out), then #251 → #155, and `/ready` still 200 |
+| C6 Transport/data security | [blocked] | #155 is the single DB TLS owner and builds on #251 (one `src/db-pool.ts`); owner sets Render `DATABASE_SSL_CA` (or explicit opt-out), then #251 → #155, and `/ready` still 200. **#162 split done (9ddfa39):** its duplicate `postgres-ssl.ts` was dropped; #162 is now only opt-in HMAC cursors (3 files, green) |
 | C7 Honest posture | [in progress] | `/ready` 200 ✓; #247 commitSha and #245 shape contract open |
 | C8 Contracts + coverage | [in progress] | #252 lint gate (`eslint . --max-warnings=0` in CI) and #254 dual-mode store tests merged |
-| C9 Low entropy | [in progress] | ≤8 open non-draft PRs. 33 open at 12:00 EDT → 29 after this pass (5 merged, +1 #260; 21 open PRs brought up to date with main and lint-clean). Every open PR must now pass lint when it's next updated from main |
+| C9 Low entropy | [in progress] | ≤8 open non-draft PRs. 29 open at 13:00 and 13:35 EDT (no merges, no closures: nothing clearly superseded). At 13:20 EDT all 24 main-based PRs passed `tsc` + `eslint . --max-warnings=0` when merged locally onto main. Conflicting with main: only the red drafts #119/#120. Stacked #211/#212/#217 showed CONFLICTING on GitHub (criss-cross merge bases) although `git merge-tree` was clean; merging the base into each head fixed it, and all three are MERGEABLE. Stacked PRs get no CI (CI runs only on PRs into `main`) |
 | C10 Operable release 0.9.0 | not started | tag 0.9.0 after C3–C5; 7 days of probe drift=false |
-| Innovation: merge-train health | [in progress] | **#260** `npm run merge-train`: green/mergeable/not-owner-gated order, duplicate-new-file and overlap detection, conflict hotspots (report-only) |
+| Innovation: merge-train health | [in progress] | **#260** `npm run merge-train [owner/repo]`: green/mergeable/not-owner-gated order, duplicate-new-file and overlap detection, conflict hotspots (report-only). 914fe52 adds stacked-PR awareness (never a candidate; no stack-pair noise) and latest-run-per-check semantics (a cancelled run is `rerun`, not red) |
 | Innovation: stale-claim recovery | [in progress] | **#259** `task_reclaim` (opt-in) + `task_health` idle-age counts (owner review) |
 | Innovation: signed bridge receipts | [in progress] | **#257** (opt-in, offline verifier; owner review, after #256) |
 
 Merged 2026-10-17 (agent, CI green, `/ready` 200 after each): #250 → 4ca764f, #253 → ff5f7e4, #254 → af315da, #252 → a1c84b3, #248 → 2a6745b.
 
-Overlap check (12:10 EDT, `npm run merge-train` from #260): the only duplicate new file, **#155 × #251 `src/db-pool.ts`**, is resolved. #251's shared-pool module wins, and #155 now merges #251 and adds only the verify-by-default TLS policy. Conflict hotspots: `.env.example` and `src/store.ts` (8 PRs each), `src/capability-store.ts` and `src/index.ts` (7 each).
+Overlap check (13:30 EDT, `npm run merge-train` from #260 @ 914fe52): the only duplicate new files are **#155 × #251** (`src/db-pool.ts` and the bounds tests). That is intended: #155 merges #251 and adds only the TLS policy, so merge #251 first. No heavy overlaps remain once stacked pairs are excluded. Conflict hotspots: `.env.example` (8 PRs), `src/store.ts` (7), `src/capability-store.ts`, `src/index.ts` and `README.md` (6 each). Candidates (green, mergeable, not owner-gated): #190, #208, #255, #242, #245, #207, #231, #247, #162, #260, #259.
 
 ## Merge train (2026-10-17 07:20 EDT, replaces the earlier "grants train first" order)
 
@@ -77,9 +77,9 @@ Nothing here is merged by agents. Every step was simulated locally on main d30e7
 | next | #257 signed bridge receipts (opt-in), then #258 bridge total deadline, then #259 stale-claim recovery (appends to `store.ts`; rebase after #251/#254) | #256 | both edit the `mcp_bridge_call` handler in `src/mcp.ts`: keep #256's destination check and #257's `recordBridgeReceipt` calls |
 | later | #255 (Bolt redaction), #243 (redactUrl), #231, #208/#209, #213, #211→#217, #245, #247, #248, #249 | rebase in this order | `src/index.ts` pairs listed under Live evidence; #155 only after the owner sets the Render TLS env |
 
-Held (owner decisions, not closed): #119, #120 (red drafts), #162 (split), #155 (Render env), #187/#190 (experiments). Closed as duplicate: #230 → #255.
+Held (owner decisions, not closed): #119, #120 (red drafts), #155 (Render env), #187/#190 (experiments). #162 split done 2026-10-17 (HMAC cursors only). Closed as duplicate: #230 → #255.
 
-**Merge authorization (single policy):** agents may merge only Conduit docs/test/CI-only PRs that are green (ignoring the owner-side Workers Builds check) with no outstanding changes-requested or unaddressed bot findings, then verify `/ready` returns 200. Runtime/auth PRs and every Resonance/QuicksilverV1 PR need the owner. This supersedes any older "agents never merge" wording preserved below.
+**Merge authorization (single policy):** agents may merge only Conduit docs/test/CI-only PRs that are green (ignoring the owner-side Workers Builds check) with no outstanding changes-requested or unaddressed bot findings, then verify `/ready` returns 200. Runtime/auth PRs and every Resonance/QuicksilverV1 PR need the owner. This supersedes any older "agents never merge" wording preserved below. **Override from 2026-10-17 13:00 EDT: the owner said "never merge to main without explicit need". Agents merge nothing in either repo until the owner says otherwise.**
 
 ## Portfolio status and cross-repo merge order (preserved from the 2026-10-15 22:30 EDT refinement)
 
