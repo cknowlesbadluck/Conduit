@@ -19,7 +19,7 @@ Status: **[passed]** · **[in progress]** · **[blocked]** (owner action).
 
 ## Merge order (grants train first)
 
-Done: #241 (merged 2026-10-16 14:08 EDT). Pending: #238 → #234 → #206 → #212 (rebase) → #211/#217 (rebase) → #213 → #208/#209 → #231 → #243 (URL redaction) → #245/#246 (probe shape + parity, one-line rebase between them) → #155 (after owner env). **Merge authorization (single policy):** agents may merge only Conduit docs/test/CI-only PRs that are green (ignoring the owner-side Workers Builds check) with no outstanding changes-requested or unaddressed bot findings, then verify `/ready` returns 200. Runtime/auth PRs and every Resonance/QuicksilverV1 PR need the owner. This supersedes any older "agents never merge" wording preserved below.
+Done: #241 (merged 2026-10-16 14:08 EDT), #246 report-only deploy-parity annotation (merged 2026-10-16 18:45 EDT, d30e7dc). Pending: #238 → #234 → #206 → #212 (rebase) → #211/#217 (rebase) → #213 → #208/#209 → #231 → #243 (URL redaction) → #245 (probe shape; already on top of #246) → #155 (after owner env). **Merge authorization (single policy):** agents may merge only Conduit docs/test/CI-only PRs that are green (ignoring the owner-side Workers Builds check) with no outstanding changes-requested or unaddressed bot findings, then verify `/ready` returns 200. Runtime/auth PRs and every Resonance/QuicksilverV1 PR need the owner. This supersedes any older "agents never merge" wording preserved below.
 
 ## Portfolio status and cross-repo merge order (preserved from the 2026-10-15 22:30 EDT refinement)
 
