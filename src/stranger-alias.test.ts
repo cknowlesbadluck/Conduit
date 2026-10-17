@@ -41,3 +41,18 @@ test("owned marker does not admit a phase", () => {
   assert.equal(decision.owned, true);
   assert.equal(decision.phaseAdmitted, false);
 });
+
+test("404 with DEPLOYMENT_NOT_FOUND only in x-vercel-error is alias_absent", () => {
+  const decision = classifyAlias({ host: "gone.vercel.app", status: 404, body: "", vercelError: "DEPLOYMENT_NOT_FOUND" });
+  assert.equal(decision.classification, "alias_absent");
+});
+
+test("a known stranger page spoofing an owned marker is stranger_occupant, not owned", () => {
+  const decision = classifyAlias({
+    host: "spoof.vercel.app",
+    status: 200,
+    body: "<!DOCTYPE html><html><title>Canawan</title><!-- quicksilverv1 --></html>",
+  });
+  assert.equal(decision.classification, "stranger_occupant");
+  assert.equal(decision.owned, false);
+});

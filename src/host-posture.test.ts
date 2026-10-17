@@ -85,3 +85,14 @@ test("keep-red set is the TLS drafts and is not a merge instruction", () => {
   assert.deepEqual(decision.keepRed, []);
   assert.equal(decision.admitNewWitness, false);
 });
+
+test("a foreign 503 body with the exact missing key is drift without resonance service identity", () => {
+  const foreign = live.map((host) =>
+    host.name === "resonance" ? { ...host, body: { ...host.body, service: "someone-else" } } : host,
+  );
+  assert.equal(classifyHost(foreign[1]), "drift");
+  const wrongStatus = live.map((host) =>
+    host.name === "resonance" ? { ...host, body: { ...host.body, status: "ready" } } : host,
+  );
+  assert.equal(classifyHost(wrongStatus[1]), "drift");
+});

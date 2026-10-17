@@ -12,6 +12,7 @@ const probe: Probe = {
   resonanceReady: 503,
   missingRequired: ["SUPABASE_SERVICE_ROLE_KEY"],
   readyBodyOmitsOwnerAction: true,
+  readyBodyOmitsContractRevision: true,
   vercelStatus: 404,
   vercelClass: "alias_absent",
   supabasePaused: true,
@@ -51,4 +52,19 @@ test("an unexpected ready body is not classified as the known owner gate", () =>
   const drifted = decide({ ...probe, missingRequired: ["OTHER"], readyBodyOmitsOwnerAction: false }, []);
   assert.equal(drifted.phases[2].state, "blocked");
   assert.match(drifted.phases[2].blocker ?? "", /drifted/);
+});
+
+test("an owner-gated body that leaks contractRevision is not ready parity", () => {
+  const leaked = decide({ ...probe, readyBodyOmitsContractRevision: false }, []);
+  assert.equal(leaked.phases[2].state, "blocked");
+  assert.match(leaked.phases[2].blocker ?? "", /drifted/);
+});
+
+test("a blocked phase 2 always names its blocker (conduit drift, vercel alias)", () => {
+  const conduitDown = decide({ ...probe, conduitReady: 503 }, []);
+  assert.equal(conduitDown.phases[2].state, "blocked");
+  assert.match(conduitDown.phases[2].blocker ?? "", /conduit/);
+  const aliasPresent = decide({ ...probe, vercelClass: "alias_present" }, []);
+  assert.equal(aliasPresent.phases[2].state, "blocked");
+  assert.match(aliasPresent.phases[2].blocker ?? "", /alias_present/);
 });

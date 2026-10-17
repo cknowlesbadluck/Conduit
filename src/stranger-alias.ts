@@ -9,6 +9,8 @@
 
 export const STRANGER_ALIAS_REVISION = "2026-10-09-stranger-alias";
 
+import { KNOWN_STRANGER_ANALYTICS, KNOWN_STRANGER_TITLES } from "./inactive-fingerprint.js";
+
 const OWNED_MARKERS = ["resonance-nexus", "service\":\"conduit", "quicksilverv1"] as const;
 
 export type AliasClass = "alias_absent" | "stranger_occupant" | "alias_owned" | "unclassified";
@@ -17,6 +19,8 @@ export type AliasProbe = {
   host: string;
   status: number;
   body: string;
+  /** Value of the `x-vercel-error` response header, when the caller captured it. */
+  vercelError?: string;
 };
 
 export type AliasDecision = {
@@ -30,11 +34,17 @@ export type AliasDecision = {
 export function classifyAlias(probe: AliasProbe): AliasDecision {
   const body = probe.body ?? "";
   const lower = body.toLowerCase();
-  const absent = probe.status === 404 && body.includes("DEPLOYMENT_NOT_FOUND");
+  const absent =
+    probe.status === 404 && (body.includes("DEPLOYMENT_NOT_FOUND") || probe.vercelError === "DEPLOYMENT_NOT_FOUND");
+  // Same precedence as inactive-fingerprint: a known stranger title/analytics id beats a (spoofed) owned marker.
+  const strangerHit =
+    KNOWN_STRANGER_TITLES.some((title) => lower.includes(title)) ||
+    KNOWN_STRANGER_ANALYTICS.some((id) => body.includes(id));
   const owned = probe.status === 200 && OWNED_MARKERS.some((marker) => lower.includes(marker));
   const html = /<!doctype|<html/i.test(body);
   let classification: AliasClass = "unclassified";
   if (absent) classification = "alias_absent";
+  else if (strangerHit) classification = "stranger_occupant";
   else if (owned) classification = "alias_owned";
   else if (probe.status === 200 && html) classification = "stranger_occupant";
   return {

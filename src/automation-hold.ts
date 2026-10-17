@@ -51,10 +51,11 @@ export function assertAgentMayMerge(pull: ClassifiedPull): void {
   if (klass === "keep_red") {
     throw new Error(`refusing to merge keep-red ${pull.repo}#${pull.number}`);
   }
-  if (klass === "automation" && pull.mergeableState !== "clean") {
-    throw new Error(`refusing to merge automation ${pull.repo}#${pull.number} while ${pull.mergeableState ?? "unknown"}`);
-  }
   if (klass === "lattice") {
     throw new Error(`refusing to merge lattice ${pull.repo}#${pull.number} while the owner gate is open`);
+  }
+  // Red or pending required checks forbid merge for every mergeable class, not just automation.
+  if (pull.mergeableState !== "clean") {
+    throw new Error(`refusing to merge ${klass} ${pull.repo}#${pull.number} while ${pull.mergeableState ?? "unknown"}`);
   }
 }

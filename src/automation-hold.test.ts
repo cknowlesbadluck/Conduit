@@ -20,3 +20,11 @@ test("agent cannot merge an unstable bolt pull or a keep-red pull", () => {
   assert.throws(() => assertAgentMayMerge(keep), /refusing to merge keep-red/);
   assert.throws(() => assertAgentMayMerge(lattice), /owner gate is open/);
 });
+
+test("an unstable ordinary product pull is refused too; a clean one is allowed", () => {
+  const product = { repo: "Conduit", number: 999, title: "fix: something", mergeableState: "unstable" };
+  assert.equal(classifyPull(product), "product");
+  assert.throws(() => assertAgentMayMerge(product), /refusing to merge product/);
+  assert.throws(() => assertAgentMayMerge({ ...product, mergeableState: undefined }), /unknown/);
+  assert.doesNotThrow(() => assertAgentMayMerge({ ...product, mergeableState: "clean" }));
+});

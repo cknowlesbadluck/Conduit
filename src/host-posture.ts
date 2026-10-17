@@ -64,7 +64,8 @@ export function classifyHost(host: ObservedHost): HostClass {
   const missing = host.body.missingRequired;
   const exactMissing = Array.isArray(missing) && missing.length === 1 && missing[0] === OWNER_SECRET;
   const omitted = OMITTED.every((key) => !Object.prototype.hasOwnProperty.call(host.body, key));
-  if (host.httpStatus === 503 && exactMissing && omitted && host.body.authModeOk === true) return "owner_gate";
+  const isResonance = host.body.service === "resonance-nexus" && host.body.status === "not_ready";
+  if (host.httpStatus === 503 && isResonance && exactMissing && omitted && host.body.authModeOk === true) return "owner_gate";
   return "drift";
 }
 

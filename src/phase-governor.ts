@@ -20,6 +20,8 @@ export type Probe = {
   resonanceReady: number;
   missingRequired: string[];
   readyBodyOmitsOwnerAction: boolean;
+  /** The owner-gated 503 body must omit contractRevision too (host-posture treats its presence as drift). */
+  readyBodyOmitsContractRevision: boolean;
   vercelStatus: number;
   vercelClass: "alias_absent" | "alias_present" | "other";
   supabasePaused: boolean;
@@ -66,7 +68,8 @@ export function evaluatePhases(probe: Probe): Phase[] {
     (probe.resonanceReady === 503 &&
       probe.missingRequired.length === 1 &&
       probe.missingRequired[0] === REQUIRED_SECRET &&
-      probe.readyBodyOmitsOwnerAction) ||
+      probe.readyBodyOmitsOwnerAction &&
+      probe.readyBodyOmitsContractRevision) ||
     (probe.resonanceReady === 200 && probe.missingRequired.length === 0);
   const conduitUp =
     probe.conduitHealth === 200 &&
@@ -112,7 +115,13 @@ export function evaluatePhases(probe: Probe): Phase[] {
       name: "Ready parity",
       state: conduitUp && readyKnown && probe.vercelClass === "alias_absent" ? "satisfied" : "blocked",
       exit: "Public Netlify ready body matches the repository contract. A Vercel alias success does not count.",
-      blocker: readyKnown ? null : "ready body drifted or secret missing in an unexpected shape",
+      blocker: !readyKnown
+        ? "ready body drifted or secret missing in an unexpected shape"
+        : !conduitUp
+          ? "conduit health/ready drifted from the pinned contract"
+          : probe.vercelClass !== "alias_absent"
+            ? `vercel alias is ${probe.vercelClass}, expected alias_absent`
+            : null,
     },
     afterOwner(3, "Persistence proof", "Apply supabase/migrations on the unpaused project and smoke resonancenexus.", probe.persistenceProven, "migrations not proven on the unpaused project"),
     afterOwner(4, "Idempotent execution", "Idempotency-Key replay does not double-write on the production host.", false, "production replay not proven"),
