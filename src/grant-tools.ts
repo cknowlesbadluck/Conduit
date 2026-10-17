@@ -57,6 +57,8 @@ async function governingAgent(extra: ToolExtra) {
  *                      (no sub, or sub === clientId) it also matches the clientId, because the
  *                      client *is* the subject. It never admits other users of a client.
  *  - `client:<id>`     explicit client-scoped form: every subject of OAuth client <id>.
+ *                      Reserved prefix: a token whose `sub` is literally `client:<id>` never
+ *                      matches it as a bare subject (configure such a subject as `client::sub`).
  * Before this change a bare clientId admitted every user of that client (see #237).
  */
 export function isGrantAdmin(extra: ToolExtra) {
@@ -68,7 +70,9 @@ export function isGrantAdmin(extra: ToolExtra) {
   if (clientId && adminSet.has(`client:${clientId}`)) return true;
   const clientIsSubject = !rawSub || rawSub === clientId;
   const subject = clientIsSubject ? clientId : rawSub;
-  if (subject && adminSet.has(subject)) return true;
+  // `client:` is a reserved selector prefix: such entries never participate in bare-sub
+  // matching, so a token whose sub is literally `client:<id>` cannot borrow a client grant.
+  if (subject && !subject.startsWith("client:") && adminSet.has(subject)) return true;
   if (clientId && rawSub && !clientIsSubject && adminSet.has(`${clientId}::${rawSub}`)) return true;
   return false;
 }

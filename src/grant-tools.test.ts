@@ -55,7 +55,12 @@ test("isGrantAdmin matches composite key, bare sub, client-credentials clientId 
     process.env.CONDUIT_GRANT_ADMIN_SUBJECTS = "client:only-client";
     assert.equal(isGrantAdmin(caller("only-client", "y")), true);
     assert.equal(isGrantAdmin(caller("another-client", "y")), false);
-    assert.equal(isGrantAdmin(caller("x", "client:only-client")), true, "literal sub match is unaffected");
+    assert.equal(isGrantAdmin(caller("x", "client:only-client")), false, "reserved client: selector never matches a literal sub from another client");
+    assert.equal(isGrantAdmin({ http: { authInfo: { token: "t", clientId: "client:only-client", scopes: [], extra: {} } } }), false, "nor a client whose id carries the prefix");
+    // A subject that really has that shape can still be granted via the composite form.
+    process.env.CONDUIT_GRANT_ADMIN_SUBJECTS = "x::client:only-client";
+    assert.equal(isGrantAdmin(caller("x", "client:only-client")), true, "composite form still works for prefixed subs");
+    assert.equal(isGrantAdmin(caller("y", "client:only-client")), false);
     assert.equal(isGrantAdmin({}), false, "unauthenticated caller is never admin");
   } finally {
     if (prev === undefined) delete process.env.CONDUIT_GRANT_ADMIN_SUBJECTS; else process.env.CONDUIT_GRANT_ADMIN_SUBJECTS = prev;
