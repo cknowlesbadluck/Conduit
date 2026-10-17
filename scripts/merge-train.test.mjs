@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { analyze, isSensitive, toMarkdown } from "./merge-train.mjs";
+import { analyze, isSensitive, latestChecks, toMarkdown } from "./merge-train.mjs";
 
 const green = [{ name: "verify", status: "completed", conclusion: "success" }, { name: "Workers Builds: conduit", status: "completed", conclusion: "failure" }];
 const pr = (number, files, extra = {}) => ({ number, title: `pr ${number}`, draft: false, mergeable: "MERGEABLE", checks: green, files: files.map((f) => (typeof f === "string" ? { filename: f, status: "modified" } : f)), ...extra });
@@ -31,4 +31,29 @@ test("detects heavy overlap and hotspots, orders candidates by conflicts then si
   assert.deepEqual(r.hotspots[0], { file: "a.ts", prs: [10, 11, 12] });
   assert.deepEqual(r.mergeOrder, [13, 12, 10, 11]);
   assert.match(toMarkdown("o/r", r), /#10 ~ #11/);
+});
+
+test("stacked PRs are never candidates and their pairing with the base PR is not overlap noise", () => {
+  const r = analyze([
+    pr(176, ["a.ts", "b.ts", { filename: "n.ts", status: "added" }], { head: "audit/route-tests", base: "audit/sanitize-db-errors" }),
+    pr(172, ["a.ts", "b.ts", { filename: "n.ts", status: "added" }], { head: "audit/sanitize-db-errors", base: "main" }),
+    pr(300, ["z.ts"], { head: "orphan-child", base: "gone-branch" }),
+  ]);
+  assert.deepEqual(r.mergeOrder, [172]);
+  assert.equal(r.rows[0].stacked, 172);
+  assert.equal(r.rows[2].stacked, "gone-branch");
+  assert.deepEqual(r.overlaps, []);
+  assert.deepEqual(r.duplicateAdds, []);
+  assert.match(toMarkdown("o/r", r), /\| #172 \|/);
+});
+
+test("latest run per check wins; a cancelled latest run is 'rerun', not red", () => {
+  const rerunThenGreen = [{ id: 1, name: "ci", status: "completed", conclusion: "failure" }, { id: 2, name: "ci", status: "completed", conclusion: "success" }];
+  assert.deepEqual(latestChecks(rerunThenGreen).map((c) => c.conclusion), ["success"]);
+  const cancelled = [{ id: 1, name: "ci", status: "completed", conclusion: "success" }, { id: 2, name: "gemini", status: "completed", conclusion: "cancelled" }];
+  const r = analyze([pr(1, ["a.md"], { checks: rerunThenGreen }), pr(2, ["b.md"], { checks: cancelled })]);
+  assert.equal(r.rows[0].ci, "green");
+  assert.equal(r.rows[1].ci, "rerun");
+  assert.deepEqual(r.rows[1].failing, []);
+  assert.deepEqual(r.mergeOrder, [1]);
 });
