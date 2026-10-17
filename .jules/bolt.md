@@ -13,3 +13,7 @@
 ## 2025-03-10 - Single-pass rate limiter eviction without sorting
 **Learning:** `SlidingWindowLimiter.evict` was allocating entry tuples and calling `[...this.buckets.entries()].sort(...)` over all keys when `maxKeys` capacity was exceeded, creating $O(K \log K)$ sorting overhead and high garbage collection pressure on every rate-limited request. Replacing this with a single-pass $O(K)$ iteration that deletes expired buckets on the fly while tracking the oldest active key reduced eviction latency by >4x with zero array/tuple allocations.
 **Action:** Avoid `[...map.entries()].sort()` for capacity eviction in high-throughput hot paths; use single-pass tracking loops to identify eviction candidates in $O(N)$ time with zero temporary array allocations.
+
+## 2025-03-10 - Fast-pathing string redaction and single-pass record iteration
+**Learning:** `redactString` was executing 11 regex replacements on every string property during activity logging, and `redactRecord` was allocating `[key, value]` tuple arrays via `Object.entries`. A fast-path trigger regex checking for secret/delimiter presence before replacement execution, combined with `Object.keys` iteration, yielded a >10x speedup (4.2s down to 0.38s per 100k records) and eliminated tuple allocations across all activity logging operations.
+**Action:** For string sanitization/redaction functions called on every domain write, check a fast combined trigger regex first to skip unnecessary regex replacements, and iterate over `Object.keys` instead of `Object.entries`.

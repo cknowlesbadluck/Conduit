@@ -18,7 +18,12 @@ const PATTERNS: RegExp[] = [
   /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g,
 ];
 
+// Performance Optimization: Fast-path trigger regex checks whether text contains any query string delimiters,
+// authorization headers, URL schemes, or credential prefixes before executing 11 regex replacements.
+const MAYBE_SECRET = /[?&]|bearer|basic|:\/\/[^@]*@|gh[posru]_|github_pat_|lin_|sk-|sb[ps]_|rnd_|AKIA|eyJ/i;
+
 export function redactString(text: string): string {
+  if (!MAYBE_SECRET.test(text)) return text;
   let out = text
     .replace(/([?&](?:token|key|secret|auth|code|password|access_token|api_key|apikey)=)[^&\s]*/gi, `$1${REDACTED}`)
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi, `$1 ${REDACTED}`)
@@ -29,7 +34,12 @@ export function redactString(text: string): string {
 
 export function redactRecord<T extends Record<string, unknown>>(data: T, depth = 0): T {
   const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(data).slice(0, 500)) {
+  // Performance Optimization: Object.keys iteration avoids allocating tuple arrays from Object.entries(data).
+  const keys = Object.keys(data);
+  const len = Math.min(keys.length, 500);
+  for (let i = 0; i < len; i++) {
+    const key = keys[i];
+    const value = data[key];
     if (SENSITIVE_KEY.test(key)) out[key] = REDACTED;
     else if (typeof value === "string") out[key] = redactString(value);
     else if (value && typeof value === "object" && !Array.isArray(value)) out[key] = depth >= 6 ? REDACTED : redactRecord(value as Record<string, unknown>, depth + 1);
