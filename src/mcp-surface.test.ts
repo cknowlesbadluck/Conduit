@@ -27,4 +27,8 @@ test("public MCP tool surface remains explicit and complete", async () => {
   assert.match(source, /idempotentHint: true/);
   assert.match(source, /openWorldHint: true/);
   assert.match(source, /structuredContent/);
+  // integration_call bodies must be JSON-typed, not arbitrary values.
+  assert.match(source, /body: z\.json\(\)\.optional\(\)/);
+  assert.match(source, /params: z\.union\(\[z\.record\(z\.string\(\), z\.json\(\)\), z\.array\(z\.json\(\)\)\]\)/);
+  assert.doesNotMatch(source, /z\.(unknown|any)\(\)/);
 });
