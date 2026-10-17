@@ -9,7 +9,8 @@ type ResolveAgent = (extra: ToolExtra, requested?: string) => Promise<string | n
 
 const json = (value: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(value) }], structuredContent: value as Record<string, unknown> });
 const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } as const;
-const writeSafe = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } as const;
+// A reclaim replaces another agent's claim, so clients that gate on hints must treat it as destructive.
+const takeover = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false } as const;
 const auth = (extra: ToolExtra, scope: string) => requireScope(extra.http?.authInfo, scope);
 
 /**
@@ -26,7 +27,7 @@ export function registerTaskRecoveryTools(server: McpServer, authConfig: Conduit
     return json(await taskHealth(projectId));
   });
 
-  server.registerTool("task_reclaim", { description: "Take over a claimed or blocked task whose holder has not updated it for CONDUIT_TASK_STALE_CLAIM_MINUTES. Disabled unless that setting is configured. Atomic; records task.reclaim with the previous holder.", inputSchema: z.object({ taskId: z.string().min(1), agentId: z.string().min(1).optional() }), annotations: writeSafe }, async ({ taskId, agentId }, extra) => {
+  server.registerTool("task_reclaim", { description: "Take over a claimed or blocked task whose holder has not updated it for CONDUIT_TASK_STALE_CLAIM_MINUTES. Disabled unless that setting is configured. Atomic; records task.reclaim with the previous holder.", inputSchema: z.object({ taskId: z.string().min(1), agentId: z.string().min(1).optional() }), annotations: takeover }, async ({ taskId, agentId }, extra) => {
     if (writeScope) auth(extra, writeScope);
     const staleMs = staleClaimMs();
     if (staleMs === null) return errorResult("stale_reclaim_disabled", { taskId, setting: "CONDUIT_TASK_STALE_CLAIM_MINUTES" });
