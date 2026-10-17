@@ -1,4 +1,4 @@
-# Conduit — 10-Phase Roadmap to a hardened 0.8+ (updated in place 2026-10-17 13:10 EDT)
+# Conduit — 10-Phase Roadmap to a hardened 0.8+ (updated in place 2026-10-17 14:10 EDT)
 
 Target: hardened Conduit 0.8+ → 0.9.0 with reliable grants and low PR entropy. Cross-repo view: `ROADMAP.md`. Current audit: `docs/AUDIT-2026-10-15.md`. Repos stay separate; Conduit talks to Resonance only through HTTP/MCP contracts.
 These are **Conduit workstreams C1–C10**, numbered separately from the canonical portfolio phases 1–10 in `ROADMAP.md`. "C10" means the Conduit release workstream, not portfolio phase 10.
@@ -36,7 +36,7 @@ Conduit is the coordination bridge. It records who is doing what, and it must ne
 - **Idempotent delivery.** Writes are claim-checked and transition-guarded, so a retried claim, complete or handoff is a no-op or a refusal, never a double effect. Callers retry only on 429/503.
 - **No secrets in flight records.** Activity, diagnostics and errors are redacted (#228, #226). Tokens never appear in logs or responses.
 
-## Status board (2026-10-17 13:10 EDT; main 2a6745b, nothing merged since 12:15)
+## Status board (2026-10-17 14:10 EDT; main 2a6745b, nothing merged since 12:15)
 
 Tags: **[passed]** = exit check met on main · **[in progress]** = PRs open, CI green · **[blocked]** = needs owner action.
 
@@ -46,15 +46,16 @@ Tags: **[passed]** = exit check met on main · **[in progress]** = PRs open, CI 
 | C2 Lean code | [passed] | #248 (un-export 12 knip-flagged types) and #252 (6 dead symbols) merged; no TODO/FIXME/XXX in `src/` |
 | C3 Reliable grants | [in progress] | #250 verifier tests merged (auth.js 66% → 99%); **#238, #234 open (owner review)** |
 | C4 Fail-closed production | [in progress] | **#206 → #212 open (owner review)**; lockdown independent of `NODE_ENV` |
-| C5 Bounded surface | [in progress] | #253 merged; **#251, #256, #258, #231, #208 open**. MCP transport is stateless per request, so no session cap is needed |
+| C5 Bounded surface | [in progress] | #253 merged; **#251, #256, #258, #231, #208, #262 open**. MCP transport is stateless per request, so no session cap is needed. 14:05 EDT audit of `src/index.ts` `/events`: per-subscriber `setInterval(async replay, 2000)` (overlaps under slow DB, N/2 qps idle), `res.write()` backpressure ignored, cap throws after `flushHeaders` → **#262** fixes all three (single-flight + 2s→30s idle backoff, pause-until-drain + 1 MiB slow-consumer cut, 503 + Retry-After before bytes) |
 | C6 Transport/data security | [blocked] | #155 is the single DB TLS owner and builds on #251 (one `src/db-pool.ts`); owner sets Render `DATABASE_SSL_CA` (or explicit opt-out), then #251 → #155, and `/ready` still 200. **#162 split done (9ddfa39):** its duplicate `postgres-ssl.ts` was dropped; #162 is now only opt-in HMAC cursors (3 files, green) |
 | C7 Honest posture | [in progress] | `/ready` 200 ✓; #247 commitSha and #245 shape contract open |
 | C8 Contracts + coverage | [in progress] | #252 lint gate (`eslint . --max-warnings=0` in CI) and #254 dual-mode store tests merged |
-| C9 Low entropy | [in progress] | ≤8 open non-draft PRs. 29 open at 13:00 and 13:10 EDT (no merges, no closures: nothing clearly superseded). At 13:05 EDT all 24 main-based PRs passed `tsc` + `eslint . --max-warnings=0` when merged locally onto main. Conflicting with main: only the red drafts #119/#120. Stacked #211/#212/#217 showed CONFLICTING on GitHub (criss-cross merge bases) although `git merge-tree` was clean; merging the base into each head fixed it, and all three are MERGEABLE. Stacked PRs get no CI because CI runs only on PRs into `main`. **#261** removes that filter (one line) |
+| C9 Low entropy | [in progress] | ≤8 open non-draft PRs. **31 open at 14:10 EDT** (30 at 14:00 + #262; nothing clearly superseded, nothing closed; no branch without an open PR is free of unique commits, so none deleted; `npm audit` 0 vulnerabilities; all workflow actions SHA-pinned; only #119/#120 red, by design). 29 open at 13:00 and 13:10 EDT (no merges, no closures: nothing clearly superseded). At 13:05 EDT all 24 main-based PRs passed `tsc` + `eslint . --max-warnings=0` when merged locally onto main. Conflicting with main: only the red drafts #119/#120. Stacked #211/#212/#217 showed CONFLICTING on GitHub (criss-cross merge bases) although `git merge-tree` was clean; merging the base into each head fixed it, and all three are MERGEABLE. Stacked PRs get no CI because CI runs only on PRs into `main`. **#261** removes that filter (one line) |
 | C10 Operable release 0.9.0 | not started | tag 0.9.0 after C3–C5; 7 days of probe drift=false |
 | Innovation: merge-train health | [in progress] | **#260** `npm run merge-train [owner/repo]`: green/mergeable/not-owner-gated order, duplicate-new-file and overlap detection, conflict hotspots (report-only). 914fe52 adds stacked-PR awareness (never a candidate; no stack-pair noise) and latest-run-per-check semantics (a cancelled run is `rerun`, not red) |
 | Innovation: stale-claim recovery | [in progress] | **#259** `task_reclaim` (opt-in) + `task_health` idle-age counts (owner review) |
 | Innovation: signed bridge receipts | [in progress] | **#257** (opt-in, offline verifier; owner review, after #256) |
+| Innovation: SSE backpressure + backoff | [in progress] | **#262** `src/sse.ts` `createEventStreamHandler` + `getSseStats()` counters (11 tests; verify + postgres-coordination green). Overlaps #217 (same 503 fix on the stacked `app-factory.ts` path); whichever lands second adopts `createEventStreamHandler` |
 
 Merged 2026-10-17 (agent, CI green, `/ready` 200 after each): #250 → 4ca764f, #253 → ff5f7e4, #254 → af315da, #252 → a1c84b3, #248 → 2a6745b.
 
