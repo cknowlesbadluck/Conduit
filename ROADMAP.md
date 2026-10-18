@@ -1,8 +1,8 @@
 # Portfolio Roadmap — 10 phases
 
-Canonical, unified roadmap for **Conduit** (MCP bridge), **Resonance** (integration plane) and **QuicksilverV1** (iOS product, owned by Quicksilver Dev). The repos stay separate and talk only through documented HTTP/MCP contracts. Live status and PR merge order: `docs/PORTFOLIO-ROADMAP-10-PHASE.md`. Current audit: `docs/AUDIT-2026-10-15.md`. Update these in place; do not add dated audit files.
+Canonical, unified roadmap for **Conduit** (MCP bridge), **Resonance** (integration plane) and **QuicksilverV1** (iOS product, owned by Quicksilver Dev). The repos stay separate and talk only through documented HTTP/MCP contracts. Live status and PR merge order: `docs/PORTFOLIO-ROADMAP-10-PHASE.md` (canonical in Resonance, refreshed 2026-10-18). Current audit: `docs/AUDIT-2026-10-15.md` (living; see Resonance for latest probe evidence). Update these in place; do not add dated audit files.
 
-Ground rules: agents never apply migrations, change production config, or spend money. Each phase is done only when **every** exit check below is true for each project. Status tags: **[passed]** · **[in progress]** · **[blocked]** (needs owner action). Last observed 2026-10-16 10:05 EDT: Conduit main CI + Live Smoke green, `/ready` 200; Resonance main CI green, `/api/ready` 503 (missing `SUPABASE_SERVICE_ROLE_KEY`); QuicksilverV1 main CI green.
+Ground rules: agents never apply migrations, change production config, or spend money. Each phase is done only when **every** exit check below is true for each project. Status tags: **[passed]** · **[in progress]** · **[blocked]** (needs owner action). Last observed 2026-10-18 ~09:00 EDT: Conduit main CI + Live Smoke green, `/ready` 200 stamped (0.8.0, contractRevision=2026-10-03-ready-surface, postgres); Resonance main CI green, `/api/ready` 503 (missing `SUPABASE_SERVICE_ROLE_KEY`); QuicksilverV1 main CI green. Open PR entropy high across all (~49/32/27).
 
 ## Stabilization
 
