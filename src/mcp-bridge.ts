@@ -34,10 +34,31 @@ function parseIpv4Octets(value: string): number[] | null {
   return octets;
 }
 
+// Performance Optimization: Direct character-code extraction of IPv4 octets in a single pass.
+// Avoids string splitting (.split(".")) and array allocations (.map, .some) on every SSRF address check.
 function isDisallowedIpv4(value: string): boolean {
-  const octets = parseIpv4Octets(value);
-  if (!octets) return true;
-  const [a, b] = octets;
+  let a = 0, b = 0;
+  let count = 0, cur = 0, digits = 0;
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    if (code >= 48 && code <= 57) {
+      cur = cur * 10 + (code - 48);
+      digits++;
+      if (cur > 255 || digits > 3) return true;
+    } else if (code === 46) {
+      if (digits === 0) return true;
+      if (count === 0) a = cur;
+      else if (count === 1) b = cur;
+      else if (count >= 3) return true;
+      count++;
+      cur = 0;
+      digits = 0;
+    } else {
+      return true;
+    }
+  }
+  if (count !== 3 || digits === 0) return true;
+
   if (a === 0) return true; // 0.0.0.0/8
   if (a === 10) return true; // 10.0.0.0/8
   if (a === 127) return true; // 127.0.0.0/8
