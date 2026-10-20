@@ -111,18 +111,35 @@ function classifyRaw(target, observation) {
   return { ...base, outcome: "unknown", ok: false, status };
 }
 
-export async function observe(url, { timeoutMs = 20_000, fetchImpl = fetch } = {}) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    // No Authorization/cookies: public endpoints only. redirect: "manual" so a hijacked
-    // alias cannot bounce us somewhere else and look healthy.
-    const res = await fetchImpl(url, { signal: controller.signal, redirect: "manual", headers: { accept: "application/json" } });
-    const body = (await res.text()).slice(0, 16_384);
-    return { status: res.status, headers: { "x-vercel-error": res.headers.get("x-vercel-error") ?? "", "cf-mitigated": res.headers.get("cf-mitigated") ?? "", server: res.headers.get("server") ?? "" }, body };
-  } catch (error) {
-    return { error: controller.signal.aborted || error?.name === "AbortError" ? "timeout" : "unreachable" };
-  } finally { clearTimeout(timer); }
+export async function observe(url, { timeoutMs = 20_000, fetchImpl = fetch, retries = 1 } = {}) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      // No Authorization/cookies: public endpoints only. redirect: "manual" so a hijacked
+      // alias cannot bounce us somewhere else and look healthy.
+      const res = await fetchImpl(url, { signal: controller.signal, redirect: "manual", headers: { accept: "application/json" } });
+      const body = (await res.text()).slice(0, 16_384);
+      const observation = { status: res.status, headers: { "x-vercel-error": res.headers.get("x-vercel-error") ?? "", "cf-mitigated": res.headers.get("cf-mitigated") ?? "", server: res.headers.get("server") ?? "" }, body };
+      // Retry once on free-tier cold-start 503s that aren't the known owner-gate not_ready
+      if (attempt < retries && res.status === 503) {
+        let json;
+        try { json = JSON.parse(body); } catch { json = null; }
+        if (!(json && json.status === "not_ready" && Array.isArray(json.missingRequired))) {
+          await new Promise(r => setTimeout(r, 2000));
+          continue;
+        }
+      }
+      return observation;
+    } catch (error) {
+      if (attempt < retries && (controller.signal.aborted || error?.name === "AbortError")) {
+        await new Promise(r => setTimeout(r, 1000));
+        continue;
+      }
+      return { error: controller.signal.aborted || error?.name === "AbortError" ? "timeout" : "unreachable" };
+    } finally { clearTimeout(timer); }
+  }
+  return { error: "unreachable" };
 }
 
 /** Report-only: compare the answered body's field names with the pinned main contract. */
