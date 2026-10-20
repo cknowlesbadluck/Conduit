@@ -144,8 +144,26 @@ export async function probeAll(targets = TARGETS, options) {
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 if (isMain) {
   const results = await probeAll();
-  if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), results }, null, 2));
-  else for (const r of results) console.log(`${r.ok ? "OK  " : "FAIL"} ${r.name.padEnd(22)} ${r.outcome}${r.missing?.length ? ` missing=[${r.missing.join(",")}]` : ""}${r.reason ? ` reason=${r.reason}` : ""}${r.drift ? " DRIFT" : ""}${r.behindMain ? ` BEHIND_MAIN(missing=${r.missingContractFields.join(",") || "contractRevision"})` : ""}${r.status ? ` (${r.status})` : ""}`);
+  const score = portfolioScore(results);
+  if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), score, results }, null, 2));
+  else { console.log("Portfolio maturity score:", score, "/10"); results.forEach(r => console.log(r.name, r.outcome, r.ok ? "OK" : "FAIL", r.drift ? "DRIFT" : "")); }
   const pass = process.argv.includes("--drift-only") ? results.every((r) => !r.drift || !TARGETS.find((t) => t.name === r.name)?.expect) : results.every((r) => r.ok);
   process.exitCode = pass ? 0 : 1;
+}
+
+/**
+ * Innovative portfolio maturity score (0-10).
+ * ready = 10, known not_ready (owner gate) = 6, other not_ok = 2, weighted average.
+ * Pure, fail-closed, no secrets.
+ */
+export function portfolioScore(results) {
+  if (!results?.length) return 0;
+  const scores = results.map(r => {
+    if (r.ok && r.outcome === "ready") return 10;
+    if (r.outcome === "not_ready" && r.reason === "known_owner_gate") return 6;
+    if (r.outcome === "alias_absent" || r.outcome === "stranger_occupant") return 1;
+    return 2;
+  });
+  const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+  return Math.round(avg * 10) / 10;
 }
