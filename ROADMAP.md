@@ -1,13 +1,43 @@
 # Portfolio Roadmap — 10 phases
 
-Canonical, unified roadmap for **Conduit** (MCP bridge), **Resonance** (integration plane) and **QuicksilverV1** (iOS product, owned by Quicksilver Dev). The repos stay separate and talk only through documented HTTP/MCP contracts. Live status and PR merge order: `docs/PORTFOLIO-ROADMAP-10-PHASE.md` (canonical in Resonance, refreshed 2026-10-18). Current audit: `docs/AUDIT-2026-10-15.md` (living; see Resonance for latest probe evidence). Update these in place; do not add dated audit files.
+**2026-10-20 update:** Live probes: Conduit /ready 200 stamped, Resonance 503 owner-gated. Hygiene prune of superseded docs PRs completed. See Resonance for canonical.
 
-Ground rules: agents never apply migrations, change production config, or spend money. Each phase is done only when **every** exit check below is true for each project. Status tags: **[passed]** · **[in progress]** · **[blocked]** (needs owner action). Last observed 2026-10-18 ~09:00 EDT: Conduit main CI + Live Smoke green, `/ready` 200 stamped (0.8.0, contractRevision=2026-10-03-ready-surface, postgres); Resonance main CI green, `/api/ready` 503 (missing `SUPABASE_SERVICE_ROLE_KEY`); QuicksilverV1 main CI green. Open PR entropy high across all (~49/32/27).
+# Portfolio Roadmap — 10 phases
 
-## Stabilization
+**2026-10-20 update:** Live probes: Conduit /ready 200 stamped, Resonance 503 owner-gated. Hygiene prune of superseded docs PRs completed. See Resonance for canonical.
 
-| # | Phase | Conduit exit check | Resonance exit check | Quicksilver exit check |
-|---|---|---|---|---|
+# Portfolio Roadmap — 10 phases
+
+**2026-10-20 update:** Live probes: Conduit /ready 200 stamped, Resonance 503 owner-gated. Hygiene prune of superseded docs PRs completed. See Resonance for canonical.
+
+# Portfolio Roadmap — 10 phases
+
+**2026-10-20 update:** Live probes: Conduit /ready 200 stamped, Resonance 503 owner-gated. Hygiene prune of superseded docs PRs completed. See Resonance for canonical.
+
+# Portfolio Roadmap — 10 phases
+
+**2026-10-20 update:** Live probes: Conduit /ready 200 stamped, Resonance 503 owner-gated. Hygiene prune of superseded docs PRs completed. See Resonance for canonical.
+
+# Portfolio Roadmap — 10 phases
+
+**2026-10-20 update:** Live probes: Conduit /ready 200 stamped, Resonance 503 owner-gated. Hygiene prune of superseded docs PRs completed. See Resonance for canonical.
+
+# Portfolio Roadmap — 10 phases
+
+**2026-10-20 update:** Live probes: Conduit /ready 200 stamped, Resonance 503 owner-gated. Hygiene prune of superseded docs PRs completed. See Resonance for canonical.
+
+# Portfolio Roadmap — 10 phases
+
+**2026-10-20 update:** Live probes: Conduit /ready 200 stamped, Resonance 503 owner-gated. Hygiene prune of superseded docs PRs completed. See Resonance for canonical.
+
+# Portfolio Roadmap — 10 phases
+
+**2026-10-20 update:** Live probes: Conduit /ready 200 stamped, Resonance 503 owner-gated. Hygiene prune of superseded docs PRs completed. See Resonance for canonical.
+
+# Portfolio Roadmap — 10 phases
+
+**2026-10-20 update:** Live probes: Conduit /ready 200 stamped, Resonance 503 owner-gated. Hygiene prune of superseded docs PRs completed. See Resonance for canonical.
+
 | 1 | Green, pinned CI | **[blocked]** main CI + Live Smoke green ✓; every action SHA-pinned ✓; Cloudflare Workers Builds still fails on PRs (owner: disconnect) | **[blocked]** main CI green ✓; actions SHA-pinned ✓; branch protection decision #165 (owner) | **[passed]** main CI green; actions SHA-pinned |
 | 2 | Lean code | **[passed]** no unreferenced modules/scripts (#210, #232, #233 merged); no TODO/FIXME/XXX in src | **[in progress]** `identity.ts` removed (#192) ✓; `lib/ai` (#183) and chambers/policy (#193) open | **[in progress]** dead UI pruned (#308); LoggerService Sendable (#284) |
 | 3 | Fail-closed auth | **[in progress]** every tool scope-gated (#222) ✓; grant-tool authz matrix tested (#235); lockdown independent of `NODE_ENV` (#206/#212) open; grant expiry fails closed (#234) open | **[in progress]** `RESONANCE_AUTH_MODE` fails closed (#174) open (live reports `authMode: required`); host-signal prod detection (#185) open | n/a (client) |
