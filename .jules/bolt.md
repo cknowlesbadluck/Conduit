@@ -17,3 +17,7 @@
 ## 2025-03-10 - Fast-path credential redaction and single-pass record sanitization
 **Learning:** `redactString` was executing 11 regex replace operations on every string property across all logged activity events and record payloads. Pre-screening strings with a single `SECRET_TRIGGER` regex test before executing full regex replacements reduced redaction latency by >10x (from ~2.37s to ~0.22s per 100k calls) while replacing `Object.entries(data).slice(0, 500)` with an indexed `Object.keys` loop eliminated temporary tuple and slice array allocations.
 **Action:** When running multi-regex string transformation pipelines on un-redacted strings, use a fast single-pass pre-check trigger to skip regex passes on safe inputs, and iterate keys directly to avoid entry tuple allocations.
+
+## 2025-03-10 - Direct array construction for actor binding lookup keys
+**Learning:** `actorBindingLookupKeys` was allocating empty arrays and calling `keys.push` conditionally after evaluating `actorBindingKey(clientId, sub)`. Short-circuiting input conditions (`!clientId`, `!sub`, `clientId === sub`) and directly instantiating the literal return array `[primary, sub]` or `[key]` eliminates intermediate array growth and function calls on every authenticated request lookup.
+**Action:** Fast-path common single-value or empty cases in identifier resolution functions to return array literals directly instead of initializing mutable arrays and calling `.push()`.
