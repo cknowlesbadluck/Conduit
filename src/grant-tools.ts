@@ -51,11 +51,14 @@ async function governingAgent(extra: ToolExtra) {
   return actorSubject(extra);
 }
 export function isGrantAdmin(extra: ToolExtra) {
+  const adminSet = getGrantAdminSet();
+  // Performance Optimization: Return early if no grant admin subjects are configured
+  // to avoid property extraction and array allocations from actorBindingLookupKeys.
+  if (adminSet.size === 0) return false;
   const info = extra.http?.authInfo;
   const sub = typeof info?.extra?.sub === "string" ? info.extra.sub : undefined;
   const clientId = typeof info?.clientId === "string" ? info.clientId : undefined;
   const keys = actorBindingLookupKeys(clientId, sub);
-  const adminSet = getGrantAdminSet();
   return keys.some((key) => adminSet.has(key)) || Boolean(sub && adminSet.has(sub)) || Boolean(clientId && adminSet.has(clientId));
 }
 

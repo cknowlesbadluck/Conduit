@@ -17,3 +17,7 @@
 ## 2025-03-10 - Fast-path credential redaction and single-pass record sanitization
 **Learning:** `redactString` was executing 11 regex replace operations on every string property across all logged activity events and record payloads. Pre-screening strings with a single `SECRET_TRIGGER` regex test before executing full regex replacements reduced redaction latency by >10x (from ~2.37s to ~0.22s per 100k calls) while replacing `Object.entries(data).slice(0, 500)` with an indexed `Object.keys` loop eliminated temporary tuple and slice array allocations.
 **Action:** When running multi-regex string transformation pipelines on un-redacted strings, use a fast single-pass pre-check trigger to skip regex passes on safe inputs, and iterate keys directly to avoid entry tuple allocations.
+
+## 2025-03-11 - Direct Set iteration and fast-pathing empty admin checks
+**Learning:** `publishEvent` was spreading `[...listeners]` on every published event, allocating unnecessary temporary arrays, and `isGrantAdmin` was extracting auth headers and building actor keys on every write request even when no grant admin subjects were configured (`adminSet.size === 0`). Iterating Sets directly (`for (const item of set)`) and checking `adminSet.size === 0` upfront eliminates array allocations in event dispatch and authorization hot paths.
+**Action:** Iterate Sets directly in event listeners instead of spreading into arrays, and fast-path empty configuration sets before performing property lookups and array building.
