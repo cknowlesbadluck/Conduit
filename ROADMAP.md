@@ -28,3 +28,4 @@ Ground rules: agents never apply migrations, change production config, or spend 
 |---|---|---|---|---|
 | 9 | Adapters, chambers, on-device | **[in progress]** capability metadata in `tools/list`; streamable/resumable sessions | **[in progress]** provider-neutral adapter contract (#182) + failover (#188); chamber policy decided (#157) | **[in progress]** on-device intelligence path works offline; calls Resonance capabilities only via contract |
 | 10 | Free tiers, SideStore, privacy | **[in progress]** zero paid add-ons ✓; diagnostics never echo credentials (#226) ✓; free-tier cold start documented | **[in progress]** free-tier budget documented; evidence privacy floor (#191) | **[in progress]** SideStore sideload build documented and reproducible; privacy manifest + no third-party telemetry |
+Updating ROADMAP with 2026-10-22 probe: Conduit /ready 200 confirmed.
