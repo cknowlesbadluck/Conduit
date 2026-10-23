@@ -16,14 +16,20 @@
  *   - not_ready matching the pinned set exactly        -> `not_ready`, drift=false (known owner gate)
  * Every result carries `drift: boolean`; anything unclassifiable is drift=true.
  *
+ * Shape (cross-plane contract): a target may name a `schema` in schemas/ready/. When the body
+ * is a JSON service payload (ready / not_ready), it must validate; a violation becomes outcome
+ * `shape_changed`, ok=false, drift=true. See scripts/ready-shape.mjs.
+ *
  * Deploy parity (report-only annotation): a target may pin `parity` = the /ready field set and
  * contractRevision its repo's main declares (for Resonance: `Readiness` in src/deploy/health.ts,
  * mirrored by Resonance scripts/deploy-parity.mjs). When the service answered with JSON, the
  * result gains `behindMain` + `missingContractFields`. It never changes ok/drift/exit code.
  *
- * Usage: node scripts/portfolio-probe.mjs [--json] [--drift-only]
+ * Usage: node scripts/portfolio-probe.mjs [--json] [--drift-only] [--entropy]
  *   default: exit 1 if any target is not ok; --drift-only: exit 1 only if any pinned target drifted.
  */
+
+import { checkShape } from "./ready-shape.mjs";
 
 /** Resonance main's /api/ready contract (src/deploy/health.ts `Readiness`, deployLag.ts revision). */
 export const RESONANCE_MAIN_READY = Object.freeze({
@@ -32,9 +38,9 @@ export const RESONANCE_MAIN_READY = Object.freeze({
 });
 
 export const TARGETS = [
-  { name: "conduit", url: "https://conduit-feco.onrender.com/ready", expectService: "conduit", expect: { contractRevision: "2026-10-03-ready-surface" } },
+  { name: "conduit", url: "https://conduit-feco.onrender.com/ready", expectService: "conduit", schema: "conduit-ready", expect: { contractRevision: "2026-10-03-ready-surface" } },
   // Owner gate: the service role key is the ONLY thing Resonance prod may be missing.
-  { name: "resonance-netlify", url: "https://resonancenexus.netlify.app/api/ready", expectService: "resonance-nexus", expect: { missingRequired: ["SUPABASE_SERVICE_ROLE_KEY"] }, parity: RESONANCE_MAIN_READY },
+  { name: "resonance-netlify", url: "https://resonancenexus.netlify.app/api/ready", expectService: "resonance-nexus", schema: "resonance-ready", expect: { missingRequired: ["SUPABASE_SERVICE_ROLE_KEY"] }, parity: RESONANCE_MAIN_READY },
   { name: "resonance-vercel", url: "https://resonance.vercel.app/api/ready", expectService: "resonance-nexus" },
   { name: "resonancenexus-vercel", url: "https://resonancenexus.vercel.app/api/ready", expectService: "resonance-nexus" },
   { name: "quicksilver-vercel", url: "https://quicksilver.vercel.app/", expectService: "quicksilver" },
@@ -142,6 +148,14 @@ export async function observe(url, { timeoutMs = 20_000, fetchImpl = fetch, retr
   return { error: "unreachable" };
 }
 
+/** Add the schema verdict for targets that pin one, only when the service actually answered. */
+export function attachShape(target, observation, result) {
+  if (!target.schema || !["ready", "not_ready", "contract_changed", "regression"].includes(result.outcome)) return result;
+  const { ok, errors } = checkShape(target.schema, observation?.body ?? "");
+  if (ok) return { ...result, shapeOk: true };
+  return { ...result, outcome: "shape_changed", ok: false, drift: true, shapeOk: false, shapeErrors: errors.slice(0, 10), previousOutcome: result.outcome };
+}
+
 /** Report-only: compare the answered body's field names with the pinned main contract. */
 export function attachParity(target, observation, result) {
   if (!target.parity || !["ready", "not_ready", "contract_changed", "regression"].includes(result.outcome)) return result;
@@ -155,15 +169,17 @@ export function attachParity(target, observation, result) {
 }
 
 export async function probeAll(targets = TARGETS, options) {
-  return Promise.all(targets.map(async (t) => { const o = await observe(t.url, options); return attachParity(t, o, classify(t, o)); }));
+  return Promise.all(targets.map(async (t) => { const o = await observe(t.url, options); return attachShape(t, o, attachParity(t, o, classify(t, o))); }));
 }
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 if (isMain) {
   const results = await probeAll();
+  const prCounts = await openPrCounts();
+  const prEntropyReport = process.argv.includes("--entropy") ? await openPrEntropy() : undefined;
   const score = portfolioScore(results);
-  if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), score, results }, null, 2));
-  else { console.log("Portfolio maturity score:", score, "/10"); results.forEach(r => console.log(r.name, r.outcome, r.ok ? "OK" : "FAIL", r.drift ? "DRIFT" : "")); }
+  if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), score, prCounts, prEntropy: prEntropyReport, results }, null, 2));
+  else { console.log("Portfolio maturity score:", score, "/10"); results.forEach(r => console.log(r.name, r.outcome, r.ok ? "OK" : "FAIL", r.drift ? "DRIFT" : "")); console.log("Open PR entropy:", JSON.stringify(prCounts)); if (prEntropyReport) console.log("PR age/stack:", JSON.stringify(prEntropyReport)); }
   const pass = process.argv.includes("--drift-only") ? results.every((r) => !r.drift || !TARGETS.find((t) => t.name === r.name)?.expect) : results.every((r) => r.ok);
   process.exitCode = pass ? 0 : 1;
 }
@@ -183,4 +199,63 @@ export function portfolioScore(results) {
   });
   const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
   return Math.round(avg * 10) / 10;
+}
+
+/**
+ * Report open PR counts for portfolio repos (public, unauthenticated rate-limited).
+ * Innovative hygiene signal: high entropy = operational risk.
+ */
+export async function openPrCounts({ repos = ["QuicksilverV1", "Resonance", "Conduit"], fetchImpl = fetch, timeoutMs = 10_000 } = {}) {
+  const counts = {};
+  for (const repo of repos) {
+    try {
+      const res = await fetchImpl(`https://api.github.com/search/issues?q=repo:cknowlesbadluck/${repo}+is:pr+is:open`, { headers: { "User-Agent": "portfolio-probe" }, signal: AbortSignal.timeout(timeoutMs) });
+      if (res.ok) {
+        const data = await res.json();
+        counts[repo] = data?.incomplete_results !== true && Number.isInteger(data.total_count) && data.total_count >= 0 ? data.total_count : null;
+      } else counts[repo] = null;
+    } catch { counts[repo] = null; }
+  }
+  return counts;
+}
+
+
+/**
+ * Pure PR entropy summary: age buckets (by created_at) and stacked-PR depth
+ * (a PR whose base branch is another open PR's head branch). Cycles are cut.
+ * Input: GitHub REST /pulls items ({ number, created_at, base: { ref }, head: { ref } }).
+ */
+export function prEntropy(prs, now = Date.now()) {
+  const ageBuckets = { lt1d: 0, d1to7: 0, d7to30: 0, gt30d: 0 };
+  const byHead = new Map();
+  // Key by repository + ref so a fork's `main` never looks like the base of upstream PRs.
+  const key = (side) => `${side?.repo?.full_name ?? ""}:${side?.ref}`;
+  for (const pr of prs) if (pr?.head?.ref) byHead.set(key(pr.head), pr);
+  let maxStackDepth = 0, stacked = 0, oldestDays = null, drafts = 0;
+  for (const pr of prs) {
+    if (pr?.draft === true) drafts++;
+    const age = (now - Date.parse(pr.created_at)) / 86_400_000;
+    if (Number.isFinite(age)) {
+      ageBuckets[age < 1 ? "lt1d" : age < 7 ? "d1to7" : age < 30 ? "d7to30" : "gt30d"]++;
+      oldestDays = Math.max(oldestDays ?? 0, Math.floor(age));
+    }
+    let depth = 0; const seen = new Set([pr.number]);
+    for (let p = byHead.get(key(pr?.base)); p && !seen.has(p.number); p = byHead.get(key(p.base))) { seen.add(p.number); depth++; }
+    if (depth > 0) stacked++;
+    maxStackDepth = Math.max(maxStackDepth, depth);
+  }
+  return { open: prs.length, ageBuckets, oldestDays, stacked, maxStackDepth, drafts };
+}
+
+/** Public, unauthenticated, report-only. null per repo on any error (fail-closed, never throws). */
+export async function openPrEntropy({ repos = ["Resonance", "Conduit"], fetchImpl = fetch, timeoutMs = 10_000, now = Date.now() } = {}) {
+  const out = {};
+  for (const repo of repos) {
+    try {
+      const res = await fetchImpl(`https://api.github.com/repos/cknowlesbadluck/${repo}/pulls?state=open&per_page=100`, { headers: { "User-Agent": "portfolio-probe" }, signal: AbortSignal.timeout(timeoutMs) });
+      const data = res.ok ? await res.json() : null;
+      out[repo] = Array.isArray(data) && data.length < 100 ? prEntropy(data, now) : null;
+    } catch { out[repo] = null; }
+  }
+  return out;
 }

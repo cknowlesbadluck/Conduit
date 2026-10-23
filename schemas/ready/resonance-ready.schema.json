@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "resonance-ready",
+  "title": "Resonance GET /api/ready payload (src/deploy/health.ts Readiness). Core fields are required; posture/commit fields are optional so the currently deployed (older) build and current main both validate. Unknown fields are rejected so nothing new is echoed unreviewed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "service", "stage", "production", "authMode", "authModeOk", "persistenceConfigured", "githubAdapterConfigured", "missingRequired", "timestamp"],
+  "properties": {
+    "status": { "enum": ["ready", "not_ready"] },
+    "service": { "const": "resonance-nexus" },
+    "stage": { "const": "deployment" },
+    "production": { "type": "boolean" },
+    "authMode": { "type": "string", "pattern": "^[a-z_]{1,32}$" },
+    "authModeOk": { "type": "boolean" },
+    "persistenceConfigured": { "type": "boolean" },
+    "githubAdapterConfigured": { "type": "boolean" },
+    "missingRequired": { "type": "array", "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,63}$" } },
+    "ownerActionRequired": { "type": "boolean" },
+    "contractRevision": { "type": "string", "pattern": "^[0-9A-Za-z._-]{1,64}$" },
+    "ownerKeys": { "type": "array", "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,63}$" } },
+    "agentActionRequired": { "type": "boolean" },
+    "posture": { "type": "string", "maxLength": 500 },
+    "commitSha": { "type": "string", "pattern": "^(unknown|[0-9a-f]{7,40})$" },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+([-+][0-9A-Za-z.-]+)?$" },
+    "timestamp": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$" }
+  }
+}
