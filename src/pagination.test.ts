@@ -23,3 +23,13 @@ test("page limits are bounded", () => {
   assert.equal(pageLimit(9999, 2), 2);
   assert.equal(pageLimit(0), 1);
 });
+
+test("pageLimit never returns NaN, Infinity, or a fraction", () => {
+  assert.equal(pageLimit(Number.NaN), 50);
+  assert.equal(pageLimit(Number.POSITIVE_INFINITY), 50);
+  assert.equal(pageLimit(Number.NEGATIVE_INFINITY), 50);
+  assert.equal(pageLimit(2.9), 2);
+  assert.equal(pageLimit(0.5), 1);
+  assert.equal(pageLimit(10, Number.NaN), 10);
+  assert.equal(pageLimit(500, 1000), 200);
+});

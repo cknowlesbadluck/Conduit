@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { callMcpBridge, isDisallowedAddress, pinnedLookup, setMcpBridgeLookupForTests, setMcpBridgeTransportForTests } from "./mcp-bridge.js";
+import { callMcpBridge, isDisallowedAddress, pinnedLookup, setMcpBridgeDeadlineForTests, setMcpBridgeLookupForTests, setMcpBridgeTransportForTests } from "./mcp-bridge.js";
 import { MCP_PROTOCOL_VERSION, SERVICE_NAME, VERSION } from "./version.js";
 
 test.afterEach(() => {
@@ -92,4 +92,73 @@ test("MCP bridge rejects oversized request bodies", async () => {
   setMcpBridgeLookupForTests(async () => [{ address: "203.0.113.10", family: 4 }]);
   const huge = "x".repeat(300 * 1024);
   await assert.rejects(() => callMcpBridge({ endpoint: "https://mcp.example.test/mcp", request: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { huge } } }), /mcp_request_too_large/);
+});
+
+test("MCP bridge enforces a total deadline when the transport never answers", async () => {
+  setMcpBridgeLookupForTests(async () => [{ address: "203.0.113.10", family: 4 }]);
+  setMcpBridgeTransportForTests(() => new Promise<Response>(() => undefined));
+  setMcpBridgeDeadlineForTests(50);
+  try {
+    const started = Date.now();
+    await assert.rejects(() => callMcpBridge({ endpoint: "https://mcp.example.test/mcp", request: { jsonrpc: "2.0", id: 1, method: "tools/list" } }), /mcp_bridge_timeout/);
+    assert.ok(Date.now() - started < 2000, "deadline bounds the call");
+  } finally {
+    setMcpBridgeDeadlineForTests();
+    setMcpBridgeTransportForTests();
+  }
+});
+
+test("MCP bridge cancels a body that drips past the deadline (slow-drip peer)", async () => {
+  setMcpBridgeLookupForTests(async () => [{ address: "203.0.113.10", family: 4 }]);
+  let cancelled = false;
+  let interval: NodeJS.Timeout | undefined;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) { interval = setInterval(() => controller.enqueue(new TextEncoder().encode(" ")), 5); },
+    cancel() { cancelled = true; clearInterval(interval); },
+  });
+  setMcpBridgeTransportForTests(async () => new Response(body, { status: 200, headers: { "content-type": "application/json" } }));
+  setMcpBridgeDeadlineForTests(60);
+  try {
+    await assert.rejects(() => callMcpBridge({ endpoint: "https://mcp.example.test/mcp", request: { jsonrpc: "2.0", id: 1, method: "tools/list" } }), /mcp_bridge_timeout/);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.equal(cancelled, true, "stalled body is cancelled, not left open");
+  } finally {
+    clearInterval(interval);
+    setMcpBridgeDeadlineForTests();
+    setMcpBridgeTransportForTests();
+  }
+});
+
+test("MCP bridge deadline covers DNS resolution (a hung resolver cannot stall the call)", async () => {
+  setMcpBridgeLookupForTests(() => new Promise(() => undefined));
+  let transportCalled = false;
+  setMcpBridgeTransportForTests(async () => { transportCalled = true; return new Response("{}", { status: 200 }); });
+  setMcpBridgeDeadlineForTests(50);
+  try {
+    const started = Date.now();
+    await assert.rejects(() => callMcpBridge({ endpoint: "https://mcp.example.test/mcp", request: { jsonrpc: "2.0", id: 1, method: "tools/list" } }), /mcp_bridge_timeout/);
+    assert.ok(Date.now() - started < 2000);
+    assert.equal(transportCalled, false);
+  } finally { setMcpBridgeDeadlineForTests(); }
+});
+
+test("MCP bridge shares one budget across DNS and connect, and aborts the transport (socket release) at the deadline", async () => {
+  setMcpBridgeLookupForTests(() => new Promise((resolve) => setTimeout(() => resolve([{ address: "203.0.113.10", family: 4 }]), 40)));
+  let seen: { signal?: AbortSignal; deadlineMs?: number } = {};
+  let abortedAt = 0;
+  setMcpBridgeTransportForTests((_url, init) => {
+    seen = init;
+    init.signal?.addEventListener("abort", () => { abortedAt = Date.now(); });
+    return new Promise<Response>(() => undefined); // connect never completes
+  });
+  setMcpBridgeDeadlineForTests(100);
+  try {
+    const started = Date.now();
+    await assert.rejects(() => callMcpBridge({ endpoint: "https://mcp.example.test/mcp", request: { jsonrpc: "2.0", id: 1, method: "tools/list" } }), /mcp_bridge_timeout/);
+    const elapsed = Date.now() - started;
+    assert.ok(elapsed < 400, `total budget respected (${elapsed}ms)`);
+    assert.ok(seen.deadlineMs !== undefined && seen.deadlineMs <= 70, `transport got only the remaining budget (${seen.deadlineMs})`);
+    assert.equal(seen.signal?.aborted, true, "transport signal aborted so the socket is destroyed");
+    assert.ok(abortedAt > 0);
+  } finally { setMcpBridgeDeadlineForTests(); }
 });

@@ -12,6 +12,7 @@ import { healthBody, readyBody } from "./health-contract.js";
 import { MCP_RATE_LIMITER, TOOL_RATE_LIMITER } from "./rate-limit.js";
 import { timingSafeEqual } from "node:crypto";
 import { replayRecentEvents, subscribeEvents } from "./events.js";
+import { createEventStreamHandler } from "./sse.js";
 import { getPublicConduitStatus } from "./status.js";
 import { createDiagnosticsHandler } from "./diagnostics-route.js";
 import { conduitUiHtml, CONDUIT_UI_CSS, CONDUIT_UI_JS } from "./ui.js";
@@ -71,20 +72,8 @@ async function boot() {
   // Build the token verifier (and its cached remote JWKS) once and share it between
   // /events and /mcp instead of re-creating it on every /events request.
   const tokenVerifier = authConfig ? createTokenVerifier(authConfig) : undefined;
-  const eventHandler = async (req: express.Request, res: express.Response) => {
-    const projectId = typeof req.query.projectId === "string" ? req.query.projectId : undefined;
-    res.status(200);
-    res.set({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive", "X-Accel-Buffering": "no" });
-    res.flushHeaders?.();
-    const seen = new Set<string>();
-    const emit = (event: Record<string, string>) => { if (seen.has(event.id)) return; seen.add(event.id); if (seen.size > 200) seen.delete(seen.values().next().value as string); res.write(`id: ${event.id}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`); };
-    for (const event of await replayRecentEvents(projectId)) emit(event);
-    const unsubscribe = subscribeEvents({ projectId }, emit);
-    const poll = setInterval(async () => { try { for (const event of await replayRecentEvents(projectId)) emit(event); } catch { /* connection remains alive */ } }, 2000);
-    const heartbeat = setInterval(() => res.write(`: heartbeat ${Date.now()}\n\n`), 15000);
-    const cleanup = () => { clearInterval(poll); clearInterval(heartbeat); unsubscribe(); };
-    req.on("close", cleanup);
-  };
+  // Single-flight, backed-off replay polling + write backpressure + pre-header admission (src/sse.ts).
+  const eventHandler = createEventStreamHandler({ replay: replayRecentEvents, subscribe: subscribeEvents });
   const eventAuthMiddleware = authConfig
     ? async (req: express.Request, res: express.Response, next: express.NextFunction) => {
         const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(new URL(authConfig.resourceUrl)).toString();

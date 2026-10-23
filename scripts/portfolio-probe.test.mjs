@@ -119,3 +119,16 @@ test("parity: a body with main's full contract is not behind; unanswered targets
   const t = classify(target, { error: "timeout" });
   assert.equal(attachParity(target, { error: "timeout" }, t), t);
 });
+
+test("openPrCounts: counts per repo, null (fail-closed) on HTTP error, throw, or bad payload", async () => {
+  const { openPrCounts } = await import("./portfolio-probe.mjs");
+  const fetchImpl = async (url) => {
+    if (url.includes("/A+")) return { ok: true, json: async () => ({ total_count: 7 }) };
+    if (url.includes("/B+")) return { ok: false, status: 403, json: async () => ({}) };
+    if (url.includes("/C+")) return { ok: true, json: async () => ({ message: "rate limited" }) };
+    if (url.includes("/E+")) return { ok: true, json: async () => ({ total_count: 3, incomplete_results: true }) };
+    throw new Error("network");
+  };
+  const counts = await openPrCounts({ repos: ["A", "B", "C", "D", "E"], fetchImpl });
+  assert.deepEqual(counts, { A: 7, B: null, C: null, D: null, E: null });
+});
