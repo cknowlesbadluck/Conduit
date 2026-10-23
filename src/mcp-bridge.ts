@@ -6,12 +6,20 @@ import { MCP_PROTOCOL_VERSION, SERVICE_NAME, VERSION } from "./version.js";
 const MAX_REQUEST_BYTES = 256 * 1024;
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 15_000;
+/**
+ * Total wall-clock budget for one bridge call (connect + headers + body). REQUEST_TIMEOUT_MS on
+ * https.request is only a socket *idle* timeout, so a peer that drips one byte every few seconds could
+ * otherwise hold the call open far longer. The deadline bounds it regardless of transport.
+ */
+const REQUEST_DEADLINE_MS = 20_000;
+let requestDeadlineMs = REQUEST_DEADLINE_MS;
 
 type McpBridgeRequest = { jsonrpc: "2.0"; id?: string | number | null; method: string; params?: unknown };
 type McpBridgeResult = { ok: boolean; status: number; headers: Record<string, string>; data: unknown };
 type AddressRecord = { address: string; family: number };
 type AddressLookup = (hostname: string) => Promise<AddressRecord[]>;
-type BridgeTransport = (url: URL, init: { body: string; headers: Record<string, string>; addresses: AddressRecord[] }) => Promise<Response>;
+/** `signal` aborts when the caller's total deadline fires (the transport must destroy its socket); `deadlineMs` is the remaining budget. */
+type BridgeTransport = (url: URL, init: { body: string; headers: Record<string, string>; addresses: AddressRecord[]; signal?: AbortSignal; deadlineMs?: number }) => Promise<Response>;
 
 let addressLookup: AddressLookup = (hostname) => dnsLookup(hostname, { all: true });
 let bridgeTransport: BridgeTransport = pinnedHttpsTransport;
@@ -22,6 +30,23 @@ export function setMcpBridgeLookupForTests(fn?: AddressLookup) {
 }
 
 /** Test hook. Do not use in production paths. */
+export function setMcpBridgeDeadlineForTests(ms?: number) {
+  requestDeadlineMs = ms ?? REQUEST_DEADLINE_MS;
+}
+
+function timeoutError(): Error {
+  return Object.assign(new Error("TimeoutError"), { name: "TimeoutError" });
+}
+
+/** Reject with a TimeoutError once `ms` elapses; `onTimeout` lets the caller tear down the underlying request. */
+function withDeadline<T>(work: Promise<T>, ms: number, onTimeout?: () => void): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => { onTimeout?.(); reject(timeoutError()); }, ms);
+  });
+  return Promise.race([work, deadline]).finally(() => clearTimeout(timer));
+}
+
 export function setMcpBridgeTransportForTests(fn?: BridgeTransport) {
   bridgeTransport = fn ?? pinnedHttpsTransport;
 }
@@ -168,8 +193,8 @@ async function validateEndpoint(endpoint: string): Promise<{ url: URL; addresses
   return { url, addresses: records };
 }
 
-function pinnedHttpsTransport(url: URL, init: { body: string; headers: Record<string, string>; addresses: AddressRecord[] }): Promise<Response> {
-  const { addresses, body, headers } = init;
+function pinnedHttpsTransport(url: URL, init: { body: string; headers: Record<string, string>; addresses: AddressRecord[]; signal?: AbortSignal; deadlineMs?: number }): Promise<Response> {
+  const { addresses, body, headers, signal } = init;
   return new Promise((resolve, reject) => {
     const req = https.request({
       protocol: "https:",
@@ -221,18 +246,27 @@ function pinnedHttpsTransport(url: URL, init: { body: string; headers: Record<st
     });
     req.on("timeout", () => {
       req.destroy();
-      reject(Object.assign(new Error("TimeoutError"), { name: "TimeoutError" }));
+      reject(timeoutError());
     });
+    const totalDeadline = setTimeout(() => { req.destroy(); reject(timeoutError()); }, init.deadlineMs ?? requestDeadlineMs);
+    // The caller's deadline covers DNS + connect + TLS + body; when it fires, release the socket immediately.
+    const onAbort = () => { req.destroy(); reject(timeoutError()); };
+    if (signal?.aborted) onAbort(); else signal?.addEventListener("abort", onAbort, { once: true });
+    req.on("close", () => signal?.removeEventListener("abort", onAbort));
+    totalDeadline.unref?.();
+    req.on("close", () => clearTimeout(totalDeadline));
     req.on("error", reject);
     req.end(body);
   });
 }
 
-async function readLimited(response: Response): Promise<string> {
+async function readLimited(response: Response, signal?: AbortSignal): Promise<string> {
   const declared = Number(response.headers.get("content-length") ?? "0");
   if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) throw new Error("mcp_response_too_large");
   if (!response.body) return "";
   const reader = response.body.getReader();
+  // The reader holds the stream lock, so cancellation at the deadline has to go through it.
+  signal?.addEventListener("abort", () => { void reader.cancel().catch(() => undefined); }, { once: true });
   const decoder = new TextDecoder();
   let total = 0;
   let text = "";
@@ -249,7 +283,16 @@ async function readLimited(response: Response): Promise<string> {
 }
 
 export async function callMcpBridge(input: { endpoint: string; request: McpBridgeRequest }): Promise<McpBridgeResult> {
-  const { url, addresses } = await validateEndpoint(input.endpoint);
+  // One budget for the whole call: DNS resolution (validateEndpoint), connect/TLS, headers and body.
+  const startedAt = Date.now();
+  const remaining = (): number => Math.max(1, requestDeadlineMs - (Date.now() - startedAt));
+  let url: URL; let addresses: AddressRecord[];
+  try {
+    ({ url, addresses } = await withDeadline(validateEndpoint(input.endpoint), requestDeadlineMs));
+  } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError") throw new Error("mcp_bridge_timeout");
+    throw error;
+  }
   let body: string;
   try { body = JSON.stringify(input.request); } catch { throw new Error("mcp_request_invalid_json"); }
   if (Buffer.byteLength(body, "utf8") > MAX_REQUEST_BYTES) throw new Error("mcp_request_too_large");
@@ -261,14 +304,24 @@ export async function callMcpBridge(input: { endpoint: string; request: McpBridg
   };
   let response: Response;
   try {
-    response = await bridgeTransport(url, { body, headers, addresses });
+    const transportAbort = new AbortController();
+    const budget = remaining();
+    response = await withDeadline(bridgeTransport(url, { body, headers, addresses, signal: transportAbort.signal, deadlineMs: budget }), budget, () => transportAbort.abort());
   } catch (error) {
     if (error instanceof DOMException && error.name === "TimeoutError") throw new Error("mcp_bridge_timeout");
     if (error instanceof Error && error.name === "TimeoutError") throw new Error("mcp_bridge_timeout");
     if (error instanceof Error && error.message === "mcp_response_too_large") throw error;
     throw new Error("mcp_bridge_network_failed");
   }
-  const text = await readLimited(response);
+  let text: string;
+  try {
+    // The body read shares the same total budget, and a stalled body is cancelled at the deadline.
+    const bodyAbort = new AbortController();
+    text = await withDeadline(readLimited(response, bodyAbort.signal), remaining(), () => bodyAbort.abort());
+  } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError") throw new Error("mcp_bridge_timeout");
+    throw error;
+  }
   let data: unknown = null;
   if (text) {
     try { data = JSON.parse(text); } catch { data = text; }
