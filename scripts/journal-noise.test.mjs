@@ -17,6 +17,8 @@ test("isJournalOnly requires every file to be a journal file", () => {
   assert.equal(isJournalOnly([{ path: ".jules/bolt.md" }, { path: "src/store.ts" }]), false);
   assert.equal(isJournalOnly([]), false);
   assert.equal(isJournalOnly(null), false);
+  const capped = Array.from({ length: 100 }, (_, i) => ({ path: `.jules/j${i}.md` }));
+  assert.equal(isJournalOnly(capped), false, "possibly truncated list is never flagged");
 });
 
 test("findJournalNoise returns only journal-only PRs", () => {

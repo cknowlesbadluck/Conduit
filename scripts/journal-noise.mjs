@@ -10,8 +10,11 @@ export function isJournalPath(path) {
   return typeof path === "string" && JOURNAL_PATTERNS.some((re) => re.test(path));
 }
 
+// gh returns at most 100 files per PR; a list that long may be truncated, so never flag it.
+export const FILE_LIST_CAP = 100;
+
 export function isJournalOnly(files) {
-  return Array.isArray(files) && files.length > 0 && files.every((f) => isJournalPath(f?.path ?? f));
+  return Array.isArray(files) && files.length > 0 && files.length < FILE_LIST_CAP && files.every((f) => isJournalPath(f?.path ?? f));
 }
 
 export function findJournalNoise(prs) {
@@ -19,9 +22,12 @@ export function findJournalNoise(prs) {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
-  const args = ["pr", "list", "--state", "open", "--limit", "200", "--json", "number,title,author,files"];
+  const LIMIT = 200;
+  const args = ["pr", "list", "--state", "open", "--limit", String(LIMIT), "--json", "number,title,author,files"];
   if (process.argv[2]) args.push("-R", process.argv[2]);
-  const noise = findJournalNoise(JSON.parse(execFileSync("gh", args, { encoding: "utf8" })));
+  const prs = JSON.parse(execFileSync("gh", args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }));
+  const noise = findJournalNoise(prs);
   for (const n of noise) console.log(`#${n.number}\t${n.author}\t${n.title}`);
-  console.error(`${noise.length} journal-only PR(s)`);
+  const capped = prs.length >= LIMIT ? ` (scan capped at ${LIMIT} PRs; results may be incomplete)` : "";
+  console.error(`${noise.length} journal-only PR(s) among ${prs.length} scanned${capped}`);
 }
