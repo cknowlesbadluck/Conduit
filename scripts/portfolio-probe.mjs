@@ -25,7 +25,7 @@
  * mirrored by Resonance scripts/deploy-parity.mjs). When the service answered with JSON, the
  * result gains `behindMain` + `missingContractFields`. It never changes ok/drift/exit code.
  *
- * Usage: node scripts/portfolio-probe.mjs [--json] [--drift-only]
+ * Usage: node scripts/portfolio-probe.mjs [--json] [--drift-only] [--entropy]
  *   default: exit 1 if any target is not ok; --drift-only: exit 1 only if any pinned target drifted.
  */
 
@@ -231,8 +231,9 @@ export function prEntropy(prs, now = Date.now()) {
   // Key by repository + ref so a fork's `main` never looks like the base of upstream PRs.
   const key = (side) => `${side?.repo?.full_name ?? ""}:${side?.ref}`;
   for (const pr of prs) if (pr?.head?.ref) byHead.set(key(pr.head), pr);
-  let maxStackDepth = 0, stacked = 0, oldestDays = null;
+  let maxStackDepth = 0, stacked = 0, oldestDays = null, drafts = 0;
   for (const pr of prs) {
+    if (pr?.draft === true) drafts++;
     const age = (now - Date.parse(pr.created_at)) / 86_400_000;
     if (Number.isFinite(age)) {
       ageBuckets[age < 1 ? "lt1d" : age < 7 ? "d1to7" : age < 30 ? "d7to30" : "gt30d"]++;
@@ -243,7 +244,7 @@ export function prEntropy(prs, now = Date.now()) {
     if (depth > 0) stacked++;
     maxStackDepth = Math.max(maxStackDepth, depth);
   }
-  return { open: prs.length, ageBuckets, oldestDays, stacked, maxStackDepth };
+  return { open: prs.length, ageBuckets, oldestDays, stacked, maxStackDepth, drafts };
 }
 
 /** Public, unauthenticated, report-only. null per repo on any error (fail-closed, never throws). */

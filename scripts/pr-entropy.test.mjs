@@ -21,7 +21,7 @@ test("prEntropy: stacked depth follows base->head chains", () => {
 
 test("prEntropy: cycles terminate; empty input is zero", () => {
   assert.equal(prEntropy([pr(1, 1, "a", "b"), pr(2, 1, "b", "a")], now).maxStackDepth, 1);
-  assert.deepEqual(prEntropy([], now), { open: 0, ageBuckets: { lt1d: 0, d1to7: 0, d7to30: 0, gt30d: 0 }, oldestDays: null, stacked: 0, maxStackDepth: 0 });
+  assert.deepEqual(prEntropy([], now), { open: 0, ageBuckets: { lt1d: 0, d1to7: 0, d7to30: 0, gt30d: 0 }, oldestDays: null, stacked: 0, maxStackDepth: 0, drafts: 0 });
 });
 
 test("openPrEntropy: fail-closed null on error, non-ok, or truncated page; no credentials sent", async () => {
@@ -40,4 +40,12 @@ test("prEntropy: fork head with same ref name as upstream base is not a stack pa
     { number: 2, created_at: ago(1), head: { ref: "x", repo: up }, base: { ref: "main", repo: up } },
   ];
   assert.equal(prEntropy(prs, now).maxStackDepth, 0);
+});
+
+test("prEntropy counts draft PRs (only explicit draft === true)", async () => {
+  const { prEntropy } = await import("./portfolio-probe.mjs");
+  const now = Date.parse("2026-10-23T00:00:00Z");
+  const pr = (number, draft) => ({ number, draft, created_at: "2026-10-22T00:00:00Z", base: { ref: "main" }, head: { ref: `b${number}` } });
+  assert.equal(prEntropy([pr(1, true), pr(2, false), pr(3, undefined)], now).drafts, 1);
+  assert.equal(prEntropy([], now).drafts, 0);
 });
