@@ -52,7 +52,7 @@ test("fetchDecisionQueue: read-only GETs + one graphql POST, token only in heade
 });
 
 test("env: second reference on a kept line is detected", () => {
-  assert.deepEqual(addedEnvVars([{ filename: "a.ts", patch: "-const k = process.env.OLD_KEY;\n+const k = process.env.OLD_KEY ?? process.env.NEW_KEY;" }]), ["NEW_KEY"]);
+  assert.deepEqual(addedEnvVars([{ filename: "src/a.ts", patch: "-const k = process.env.OLD_KEY;\n+const k = process.env.OLD_KEY ?? process.env.NEW_KEY;" }]), ["NEW_KEY"]);
 });
 
 test("authentication/authorization paths count; author does not", () => {
@@ -69,4 +69,17 @@ test("fetchDecisionQueue fails closed: no token, GraphQL errors, truncated revie
   assert.equal((await fetchDecisionQueue({ repos: ["A"], token: "t", fetchImpl: gql({ errors: [{ message: "x" }], data: { repository: { pullRequests: { totalCount: 1, nodes: [node({ totalCount: 0, nodes: [] })] } } } }) })).A, null);
   assert.equal((await fetchDecisionQueue({ repos: ["A"], token: "t", fetchImpl: gql({ data: { repository: { pullRequests: { totalCount: 1, nodes: [node({ totalCount: 101, nodes: [] })] } } } }) })).A, null);
   assert.equal((await fetchDecisionQueue({ repos: ["A"], token: "t", fetchImpl: gql({ data: { repository: { pullRequests: { totalCount: 1, nodes: [node(null)] } } } }) })).A, null);
+});
+
+test("addedEnvVars: only .env.example lines and non-test src/ process.env reads count", () => {
+  const files = [
+    { filename: "scripts/decision-queue.mjs", patch: "+const t = process.env.GH_TOKEN;" },
+    { filename: "scripts/decision-queue.test.mjs", patch: "+const p = '+x = process.env.FIXTURE_ONE';" },
+    { filename: "src/foo.test.ts", patch: "+process.env.TEST_ONLY = '1';" },
+    { filename: "src/fixtures/env.ts", patch: "+process.env.FIXTURE_TWO;" },
+    { filename: ".env.local", patch: "+LOCAL_ONLY=1" },
+    { filename: "src/config.ts", patch: "+const k = process.env.REAL_NEW_VAR;" },
+    { filename: ".env.example", patch: "+EXAMPLE_VAR=" },
+  ];
+  assert.deepEqual(addedEnvVars(files), ["EXAMPLE_VAR", "REAL_NEW_VAR"]);
 });

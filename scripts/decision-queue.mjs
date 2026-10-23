@@ -3,7 +3,7 @@
  * Categories (a PR may appear in several):
  *   bot_only_approval  - approved, but every APPROVED review is from a bot (login ends in [bot] or is a known bot)
  *   changes_requested  - reviewDecision CHANGES_REQUESTED
- *   adds_env_vars      - patch adds a new process.env.NAME / env.NAME reference or a NAME= line in an .env* file
+ *   adds_env_vars      - patch adds a NAME= line to .env.example, or a new process.env.NAME read in a non-test src/ file
  *   auth_grants_paths  - touches a path containing auth, grant, rls, policy, or a migration
  *   behind_main        - mergeStateStatus BEHIND or DIRTY (needs rebase / conflicts)
  *   no_ci              - head commit has no check runs or statuses at all
@@ -12,7 +12,7 @@
 export const BOT_LOGINS = new Set(["coderabbitai", "chatgpt-codex-connector", "copilot-pull-request-reviewer", "gemini-code-assist", "dependabot", "github-actions"]);
 export const isBot = (login) => typeof login === "string" && (login.endsWith("[bot]") || BOT_LOGINS.has(login.replace(/\[bot\]$/, "")));
 const AUTH_PATH = /(^|[/_.-])(auth|authn|authz|authentication|authori[sz]ation|grants?|rls|polic(y|ies)|migrations?)([/_.-]|$)/i;
-const ENV_REF = /(?:process\.env\.|\benv\.)([A-Z][A-Z0-9_]{2,})/g;
+const ENV_REF = /process\.env\.([A-Z][A-Z0-9_]{2,})/g;
 const ENV_LINE = /^\s*([A-Z][A-Z0-9_]{2,})\s*=/;
 /** Every env-var name referenced on one diff line body (all matches, not just the first). */
 const envNames = (body, isEnvFile) => {
@@ -25,7 +25,10 @@ const envNames = (body, isEnvFile) => {
 export function addedEnvVars(files = []) {
   const added = new Set(), removed = new Set();
   for (const f of files) {
-    const isEnvFile = /(^|\/)\.env[^/]*$/.test(f?.filename ?? "");
+    const name = f?.filename ?? "";
+    const isEnvFile = /(^|\/)\.env\.example$/.test(name);
+    const isSrc = /^src\//.test(name) && !/(\.test\.|\.spec\.|(^|\/)(__tests__|test|tests|fixtures?)\/)/.test(name);
+    if (!isEnvFile && !isSrc) continue;
     for (const line of String(f?.patch ?? "").split("\n")) {
       if (line.startsWith("+") && !line.startsWith("+++")) for (const n of envNames(line.slice(1), isEnvFile)) added.add(n);
       else if (line.startsWith("-") && !line.startsWith("---")) for (const n of envNames(line.slice(1), isEnvFile)) removed.add(n);
