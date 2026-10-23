@@ -38,15 +38,35 @@ test("fetchDecisionQueue: read-only GETs + one graphql POST, token only in heade
   const calls = [];
   const fetchImpl = async (url, init) => {
     calls.push({ url, method: init.method ?? "GET", auth: init.headers.Authorization });
-    if (url.endsWith("/graphql")) return { ok: true, json: async () => ({ data: { repository: { pullRequests: { totalCount: 1, nodes: [{ number: 9, title: "t", reviewDecision: null, mergeStateStatus: "BEHIND", latestReviews: { nodes: [] }, commits: { nodes: [{ commit: { statusCheckRollup: null } }] } }] } } } }) };
+    if (url.endsWith("/graphql")) return { ok: true, json: async () => ({ data: { repository: { pullRequests: { totalCount: 1, nodes: [{ number: 9, title: "t", reviewDecision: null, mergeStateStatus: "BEHIND", latestReviews: { totalCount: 0, nodes: [] }, commits: { nodes: [{ commit: { statusCheckRollup: null } }] } }] } } } }) };
     return { ok: true, json: async () => [{ filename: "README.md", patch: "+x" }] };
   };
   const out = await fetchDecisionQueue({ repos: ["A"], token: "tkn", fetchImpl });
   assert.deepEqual(out.A.byCategory.behind_main, [9]); assert.deepEqual(out.A.byCategory.no_ci, [9]);
   assert.ok(calls.every((c) => c.method === "GET" || c.url.endsWith("/graphql")));
   assert.ok(!JSON.stringify(out).includes("tkn"));
-  const trunc = await fetchDecisionQueue({ repos: ["A"], fetchImpl: async () => ({ ok: true, json: async () => ({ data: { repository: { pullRequests: { totalCount: 101, nodes: [] } } } }) }) });
+  const trunc = await fetchDecisionQueue({ repos: ["A"], token: "t", fetchImpl: async () => ({ ok: true, json: async () => ({ data: { repository: { pullRequests: { totalCount: 101, nodes: [] } } } }) }) });
   assert.equal(trunc.A, null);
-  const err = await fetchDecisionQueue({ repos: ["A"], fetchImpl: async () => { throw new Error("x"); } });
+  const err = await fetchDecisionQueue({ repos: ["A"], token: "t", fetchImpl: async () => { throw new Error("x"); } });
   assert.equal(err.A, null);
+});
+
+test("env: second reference on a kept line is detected", () => {
+  assert.deepEqual(addedEnvVars([{ filename: "a.ts", patch: "-const k = process.env.OLD_KEY;\n+const k = process.env.OLD_KEY ?? process.env.NEW_KEY;" }]), ["NEW_KEY"]);
+});
+
+test("authentication/authorization paths count; author does not", () => {
+  assert.deepEqual(classifyDecisions({ number: 7, files: [{ filename: "src/authentication/login.ts" }], checkCount: 1 }).categories, ["auth_grants_paths"]);
+  assert.deepEqual(classifyDecisions({ number: 8, files: [{ filename: "src/authorization/rules.ts" }], checkCount: 1 }).categories, ["auth_grants_paths"]);
+});
+
+test("fetchDecisionQueue fails closed: no token, GraphQL errors, truncated reviews", async () => {
+  let called = false;
+  assert.equal((await fetchDecisionQueue({ repos: ["A"], token: "", fetchImpl: async () => { called = true; } })).A, null);
+  assert.equal(called, false);
+  const node = (rv) => ({ number: 1, title: "t", latestReviews: rv, commits: { nodes: [] } });
+  const gql = (body) => async (url) => url.endsWith("/graphql") ? { ok: true, json: async () => body } : { ok: true, json: async () => [] };
+  assert.equal((await fetchDecisionQueue({ repos: ["A"], token: "t", fetchImpl: gql({ errors: [{ message: "x" }], data: { repository: { pullRequests: { totalCount: 1, nodes: [node({ totalCount: 0, nodes: [] })] } } } }) })).A, null);
+  assert.equal((await fetchDecisionQueue({ repos: ["A"], token: "t", fetchImpl: gql({ data: { repository: { pullRequests: { totalCount: 1, nodes: [node({ totalCount: 101, nodes: [] })] } } } }) })).A, null);
+  assert.equal((await fetchDecisionQueue({ repos: ["A"], token: "t", fetchImpl: gql({ data: { repository: { pullRequests: { totalCount: 1, nodes: [node(null)] } } } }) })).A, null);
 });
