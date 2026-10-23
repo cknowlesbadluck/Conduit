@@ -117,7 +117,17 @@ function classifyRaw(target, observation) {
   return { ...base, outcome: "unknown", ok: false, status };
 }
 
-export async function observe(url, { timeoutMs = 20_000, fetchImpl = fetch, retries = 1 } = {}) {
+/** Jittered backoff for the single cold-start retry: base * [1, 1.5). Bounded; no polling loop. */
+export function retryDelayMs(baseMs, random = Math.random) {
+  const r = Number(random());
+  const j = Number.isFinite(r) ? Math.min(Math.max(r, 0), 0.999) : 0;
+  return Math.round(baseMs * (1 + j * 0.5));
+}
+
+const defaultSleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+export async function observe(url, { timeoutMs = 20_000, fetchImpl = fetch, retries = 1, sleep = defaultSleep, random = Math.random } = {}) {
+  retries = Math.min(Math.max(0, Math.floor(Number(retries) || 0)), 1); // at most one retry
   for (let attempt = 0; attempt <= retries; attempt++) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -132,14 +142,14 @@ export async function observe(url, { timeoutMs = 20_000, fetchImpl = fetch, retr
         let json;
         try { json = JSON.parse(body); } catch { json = null; }
         if (!(json && json.status === "not_ready" && Array.isArray(json.missingRequired))) {
-          await new Promise(r => setTimeout(r, 2000));
+          await sleep(retryDelayMs(2000, random));
           continue;
         }
       }
       return observation;
     } catch (error) {
       if (attempt < retries && (controller.signal.aborted || error?.name === "AbortError")) {
-        await new Promise(r => setTimeout(r, 1000));
+        await sleep(retryDelayMs(1000, random));
         continue;
       }
       return { error: controller.signal.aborted || error?.name === "AbortError" ? "timeout" : "unreachable" };
