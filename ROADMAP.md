@@ -31,6 +31,6 @@ Ground rules: agents never apply migrations, change production config, or spend 
 
 ## 2026-10-23 Hygiene + Innovate Update
 - Portfolio probe enhanced with open PR entropy reporting (public API, fail-closed).
-- Current entropy: QuicksilverV1=24, Resonance=49, Conduit=37. High operational risk; prune superseded docs PRs first.
+- Open PRs observed 2026-10-23 05:15 EDT (gh pr list): QuicksilverV1=21, Resonance=47, Conduit=35 (Conduit drops to 33 once #282 and #260 land). Still high; prune superseded PRs first.
 - Probe maturity remains 3.3/10 due to known owner gates and Vercel alias drift.
 - Innovation: quantitative entropy signal added to probe for ongoing hygiene tracking.

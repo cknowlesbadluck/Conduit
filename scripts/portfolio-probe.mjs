@@ -197,7 +197,7 @@ export async function openPrCounts({ repos = ["QuicksilverV1", "Resonance", "Con
       const res = await fetchImpl(`https://api.github.com/search/issues?q=repo:cknowlesbadluck/${repo}+is:pr+is:open`, { headers: { "User-Agent": "portfolio-probe" }, signal: AbortSignal.timeout(timeoutMs) });
       if (res.ok) {
         const data = await res.json();
-        counts[repo] = Number.isInteger(data.total_count) ? data.total_count : null;
+        counts[repo] = data?.incomplete_results !== true && Number.isInteger(data.total_count) && data.total_count >= 0 ? data.total_count : null;
       } else counts[repo] = null;
     } catch { counts[repo] = null; }
   }
