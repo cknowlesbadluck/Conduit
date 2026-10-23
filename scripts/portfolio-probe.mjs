@@ -25,7 +25,8 @@
  * mirrored by Resonance scripts/deploy-parity.mjs). When the service answered with JSON, the
  * result gains `behindMain` + `missingContractFields`. It never changes ok/drift/exit code.
  *
- * Usage: node scripts/portfolio-probe.mjs [--json] [--drift-only] [--entropy]
+ * Usage: node scripts/portfolio-probe.mjs [--json] [--drift-only] [--entropy] [--decisions]
+ *   --decisions: read-only owner decision queue (scripts/decision-queue.mjs); uses GH_TOKEN if set, never prints it.
  *   default: exit 1 if any target is not ok; --drift-only: exit 1 only if any pinned target drifted.
  */
 
@@ -187,9 +188,10 @@ if (isMain) {
   const results = await probeAll();
   const prCounts = await openPrCounts();
   const prEntropyReport = process.argv.includes("--entropy") ? await openPrEntropy() : undefined;
+  const decisions = process.argv.includes("--decisions") ? await (await import("./decision-queue.mjs")).fetchDecisionQueue() : undefined;
   const score = portfolioScore(results);
-  if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), score, prCounts, prEntropy: prEntropyReport, results }, null, 2));
-  else { console.log("Portfolio maturity score:", score, "/10"); results.forEach(r => console.log(r.name, r.outcome, r.ok ? "OK" : "FAIL", r.drift ? "DRIFT" : "")); console.log("Open PR entropy:", JSON.stringify(prCounts)); if (prEntropyReport) console.log("PR age/stack:", JSON.stringify(prEntropyReport)); }
+  if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), score, prCounts, prEntropy: prEntropyReport, decisions, results }, null, 2));
+  else { console.log("Portfolio maturity score:", score, "/10"); results.forEach(r => console.log(r.name, r.outcome, r.ok ? "OK" : "FAIL", r.drift ? "DRIFT" : "")); console.log("Open PR entropy:", JSON.stringify(prCounts)); if (prEntropyReport) console.log("PR age/stack:", JSON.stringify(prEntropyReport)); if (decisions) for (const [repo, q] of Object.entries(decisions)) console.log("Decisions", repo, q ? JSON.stringify(q.byCategory) : "unavailable"); }
   const pass = process.argv.includes("--drift-only") ? results.every((r) => !r.drift || !TARGETS.find((t) => t.name === r.name)?.expect) : results.every((r) => r.ok);
   process.exitCode = pass ? 0 : 1;
 }
