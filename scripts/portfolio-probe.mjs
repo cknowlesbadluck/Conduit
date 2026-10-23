@@ -176,9 +176,10 @@ const isMain = import.meta.url === `file://${process.argv[1]}`;
 if (isMain) {
   const results = await probeAll();
   const prCounts = await openPrCounts();
+  const prEntropyReport = process.argv.includes("--entropy") ? await openPrEntropy() : undefined;
   const score = portfolioScore(results);
-  if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), score, prCounts, results }, null, 2));
-  else { console.log("Portfolio maturity score:", score, "/10"); results.forEach(r => console.log(r.name, r.outcome, r.ok ? "OK" : "FAIL", r.drift ? "DRIFT" : "")); console.log("Open PR entropy:", JSON.stringify(prCounts)); }
+  if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), score, prCounts, prEntropy: prEntropyReport, results }, null, 2));
+  else { console.log("Portfolio maturity score:", score, "/10"); results.forEach(r => console.log(r.name, r.outcome, r.ok ? "OK" : "FAIL", r.drift ? "DRIFT" : "")); console.log("Open PR entropy:", JSON.stringify(prCounts)); if (prEntropyReport) console.log("PR age/stack:", JSON.stringify(prEntropyReport)); }
   const pass = process.argv.includes("--drift-only") ? results.every((r) => !r.drift || !TARGETS.find((t) => t.name === r.name)?.expect) : results.every((r) => r.ok);
   process.exitCode = pass ? 0 : 1;
 }
@@ -216,4 +217,44 @@ export async function openPrCounts({ repos = ["QuicksilverV1", "Resonance", "Con
     } catch { counts[repo] = null; }
   }
   return counts;
+}
+
+
+/**
+ * Pure PR entropy summary: age buckets (by created_at) and stacked-PR depth
+ * (a PR whose base branch is another open PR's head branch). Cycles are cut.
+ * Input: GitHub REST /pulls items ({ number, created_at, base: { ref }, head: { ref } }).
+ */
+export function prEntropy(prs, now = Date.now()) {
+  const ageBuckets = { lt1d: 0, d1to7: 0, d7to30: 0, gt30d: 0 };
+  const byHead = new Map();
+  // Key by repository + ref so a fork's `main` never looks like the base of upstream PRs.
+  const key = (side) => `${side?.repo?.full_name ?? ""}:${side?.ref}`;
+  for (const pr of prs) if (pr?.head?.ref) byHead.set(key(pr.head), pr);
+  let maxStackDepth = 0, stacked = 0, oldestDays = null;
+  for (const pr of prs) {
+    const age = (now - Date.parse(pr.created_at)) / 86_400_000;
+    if (Number.isFinite(age)) {
+      ageBuckets[age < 1 ? "lt1d" : age < 7 ? "d1to7" : age < 30 ? "d7to30" : "gt30d"]++;
+      oldestDays = Math.max(oldestDays ?? 0, Math.floor(age));
+    }
+    let depth = 0; const seen = new Set([pr.number]);
+    for (let p = byHead.get(key(pr?.base)); p && !seen.has(p.number); p = byHead.get(key(p.base))) { seen.add(p.number); depth++; }
+    if (depth > 0) stacked++;
+    maxStackDepth = Math.max(maxStackDepth, depth);
+  }
+  return { open: prs.length, ageBuckets, oldestDays, stacked, maxStackDepth };
+}
+
+/** Public, unauthenticated, report-only. null per repo on any error (fail-closed, never throws). */
+export async function openPrEntropy({ repos = ["Resonance", "Conduit"], fetchImpl = fetch, timeoutMs = 10_000, now = Date.now() } = {}) {
+  const out = {};
+  for (const repo of repos) {
+    try {
+      const res = await fetchImpl(`https://api.github.com/repos/cknowlesbadluck/${repo}/pulls?state=open&per_page=100`, { headers: { "User-Agent": "portfolio-probe" }, signal: AbortSignal.timeout(timeoutMs) });
+      const data = res.ok ? await res.json() : null;
+      out[repo] = Array.isArray(data) && data.length < 100 ? prEntropy(data, now) : null;
+    } catch { out[repo] = null; }
+  }
+  return out;
 }
