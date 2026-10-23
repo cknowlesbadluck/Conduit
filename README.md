@@ -56,7 +56,7 @@ List tools accept `limit` + opaque `cursor` and return `{ items, nextCursor? }`.
 
 ## Runtime
 
-- Node.js 20+
+- Node.js 20+ (CI and `.node-version` use 22)
 - TypeScript
 - MCP TypeScript SDK v2
 - Express
@@ -65,6 +65,14 @@ List tools accept `limit` + opaque `cursor` and return `{ items, nextCursor? }`.
 
 The MCP endpoint is `/mcp`.
 The service also exposes `/health`, `/ready`, unauthenticated rate-limited `/diagnostics`, authenticated `/events` (SSE), and OAuth protected-resource metadata at `/.well-known/oauth-protected-resource` when OAuth is configured. Configuration names and defaults are listed in `.env.example`.
+
+## Development
+
+- `npm test`: compile, then run unit tests in memory mode (`CONDUIT_TEST_MEMORY=true`). The Postgres CI job also runs the coordination, lifecycle and store tests against a real database.
+- `npm run lint`: ESLint baseline (typescript-eslint recommended, `--max-warnings=0`). CI enforces it.
+- `npm run typecheck`: `tsc --noEmit`.
+- `npm run merge-train [owner/repo]`: report-only health check of the open PR backlog. It lists green, mergeable PRs that do not need owner review, in a suggested order. It also flags PRs that add the same new file, PR pairs that overlap heavily (stacked or superseded), conflict hotspots, and PRs that touch auth, grants or bridge code (those need owner review). It uses `GITHUB_TOKEN` or the local `gh` session and makes no writes.
+- `scripts/portfolio-probe.mjs`: report-only cross-plane `/ready` probe, scheduled in CI.
 
 ## Deployment
 
