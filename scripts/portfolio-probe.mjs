@@ -161,9 +161,10 @@ export async function probeAll(targets = TARGETS, options) {
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 if (isMain) {
   const results = await probeAll();
+  const prCounts = await openPrCounts();
   const score = portfolioScore(results);
-  if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), score, results }, null, 2));
-  else { console.log("Portfolio maturity score:", score, "/10"); results.forEach(r => console.log(r.name, r.outcome, r.ok ? "OK" : "FAIL", r.drift ? "DRIFT" : "")); }
+  if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), score, prCounts, results }, null, 2));
+  else { console.log("Portfolio maturity score:", score, "/10"); results.forEach(r => console.log(r.name, r.outcome, r.ok ? "OK" : "FAIL", r.drift ? "DRIFT" : "")); console.log("Open PR entropy:", JSON.stringify(prCounts)); }
   const pass = process.argv.includes("--drift-only") ? results.every((r) => !r.drift || !TARGETS.find((t) => t.name === r.name)?.expect) : results.every((r) => r.ok);
   process.exitCode = pass ? 0 : 1;
 }
@@ -183,4 +184,23 @@ export function portfolioScore(results) {
   });
   const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
   return Math.round(avg * 10) / 10;
+}
+
+/**
+ * Report open PR counts for portfolio repos (public, unauthenticated rate-limited).
+ * Innovative hygiene signal: high entropy = operational risk.
+ */
+export async function openPrCounts() {
+  const repos = ["QuicksilverV1", "Resonance", "Conduit"];
+  const counts = {};
+  for (const repo of repos) {
+    try {
+      const res = await fetch(`https://api.github.com/search/issues?q=repo:cknowlesbadluck/${repo}+is:pr+is:open`, { headers: { "User-Agent": "portfolio-probe" } });
+      if (res.ok) {
+        const data = await res.json();
+        counts[repo] = data.total_count || 0;
+      } else counts[repo] = null;
+    } catch { counts[repo] = null; }
+  }
+  return counts;
 }
