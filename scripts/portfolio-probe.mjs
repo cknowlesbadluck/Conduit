@@ -219,7 +219,6 @@ export async function openPrCounts({ repos = ["QuicksilverV1", "Resonance", "Con
   return counts;
 }
 
-const DAY_MS = 86_400_000;
 
 /**
  * Pure PR entropy summary: age buckets (by created_at) and stacked-PR depth
@@ -229,16 +228,18 @@ const DAY_MS = 86_400_000;
 export function prEntropy(prs, now = Date.now()) {
   const ageBuckets = { lt1d: 0, d1to7: 0, d7to30: 0, gt30d: 0 };
   const byHead = new Map();
-  for (const pr of prs) if (pr?.head?.ref) byHead.set(pr.head.ref, pr);
+  // Key by repository + ref so a fork's `main` never looks like the base of upstream PRs.
+  const key = (side) => `${side?.repo?.full_name ?? ""}:${side?.ref}`;
+  for (const pr of prs) if (pr?.head?.ref) byHead.set(key(pr.head), pr);
   let maxStackDepth = 0, stacked = 0, oldestDays = null;
   for (const pr of prs) {
-    const age = (now - Date.parse(pr.created_at)) / DAY_MS;
+    const age = (now - Date.parse(pr.created_at)) / 86_400_000;
     if (Number.isFinite(age)) {
       ageBuckets[age < 1 ? "lt1d" : age < 7 ? "d1to7" : age < 30 ? "d7to30" : "gt30d"]++;
       oldestDays = Math.max(oldestDays ?? 0, Math.floor(age));
     }
     let depth = 0; const seen = new Set([pr.number]);
-    for (let p = byHead.get(pr?.base?.ref); p && !seen.has(p.number); p = byHead.get(p.base?.ref)) { seen.add(p.number); depth++; }
+    for (let p = byHead.get(key(pr?.base)); p && !seen.has(p.number); p = byHead.get(key(p.base))) { seen.add(p.number); depth++; }
     if (depth > 0) stacked++;
     maxStackDepth = Math.max(maxStackDepth, depth);
   }

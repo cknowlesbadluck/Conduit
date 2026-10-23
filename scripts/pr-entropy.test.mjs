@@ -32,3 +32,12 @@ test("openPrEntropy: fail-closed null on error, non-ok, or truncated page; no cr
   assert.equal(r.Bad, null); assert.equal(r.Nope, null); assert.equal(r.Full, null);
   for (const init of calls) assert.equal(init.headers.Authorization, undefined);
 });
+
+test("prEntropy: fork head with same ref name as upstream base is not a stack parent", () => {
+  const up = { full_name: "o/r" }, fork = { full_name: "f/r" };
+  const prs = [
+    { number: 1, created_at: ago(1), head: { ref: "main", repo: fork }, base: { ref: "main", repo: up } },
+    { number: 2, created_at: ago(1), head: { ref: "x", repo: up }, base: { ref: "main", repo: up } },
+  ];
+  assert.equal(prEntropy(prs, now).maxStackDepth, 0);
+});
