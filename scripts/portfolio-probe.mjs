@@ -190,15 +190,14 @@ export function portfolioScore(results) {
  * Report open PR counts for portfolio repos (public, unauthenticated rate-limited).
  * Innovative hygiene signal: high entropy = operational risk.
  */
-export async function openPrCounts() {
-  const repos = ["QuicksilverV1", "Resonance", "Conduit"];
+export async function openPrCounts({ repos = ["QuicksilverV1", "Resonance", "Conduit"], fetchImpl = fetch, timeoutMs = 10_000 } = {}) {
   const counts = {};
   for (const repo of repos) {
     try {
-      const res = await fetch(`https://api.github.com/search/issues?q=repo:cknowlesbadluck/${repo}+is:pr+is:open`, { headers: { "User-Agent": "portfolio-probe" } });
+      const res = await fetchImpl(`https://api.github.com/search/issues?q=repo:cknowlesbadluck/${repo}+is:pr+is:open`, { headers: { "User-Agent": "portfolio-probe" }, signal: AbortSignal.timeout(timeoutMs) });
       if (res.ok) {
         const data = await res.json();
-        counts[repo] = data.total_count || 0;
+        counts[repo] = Number.isInteger(data.total_count) ? data.total_count : null;
       } else counts[repo] = null;
     } catch { counts[repo] = null; }
   }
