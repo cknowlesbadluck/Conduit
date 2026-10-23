@@ -27,3 +27,15 @@ test("fetchStaleBranches: null without token, null on GraphQL errors, read-only 
   const err = async () => ({ ok: true, json: async () => ({ errors: [{ message: "x" }] }) });
   assert.deepEqual(await fetchStaleBranches({ repos: ["A"], token: "t", fetchImpl: err, now }), { A: null });
 });
+
+test("fetchStaleBranches: branch heading an open PR into another repo is not stale", async () => {
+  const now = Date.parse("2026-10-23T00:00:00Z");
+  const old = "2026-01-01T00:00:00Z";
+  const body = { data: { repository: { defaultBranchRef: { name: "main" }, pullRequests: { totalCount: 0, nodes: [] },
+    refs: { pageInfo: { hasNextPage: false }, nodes: [
+      { name: "upstream-fix", associatedPullRequests: { totalCount: 1 }, target: { committedDate: old } },
+      { name: "dead", associatedPullRequests: { totalCount: 0 }, target: { committedDate: old } }] } } } };
+  const fetchImpl = async () => ({ ok: true, json: async () => body });
+  const r = await fetchStaleBranches({ repos: ["A"], token: "t", fetchImpl, now });
+  assert.deepEqual(r.A.map((b) => b.name), ["dead"]);
+});

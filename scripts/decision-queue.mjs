@@ -12,8 +12,8 @@
 export const BOT_LOGINS = new Set(["coderabbitai", "chatgpt-codex-connector", "copilot-pull-request-reviewer", "gemini-code-assist", "dependabot", "github-actions"]);
 export const isBot = (login) => typeof login === "string" && (login.endsWith("[bot]") || BOT_LOGINS.has(login.replace(/\[bot\]$/, "")));
 const AUTH_PATH = /(^|[/_.-])(auth|authn|authz|authentication|authori[sz]ation|grants?|rls|polic(y|ies)|migrations?)([/_.-]|$)/i;
-const ENV_REF = /process\.env\.([A-Z][A-Z0-9_]{2,})/g;
-const ENV_LINE = /^\s*([A-Z][A-Z0-9_]{2,})\s*=/;
+const ENV_REF = /process\.env\.([A-Z][A-Z0-9_]*)/g;
+const ENV_LINE = /^\s*([A-Z][A-Z0-9_]*)\s*=/;
 /** Every env-var name referenced on one diff line body (all matches, not just the first). */
 const envNames = (body, isEnvFile) => {
   const names = [...body.matchAll(ENV_REF)].map((m) => m[1]);

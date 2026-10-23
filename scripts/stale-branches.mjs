@@ -1,6 +1,6 @@
 /**
  * Read-only stale-branch report: branches with no open PR (as head) and whose tip commit is 14+ days old.
- * Excludes the default branch. Fork (cross-repository) PR heads do not protect a same-named local branch. Never deletes or writes anything; never prints the token.
+ * Excludes the default branch. A branch that heads an open PR into any repository (via ref.associatedPullRequests) is protected. Fork (cross-repository) PR heads do not protect a same-named local branch. Never deletes or writes anything; never prints the token.
  */
 export const STALE_DAYS = 14;
 
@@ -16,7 +16,7 @@ export function staleBranches(branches = [], openHeads = [], { now = Date.now(),
 }
 
 const QUERY = `query($o:String!,$r:String!,$c:String){repository(owner:$o,name:$r){defaultBranchRef{name}
- refs(refPrefix:"refs/heads/",first:100,after:$c){pageInfo{hasNextPage endCursor} nodes{name target{... on Commit{committedDate}}}}
+ refs(refPrefix:"refs/heads/",first:100,after:$c){pageInfo{hasNextPage endCursor} nodes{name associatedPullRequests(states:OPEN,first:1){totalCount} target{... on Commit{committedDate}}}}
  pullRequests(states:OPEN,first:100){totalCount nodes{headRefName isCrossRepository}}}}`;
 
 /** Read-only GraphQL fetch. Returns null per repo without a token, on errors, or if open PRs are truncated. */
@@ -25,7 +25,7 @@ export async function fetchStaleBranches({ owner = "cknowlesbadluck", repos = ["
   for (const repo of repos) {
     if (!token) { out[repo] = null; continue; }
     try {
-      const branches = []; let cursor = null, heads = null, def = "main";
+      const branches = []; let cursor = null, heads = null; const extraHeads = []; let def = "main";
       for (let page = 0; page < 20; page++) {
         const res = await fetchImpl("https://api.github.com/graphql", { method: "POST", headers: { authorization: `bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ query: QUERY, variables: { o: owner, r: repo, c: cursor } }), signal: AbortSignal.timeout(timeoutMs) });
         if (!res.ok) throw new Error("http");
@@ -35,12 +35,13 @@ export async function fetchStaleBranches({ owner = "cknowlesbadluck", repos = ["
         def = r.defaultBranchRef?.name ?? def;
         if (r.pullRequests.totalCount > r.pullRequests.nodes.length) throw new Error("truncated");
         heads = r.pullRequests.nodes.filter((n) => !n.isCrossRepository).map((n) => n.headRefName);
+        for (const n of r.refs.nodes) if (n.associatedPullRequests?.totalCount > 0) extraHeads.push(n.name);
         for (const n of r.refs.nodes) branches.push({ name: n.name, committedAt: n.target?.committedDate });
         if (!r.refs.pageInfo.hasNextPage) { cursor = null; break; }
         cursor = r.refs.pageInfo.endCursor;
       }
       if (cursor) throw new Error("too many branches");
-      out[repo] = staleBranches(branches, heads, { now, defaultBranch: def });
+      out[repo] = staleBranches(branches, [...(heads ?? []), ...extraHeads], { now, defaultBranch: def });
     } catch { out[repo] = null; }
   }
   return out;
