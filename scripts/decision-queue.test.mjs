@@ -83,3 +83,7 @@ test("addedEnvVars: only .env.example lines and non-test src/ process.env reads 
   ];
   assert.deepEqual(addedEnvVars(files), ["EXAMPLE_VAR", "REAL_NEW_VAR"]);
 });
+
+test("renamed sensitive file is flagged via previousFilename", () => {
+  assert.deepEqual(classifyDecisions({ number: 9, files: [{ filename: "src/identity.ts", previousFilename: "src/auth.ts" }], checkCount: 1 }).categories, ["auth_grants_paths"]);
+});

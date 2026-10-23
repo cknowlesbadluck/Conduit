@@ -45,7 +45,7 @@ export function classifyDecisions(pr) {
   if (pr.reviewDecision === "CHANGES_REQUESTED") cats.push("changes_requested");
   const env = addedEnvVars(pr.files);
   if (env.length) cats.push("adds_env_vars");
-  if ((pr.files ?? []).some((f) => AUTH_PATH.test(f.filename ?? ""))) cats.push("auth_grants_paths");
+  if ((pr.files ?? []).some((f) => AUTH_PATH.test(f.filename ?? "") || AUTH_PATH.test(f.previousFilename ?? ""))) cats.push("auth_grants_paths");
   if (pr.mergeStateStatus === "BEHIND" || pr.mergeStateStatus === "DIRTY") cats.push("behind_main");
   if (pr.checkCount === 0) cats.push("no_ci");
   return { number: pr.number, title: pr.title, categories: cats, envVars: env };
@@ -59,7 +59,7 @@ export function decisionQueue(prs) {
 }
 
 const QUERY = `query($o:String!,$r:String!){repository(owner:$o,name:$r){pullRequests(states:OPEN,first:100){totalCount nodes{number title reviewDecision mergeStateStatus
- latestReviews(first:100){totalCount nodes{state author{login}}}
+ latestReviews:latestOpinionatedReviews(first:100){totalCount nodes{state author{login}}}
  commits(last:1){nodes{commit{statusCheckRollup{contexts(first:1){totalCount}}}}}}}}}`;
 
 /** Read-only. Requires GH_TOKEN (GitHub GraphQL needs auth); never logged. Returns null for a repo with no token, on any error, GraphQL partial errors, or truncation (PRs, reviews, or files). */
@@ -82,7 +82,7 @@ export async function fetchDecisionQueue({ owner = "cknowlesbadluck", repos = ["
         const rollup = n.commits?.nodes?.[0]?.commit?.statusCheckRollup;
         prs.push({ number: n.number, title: n.title, reviewDecision: n.reviewDecision, mergeStateStatus: n.mergeStateStatus,
           reviews: (n.latestReviews?.nodes ?? []).map((r) => ({ login: r.author?.login, state: r.state })),
-          files: files.map((f) => ({ filename: f.filename, patch: f.patch })), checkCount: rollup ? rollup.contexts.totalCount : 0 });
+          files: files.map((f) => ({ filename: f.filename, previousFilename: f.previous_filename, patch: f.patch })), checkCount: rollup ? rollup.contexts.totalCount : 0 });
       }
       out[repo] = decisionQueue(prs);
     } catch { out[repo] = null; }

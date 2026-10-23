@@ -20,7 +20,7 @@ test("staleBranches: 14+ days, no open PR, not default branch", () => {
 test("fetchStaleBranches: null without token, null on GraphQL errors, read-only POST to graphql", async () => {
   assert.deepEqual(await fetchStaleBranches({ repos: ["A"], token: "" }), { A: null });
   const calls = [];
-  const ok = async (url, init) => { calls.push(url); return { ok: true, json: async () => ({ data: { repository: { defaultBranchRef: { name: "main" }, pullRequests: { totalCount: 1, nodes: [{ headRefName: "b2" }] }, refs: { pageInfo: { hasNextPage: false }, nodes: [{ name: "b1", target: { committedDate: "2026-09-01T00:00:00Z" } }, { name: "b2", target: { committedDate: "2026-09-01T00:00:00Z" } }] } } } }) }; };
+  const ok = async (url, init) => { calls.push(url); return { ok: true, json: async () => ({ data: { repository: { defaultBranchRef: { name: "main" }, pullRequests: { totalCount: 2, nodes: [{ headRefName: "b2" }, { headRefName: "b1", isCrossRepository: true }] }, refs: { pageInfo: { hasNextPage: false }, nodes: [{ name: "b1", target: { committedDate: "2026-09-01T00:00:00Z" } }, { name: "b2", target: { committedDate: "2026-09-01T00:00:00Z" } }] } } } }) }; };
   const r = await fetchStaleBranches({ repos: ["A"], token: "t", fetchImpl: ok, now });
   assert.deepEqual(r.A.map((x) => x.name), ["b1"]);
   assert.deepEqual(calls, ["https://api.github.com/graphql"]);

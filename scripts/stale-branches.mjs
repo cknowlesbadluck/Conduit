@@ -1,6 +1,6 @@
 /**
  * Read-only stale-branch report: branches with no open PR (as head) and whose tip commit is 14+ days old.
- * Excludes the default branch. Never deletes or writes anything; never prints the token.
+ * Excludes the default branch. Fork (cross-repository) PR heads do not protect a same-named local branch. Never deletes or writes anything; never prints the token.
  */
 export const STALE_DAYS = 14;
 
@@ -17,7 +17,7 @@ export function staleBranches(branches = [], openHeads = [], { now = Date.now(),
 
 const QUERY = `query($o:String!,$r:String!,$c:String){repository(owner:$o,name:$r){defaultBranchRef{name}
  refs(refPrefix:"refs/heads/",first:100,after:$c){pageInfo{hasNextPage endCursor} nodes{name target{... on Commit{committedDate}}}}
- pullRequests(states:OPEN,first:100){totalCount nodes{headRefName}}}}`;
+ pullRequests(states:OPEN,first:100){totalCount nodes{headRefName isCrossRepository}}}}`;
 
 /** Read-only GraphQL fetch. Returns null per repo without a token, on errors, or if open PRs are truncated. */
 export async function fetchStaleBranches({ owner = "cknowlesbadluck", repos = ["QuicksilverV1", "Conduit", "Resonance"], token = process.env.GH_TOKEN, fetchImpl = fetch, now = Date.now(), timeoutMs = 15_000 } = {}) {
@@ -34,7 +34,7 @@ export async function fetchStaleBranches({ owner = "cknowlesbadluck", repos = ["
         const r = data?.data?.repository; if (!r) throw new Error("none");
         def = r.defaultBranchRef?.name ?? def;
         if (r.pullRequests.totalCount > r.pullRequests.nodes.length) throw new Error("truncated");
-        heads = r.pullRequests.nodes.map((n) => n.headRefName);
+        heads = r.pullRequests.nodes.filter((n) => !n.isCrossRepository).map((n) => n.headRefName);
         for (const n of r.refs.nodes) branches.push({ name: n.name, committedAt: n.target?.committedDate });
         if (!r.refs.pageInfo.hasNextPage) { cursor = null; break; }
         cursor = r.refs.pageInfo.endCursor;
