@@ -14,7 +14,6 @@ import { timingSafeEqual } from "node:crypto";
 import { replayRecentEvents, subscribeEvents } from "./events.js";
 import { createEventStreamHandler } from "./sse.js";
 import { getPublicConduitStatus } from "./status.js";
-import { runDiagnostics } from "./diagnostics.js";
 import { createDiagnosticsHandler } from "./diagnostics-route.js";
 import { conduitUiHtml, CONDUIT_UI_CSS, CONDUIT_UI_JS } from "./ui.js";
 
@@ -131,6 +130,8 @@ if (typeof process !== "undefined" && process.versions?.node && !process.env.CLO
   boot().catch((error) => { console.error("Conduit startup failed", error); process.exit(1); });
 }
 
+const workersUnsupported = () => new Response(JSON.stringify({ status: "not_supported", service: SERVICE_NAME, version: VERSION, reason: "workers_runtime_unsupported", detail: "Conduit requires the Node.js server (npm start); this Workers entrypoint serves static UI and liveness only." }), { status: 503, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+
 export const fetchHandler = async (request: Request): Promise<Response> => {
   const url = new URL(request.url);
   if (url.pathname === "/") {
@@ -142,12 +143,10 @@ export const fetchHandler = async (request: Request): Promise<Response> => {
   if (url.pathname === "/ui.js") {
     return new Response(CONDUIT_UI_JS, { status: 200, headers: { "Content-Type": "application/javascript; charset=utf-8" } });
   }
-  if (url.pathname === "/status") {
-    return new Response(JSON.stringify({ service: SERVICE_NAME, version: VERSION, status: "online", connections: [], tools: [], tasks: [], activity: [], counts: { agents: 0, connected: 0, tools: 0, tasks: 0, activity: 0 } }), { status: 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
-  }
-  if (url.pathname === "/diagnostics") {
-    const diagnostics = await runDiagnostics(undefined, url.origin);
-    return new Response(JSON.stringify(diagnostics), { status: 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+  // Cloudflare Workers cannot run Conduit's Node/Express/Postgres stack. Report that honestly instead of
+  // serving fabricated readiness or zero counts.
+  if (url.pathname === "/status" || url.pathname === "/ready" || url.pathname === "/diagnostics" || url.pathname === "/mcp" || url.pathname === "/events") {
+    return workersUnsupported();
   }
   if (url.pathname === "/health") {
     return new Response(JSON.stringify(healthBody()), {
@@ -155,13 +154,7 @@ export const fetchHandler = async (request: Request): Promise<Response> => {
       headers: { "Content-Type": "application/json" },
     });
   }
-  if (url.pathname === "/ready") {
-    return new Response(JSON.stringify(readyBody({ initialized: true, persistenceOk: true, persistence: "memory" })), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-  return new Response(JSON.stringify({ service: SERVICE_NAME, version: VERSION, status: "online", mcp: "/mcp", health: "/health", ready: "/ready", events: "/events" }), {
+  return new Response(JSON.stringify({ service: SERVICE_NAME, version: VERSION, status: "workers_static_only", runtime: "cloudflare-workers", mcp: "not_supported", health: "/health" }), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
