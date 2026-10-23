@@ -28,3 +28,9 @@ Ground rules: agents never apply migrations, change production config, or spend 
 |---|---|---|---|---|
 | 9 | Adapters, chambers, on-device | **[in progress]** capability metadata in `tools/list`; streamable/resumable sessions | **[in progress]** provider-neutral adapter contract (#182) + failover (#188); chamber policy decided (#157) | **[in progress]** on-device intelligence path works offline; calls Resonance capabilities only via contract |
 | 10 | Free tiers, SideStore, privacy | **[in progress]** zero paid add-ons ✓; diagnostics never echo credentials (#226) ✓; free-tier cold start documented | **[in progress]** free-tier budget documented; evidence privacy floor (#191) | **[in progress]** SideStore sideload build documented and reproducible; privacy manifest + no third-party telemetry |
+
+## 2026-10-23 Hygiene + Innovate Update
+- Portfolio probe enhanced with open PR entropy reporting (public API, fail-closed).
+- Open PRs observed 2026-10-23 05:15 EDT (gh pr list): QuicksilverV1=21, Resonance=47, Conduit=35 (Conduit drops to 33 once #282 and #260 land). Still high; prune superseded PRs first.
+- Probe maturity remains 3.3/10 due to known owner gates and Vercel alias drift.
+- Innovation: quantitative entropy signal added to probe for ongoing hygiene tracking.
