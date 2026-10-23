@@ -1,8 +1,8 @@
 # Portfolio Roadmap — 10 phases
 
-Canonical, unified roadmap for **Conduit** (MCP bridge), **Resonance** (integration plane) and **QuicksilverV1** (iOS product, owned by Quicksilver Dev). The repos stay separate and talk only through documented HTTP/MCP contracts. Live status and PR merge order: `docs/PORTFOLIO-ROADMAP-10-PHASE.md`. Current audit: `docs/AUDIT-2026-10-15.md`. Update these in place; do not add dated audit files.
+Canonical, unified roadmap for **Conduit** (MCP bridge), **Resonance** (integration plane) and **QuicksilverV1** (iOS product, owned by Quicksilver Dev). The repos stay separate and talk only through documented HTTP/MCP contracts. Live status and PR merge order: `docs/PORTFOLIO-ROADMAP-10-PHASE.md` (canonical in Resonance, refreshed 2026-10-18). Current audit: `docs/AUDIT-2026-10-15.md` (living; see Resonance for latest probe evidence). Update these in place; do not add dated audit files.
 
-Ground rules: agents never apply migrations, change production config, or spend money. Each phase is done only when **every** exit check below is true for each project. Status tags: **[passed]** · **[in progress]** · **[blocked]** (needs owner action). Last observed 2026-10-16 10:05 EDT: Conduit main CI + Live Smoke green, `/ready` 200; Resonance main CI green, `/api/ready` 503 (missing `SUPABASE_SERVICE_ROLE_KEY`); QuicksilverV1 main CI green.
+Ground rules: agents never apply migrations, change production config, or spend money. Each phase is done only when **every** exit check below is true for each project. Status tags: **[passed]** · **[in progress]** · **[blocked]** (needs owner action). Last observed 2026-10-18 ~09:00 EDT: Conduit main CI + Live Smoke green, `/ready` 200 stamped (0.8.0, contractRevision=2026-10-03-ready-surface, postgres); Resonance main CI green, `/api/ready` 503 (missing `SUPABASE_SERVICE_ROLE_KEY`); QuicksilverV1 main CI green. Open PR entropy high across all (~49/32/27).
 
 ## Stabilization
 
@@ -28,3 +28,9 @@ Ground rules: agents never apply migrations, change production config, or spend 
 |---|---|---|---|---|
 | 9 | Adapters, chambers, on-device | **[in progress]** capability metadata in `tools/list`; streamable/resumable sessions | **[in progress]** provider-neutral adapter contract (#182) + failover (#188); chamber policy decided (#157) | **[in progress]** on-device intelligence path works offline; calls Resonance capabilities only via contract |
 | 10 | Free tiers, SideStore, privacy | **[in progress]** zero paid add-ons ✓; diagnostics never echo credentials (#226) ✓; free-tier cold start documented | **[in progress]** free-tier budget documented; evidence privacy floor (#191) | **[in progress]** SideStore sideload build documented and reproducible; privacy manifest + no third-party telemetry |
+
+## 2026-10-23 Hygiene + Innovate Update
+- Portfolio probe enhanced with open PR entropy reporting (public API, fail-closed).
+- Open PRs observed 2026-10-23 05:15 EDT (gh pr list): QuicksilverV1=21, Resonance=47, Conduit=35 (Conduit drops to 33 once #282 and #260 land). Still high; prune superseded PRs first.
+- Probe maturity remains 3.3/10 due to known owner gates and Vercel alias drift.
+- Innovation: quantitative entropy signal added to probe for ongoing hygiene tracking.

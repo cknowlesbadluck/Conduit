@@ -18,7 +18,12 @@ const PATTERNS: RegExp[] = [
   /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g,
 ];
 
+// Performance Optimization: Single fast regex trigger test to skip expensive RegExp replace passes on safe strings.
+// Matches characters or prefixes required by any credential pattern: =, @, sk-, lin_, rnd_, gh, sb, AKIA, eyJ, bearer, basic.
+const SECRET_TRIGGER = /=|@|sk-|lin_|rnd_|gh|sb|AKIA|eyJ|bearer|basic/i;
+
 export function redactString(text: string): string {
+  if (!SECRET_TRIGGER.test(text)) return text;
   let out = text
     .replace(/([?&](?:token|key|secret|auth|code|password|access_token|api_key|apikey)=)[^&\s]*/gi, `$1${REDACTED}`)
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi, `$1 ${REDACTED}`)
@@ -29,7 +34,13 @@ export function redactString(text: string): string {
 
 export function redactRecord<T extends Record<string, unknown>>(data: T, depth = 0): T {
   const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(data).slice(0, 500)) {
+  // Performance Optimization: Single-pass Object.keys loop avoids intermediate tuple and array slice allocations
+  // (previously Object.entries(data).slice(0, 500)).
+  const keys = Object.keys(data);
+  const limit = Math.min(keys.length, 500);
+  for (let i = 0; i < limit; i++) {
+    const key = keys[i];
+    const value = data[key];
     if (SENSITIVE_KEY.test(key)) out[key] = REDACTED;
     else if (typeof value === "string") out[key] = redactString(value);
     else if (value && typeof value === "object" && !Array.isArray(value)) out[key] = depth >= 6 ? REDACTED : redactRecord(value as Record<string, unknown>, depth + 1);

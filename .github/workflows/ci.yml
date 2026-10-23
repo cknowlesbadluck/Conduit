@@ -3,8 +3,9 @@ name: CI
 on:
   push:
     branches: [main]
+  # Any base branch: stacked PRs (e.g. #211/#212 on audit/prod-lockdown, #217 on
+  # audit/phase2-unified-wiring) touch auth/lockdown code and otherwise get no CI at all.
   pull_request:
-    branches: [main]
 
 permissions:
   contents: read

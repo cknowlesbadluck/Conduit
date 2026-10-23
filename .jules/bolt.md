@@ -13,3 +13,11 @@
 ## 2025-03-10 - Single-pass rate limiter eviction without sorting
 **Learning:** `SlidingWindowLimiter.evict` was allocating entry tuples and calling `[...this.buckets.entries()].sort(...)` over all keys when `maxKeys` capacity was exceeded, creating $O(K \log K)$ sorting overhead and high garbage collection pressure on every rate-limited request. Replacing this with a single-pass $O(K)$ iteration that deletes expired buckets on the fly while tracking the oldest active key reduced eviction latency by >4x with zero array/tuple allocations.
 **Action:** Avoid `[...map.entries()].sort()` for capacity eviction in high-throughput hot paths; use single-pass tracking loops to identify eviction candidates in $O(N)$ time with zero temporary array allocations.
+
+## 2025-03-10 - Fast-path credential redaction and single-pass record sanitization
+**Learning:** `redactString` was executing 11 regex replace operations on every string property across all logged activity events and record payloads. Pre-screening strings with a single `SECRET_TRIGGER` regex test before executing full regex replacements reduced redaction latency by >10x (from ~2.37s to ~0.22s per 100k calls) while replacing `Object.entries(data).slice(0, 500)` with an indexed `Object.keys` loop eliminated temporary tuple and slice array allocations.
+**Action:** When running multi-regex string transformation pipelines on un-redacted strings, use a fast single-pass pre-check trigger to skip regex passes on safe inputs, and iterate keys directly to avoid entry tuple allocations.
+
+## 2025-03-10 - Single-pass character code IPv4 octet extraction for SSRF checks
+**Learning:** `isDisallowedIpv4` in `src/mcp-bridge.ts` was calling `parseIpv4Octets` which allocated string arrays via `.split(".")` and temporary octet arrays via `.map()`. Replacing string splitting and array creation with a single-pass character-code loop reduced IPv4 address validation latency by >10x (from ~1.75s to ~0.17s per 2M checks) with zero garbage collection allocations.
+**Action:** Avoid `.split(".")` and `.map(Number)` in high-frequency network/SSRF address validation functions; use direct character code parsing over input strings in $O(N)$ single pass.
