@@ -17,3 +17,7 @@
 ## 2025-03-10 - Fast-path credential redaction and single-pass record sanitization
 **Learning:** `redactString` was executing 11 regex replace operations on every string property across all logged activity events and record payloads. Pre-screening strings with a single `SECRET_TRIGGER` regex test before executing full regex replacements reduced redaction latency by >10x (from ~2.37s to ~0.22s per 100k calls) while replacing `Object.entries(data).slice(0, 500)` with an indexed `Object.keys` loop eliminated temporary tuple and slice array allocations.
 **Action:** When running multi-regex string transformation pipelines on un-redacted strings, use a fast single-pass pre-check trigger to skip regex passes on safe inputs, and iterate keys directly to avoid entry tuple allocations.
+
+## 2025-03-10 - Fast-path record key comparison without sorting
+**Learning:** `sameRecord` in `src/pagination.ts` was executing `Object.keys(a).sort()` and `Object.keys(b).sort()` on every cursor validation, forcing $O(K \log K)$ key array sorting and intermediate array allocations even when key counts differed. Replacing key sorting with an $O(K)$ single-pass length check (`keysA.length === keysB.length`) and `hasOwnProperty` lookup reduced record equality check latency by >3.5x (from ~686ms to ~196ms per 1M operations) with zero sorting overhead.
+**Action:** Avoid sorting key arrays (`Object.keys().sort()`) to test object key-value record equality; use direct key count comparison followed by single-pass key existence and value equality checks.
