@@ -193,7 +193,12 @@ export function attachParity(target, observation, result) {
 }
 
 export async function probeAll(targets = TARGETS, options) {
-  return Promise.all(targets.map(async (t) => { const o = await observe(t.url, options); return attachShape(t, o, attachParity(t, o, classify(t, o))); }));
+  return Promise.all(targets.map(async (t) => {
+    const o = await observe(t.url, options);
+    // Alias-drift needs field coverage for Vercel aliases too (report-only; never changes ok/drift).
+    const pinned = isResonanceAlias(t) && !t.parity ? { ...t, parity: RESONANCE_MAIN_READY } : t;
+    return attachShape(t, o, attachParity(pinned, o, classify(t, o)));
+  }));
 }
 
 /**
@@ -216,6 +221,34 @@ export function crossPlaneConsistency(results, targets = TARGETS) {
   return { consistent: mismatched.length === 0, mismatched, planes };
 }
 
+/**
+ * Read-only cross-plane alias drift: for every configured Resonance Vercel alias
+ * (target name starts with "resonance" and the host ends in .vercel.app), decide whether the
+ * alias still serves Resonance. Fail closed: an alias only counts as Resonance when it answered
+ * with service "resonance-nexus" AND a body carrying every pinned ready-contract field.
+ * Anything else (stranger site, absent alias, timeout, challenge, partial body) is flagged.
+ * Pure; reuses observations already fetched by probeAll; no env vars, no writes.
+ */
+export function isResonanceAlias(target) {
+  try { return /^resonance/.test(target.name) && new URL(target.url).hostname.endsWith(".vercel.app"); } catch { return false; }
+}
+
+export function aliasDrift(results, targets = TARGETS, contract = RESONANCE_MAIN_READY) {
+  const aliases = [];
+  for (const t of targets.filter(isResonanceAlias)) {
+    const r = results.find((x) => x.name === t.name);
+    let verdict = "drift", reason = r ? r.outcome : "not_probed";
+    if (r && r.ok && (r.outcome === "ready" || r.outcome === "not_ready")) {
+      const missing = Array.isArray(r.missingContractFields) ? r.missingContractFields : contract.fields;
+      if (missing.length === 0) { verdict = "resonance"; reason = "ready_contract_present"; }
+      else reason = "ready_contract_incomplete";
+    } else if (r && r.outcome === "stranger_occupant") reason = "stranger_occupant";
+    aliases.push({ name: t.name, url: t.url, verdict, reason, outcome: r?.outcome ?? null });
+  }
+  const drifted = aliases.filter((a) => a.verdict !== "resonance").map((a) => a.name);
+  return { ok: drifted.length === 0, drifted, aliases };
+}
+
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 if (isMain) {
   const results = await probeAll();
@@ -226,8 +259,10 @@ if (isMain) {
   const score = portfolioScore(results);
   const consistency = process.argv.includes("--consistency") ? crossPlaneConsistency(results) : undefined;
   if (consistency && !process.argv.includes("--json")) console.log("Cross-plane consistency:", JSON.stringify(consistency));
+  const aliases = process.argv.includes("--alias-drift") ? aliasDrift(results) : undefined;
+  if (aliases && !process.argv.includes("--json")) console.log("Resonance alias drift:", JSON.stringify(aliases));
   if (prEntropyReport && process.argv.includes("--markdown")) console.log(entropyMarkdown(prEntropyReport));
-  else if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), score, prCounts, prEntropy: prEntropyReport, consistency, decisions, staleBranches, results }, null, 2));
+  else if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), score, prCounts, prEntropy: prEntropyReport, consistency, aliasDrift: aliases, decisions, staleBranches, results }, null, 2));
   else { console.log("Portfolio maturity score:", score, "/10"); results.forEach(r => console.log(r.name, r.outcome, r.ok ? "OK" : "FAIL", r.drift ? "DRIFT" : "")); console.log("Open PR entropy:", JSON.stringify(prCounts)); if (prEntropyReport) console.log("PR age/stack:", JSON.stringify(prEntropyReport)); if (decisions) for (const [repo, q] of Object.entries(decisions)) console.log("Decisions", repo, q ? JSON.stringify(q.byCategory) : "unavailable"); if (staleBranches) for (const [repo, l] of Object.entries(staleBranches)) console.log("Stale branches", repo, l ? JSON.stringify(l.map((b) => `${b.name} (${b.ageDays}d)`)) : "unavailable"); }
   const pass = process.argv.includes("--drift-only") ? results.every((r) => !r.drift || !TARGETS.find((t) => t.name === r.name)?.expect) : results.every((r) => r.ok);
   process.exitCode = pass ? 0 : 1;
