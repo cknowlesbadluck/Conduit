@@ -114,7 +114,7 @@ function classifyRaw(target, observation) {
   const service = json && typeof json === "object" ? json.service : undefined;
   if (status === 200) {
     if (service !== target.expectService) return { ...base, outcome: "stranger_occupant", ok: false, status, reason: service ? "service_mismatch" : "no_service_stamp" };
-    if (json.status === "ready") return { ...base, outcome: "ready", ok: true, status, ...(json.version ? { version: String(json.version) } : {}), ...(json.contractRevision ? { contractRevision: String(json.contractRevision) } : {}), ...(typeof json.authMode === "string" ? { authMode: json.authMode } : {}), ...(Array.isArray(json.missingRequired) ? { readyMissingCount: json.missingRequired.length } : {}) };
+    if (json.status === "ready") return { ...base, outcome: "ready", ok: true, status, service, ...(json.version ? { version: String(json.version) } : {}), ...(json.contractRevision ? { contractRevision: String(json.contractRevision) } : {}), ...(typeof json.authMode === "string" ? { authMode: json.authMode } : {}), ...(Array.isArray(json.missingRequired) ? { readyMissingCount: json.missingRequired.length } : {}) };
     return { ...base, outcome: "unknown", ok: false, status, reason: "200_without_ready" };
   }
   if (status === 503 && service === target.expectService && json.status === "not_ready") {
@@ -122,7 +122,7 @@ function classifyRaw(target, observation) {
     const raw = json.missingRequired;
     const missing = Array.isArray(raw) ? raw.filter((m) => typeof m === "string" && ENV_NAME.test(m)) : [];
     const missingClean = Array.isArray(raw) && missing.length === raw.length;
-    return { ...base, outcome: "not_ready", ok: false, status, missing, missingClean };
+    return { ...base, outcome: "not_ready", ok: false, status, service, missing, missingClean };
   }
   if (status === 503 && body.trim() === "" && /cloudflare/i.test(String(headers.server ?? ""))) {
     return { ...base, outcome: "unknown", ok: false, status, reason: "edge_503_empty_origin_unavailable" };
@@ -240,7 +240,8 @@ export function aliasDrift(results, targets = TARGETS, contract = RESONANCE_MAIN
     let verdict = "drift", reason = r ? r.outcome : "not_probed";
     // Identity is separate from readiness: a full-contract not_ready (503, owner-gate key missing)
     // is still Resonance, so not_ready/regression bypass the r.ok guard.
-    if (r && ((r.ok && r.outcome === "ready") || r.outcome === "not_ready" || r.outcome === "regression")) {
+    if (r && (r.outcome === "ready" || r.outcome === "not_ready" || r.outcome === "regression") && r.service !== "resonance-nexus") reason = "service_mismatch";
+    else if (r && ((r.ok && r.outcome === "ready") || r.outcome === "not_ready" || r.outcome === "regression")) {
       // Check the main contract itself, never the target's own (possibly weaker) parity pin.
       const missing = Array.isArray(r.presentFields) ? contract.fields.filter((f) => !r.presentFields.includes(f)) : contract.fields;
       if (missing.length === 0) { verdict = "resonance"; reason = "ready_contract_present"; }

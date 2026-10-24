@@ -56,3 +56,14 @@ test("a weaker per-target parity pin cannot produce a false Resonance verdict", 
   assert.equal(d.ok, false);
   assert.equal(d.aliases[0].reason, "ready_contract_incomplete");
 });
+
+test("complete body from a different service is not Resonance (service checked independently)", () => {
+  const other = { ...alias, expectService: "conduit" };
+  const body = JSON.stringify({ ...JSON.parse(fullBody), service: "conduit" });
+  const obs = { status: 200, headers: {}, body };
+  const r = attachParity({ ...other, parity: RESONANCE_MAIN_READY }, obs, classify(other, obs));
+  assert.equal(r.outcome, "ready");
+  const d = aliasDrift([r], [other]);
+  assert.equal(d.ok, false);
+  assert.equal(d.aliases[0].reason, "service_mismatch");
+});
