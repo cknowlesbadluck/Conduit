@@ -37,6 +37,6 @@ jobs:
         run: node --test scripts/entropy-trend.test.mjs
       - name: Entropy trend vs baseline (non-blocking)
         run: |
-          node scripts/entropy-trend.mjs --json > trend.json; rc=$?
+          rc=0; node scripts/entropy-trend.mjs --json > trend.json || rc=$?
           { echo "## Open-PR entropy trend (exit $rc; non-blocking)"; echo; echo '```json'; sed 's/```/` ` `/g' trend.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           exit $rc
