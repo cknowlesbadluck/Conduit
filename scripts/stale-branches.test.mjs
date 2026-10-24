@@ -39,3 +39,28 @@ test("fetchStaleBranches: branch heading an open PR into another repo is not sta
   const r = await fetchStaleBranches({ repos: ["A"], token: "t", fetchImpl, now });
   assert.deepEqual(r.A.map((b) => b.name), ["dead"]);
 });
+
+test("staleBranches: flags young branches whose last PR is merged/closed; open PR still protects", () => {
+  const now = Date.parse("2026-10-23T00:00:00Z");
+  const young = "2026-10-20T00:00:00Z";
+  const b = [
+    { name: "merged", committedAt: young, lastPr: { number: 7, state: "MERGED" } },
+    { name: "closed", committedAt: young, lastPr: { number: 8, state: "CLOSED" } },
+    { name: "reopened", committedAt: young, lastPr: { number: 9, state: "CLOSED" } },
+    { name: "young-none", committedAt: young, lastPr: null },
+    { name: "weird", committedAt: young, lastPr: { number: "x", state: "MERGED" } },
+  ];
+  const r = staleBranches(b, ["reopened"], { now });
+  assert.deepEqual(r.map((x) => [x.name, x.reason, x.pr?.number]), [["closed", "pr_closed", 8], ["merged", "pr_merged", 7]]);
+});
+
+test("fetchStaleBranches: reads lastPr alias (report only)", async () => {
+  const now = Date.parse("2026-10-23T00:00:00Z");
+  const body = { data: { repository: { defaultBranchRef: { name: "main" }, pullRequests: { totalCount: 0, nodes: [] },
+    refs: { pageInfo: { hasNextPage: false }, nodes: [
+      { name: "done", associatedPullRequests: { totalCount: 0 }, lastPr: { nodes: [{ number: 3, state: "MERGED" }] }, target: { committedDate: "2026-10-22T00:00:00Z" } }] } } } };
+  let sent;
+  const r = await fetchStaleBranches({ repos: ["A"], token: "t", fetchImpl: async (u, i) => { sent = i; return { ok: true, json: async () => body }; }, now });
+  assert.deepEqual(r.A, [{ name: "done", committedAt: "2026-10-22T00:00:00Z", ageDays: 1, reason: "pr_merged", pr: { number: 3, state: "MERGED" } }]);
+  assert.equal(sent.method, "POST"); assert.match(JSON.parse(sent.body).query, /^query/);
+});
