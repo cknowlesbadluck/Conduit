@@ -3,6 +3,8 @@
  * plus (any age) branches whose most recent PR is already MERGED or CLOSED (reason "pr_merged"/"pr_closed").
  * Excludes the default branch. A branch that heads an open PR into any repository (via ref.associatedPullRequests) is protected. Fork (cross-repository) PR heads do not protect a same-named local branch. Never deletes or writes anything; never prints the token.
  * For merged/closed-PR branches, a read-only REST compare sets aheadBy (commits not on the default branch) and safeDelete (true only when aheadBy === 0). Squash/rebase merges leave aheadBy > 0, so safeDelete is deliberately conservative.
+ * contentInMain: when aheadBy > 0, every file the branch changed (vs merge-base) must have the identical blob SHA on the default branch
+ * (removed files must be absent). Proves "patch already in main" for squash-merged branches. Any error/truncation -> null (never safe).
  */
 export const STALE_DAYS = 14;
 
@@ -25,12 +27,68 @@ export function staleBranches(branches = [], openHeads = [], { now = Date.now(),
 }
 
 /** Pure: annotate entries with aheadBy and safeDelete (true only when the PR is merged/closed AND aheadBy === 0). Unknown ahead -> safeDelete false. */
-export function markSafeDelete(entries = [], ahead = {}) {
+export function markSafeDelete(entries = [], ahead = {}, inMain = {}) {
   return entries.map((e) => {
     const a = Number.isInteger(ahead[e.name]) ? ahead[e.name] : null;
+    const c = typeof inMain[e.name] === "boolean" ? inMain[e.name] : null;
     const done = e.pr?.state === "MERGED" || e.pr?.state === "CLOSED";
-    return { ...e, aheadBy: a, safeDelete: done && a === 0 };
+    return { ...e, aheadBy: a, contentInMain: c, safeDelete: done && (a === 0 || (a !== null && c === true)) };
   });
+}
+
+/** Pure: true iff every branch-changed file has the same blob on main. mainShas: path -> sha | null (absent) | undefined (unknown). */
+export function filesMatchMain(files = [], mainShas = {}) {
+  if (!Array.isArray(files) || files.length === 0) return false;
+  for (const f of files) {
+    if (!f || typeof f.filename !== "string") return null;
+    const m = mainShas[f.filename];
+    if (m === undefined) return null;
+    if (f.status === "removed" ? m !== null : m !== f.sha) return false;
+    if (f.status === "renamed" && typeof f.previous_filename === "string") {
+      const pm = mainShas[f.previous_filename];
+      if (pm === undefined) return null;
+      if (pm !== null) return false;
+    }
+  }
+  return true;
+}
+
+/** Read-only: does the branch's net content already exist on the default branch? null on error or >maxFiles files. */
+export async function contentInMain({ owner, repo, base, head, token, fetchImpl = fetch, timeoutMs = 15_000, maxFiles = 50 }) {
+  try {
+    // One shared deadline for the compare call plus every contents call (not a fresh timeout per request).
+    const signal = AbortSignal.timeout(timeoutMs);
+    const h = { authorization: `bearer ${token}`, accept: "application/vnd.github+json" };
+    const api = `https://api.github.com/repos/${owner}/${repo}`;
+    const res = await fetchImpl(`${api}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}?per_page=100`, { headers: h, signal });
+    if (!res.ok) return null;
+    const files = (await res.json())?.files;
+    if (!Array.isArray(files) || files.length === 0 || files.length > maxFiles || files.length >= 300) return null;
+    // Pin one default-branch commit and read its git tree: every path is resolved against the same
+    // snapshot, and tree entries are raw blobs (symlinks are not dereferenced like the Contents API).
+    const c = await fetchImpl(`${api}/commits/${encodeURIComponent(base)}`, { headers: h, signal });
+    if (!c.ok) return null;
+    const treeSha = (await c.json())?.commit?.tree?.sha;
+    if (typeof treeSha !== "string") return null;
+    const t = await fetchImpl(`${api}/git/trees/${encodeURIComponent(treeSha)}?recursive=1`, { headers: h, signal });
+    if (!t.ok) return null;
+    const tree = await t.json();
+    if (!tree || tree.truncated !== false || !Array.isArray(tree.tree)) return null;
+    const blobs = new Map();
+    // Keep every entry (blob, tree, submodule commit): a path that still exists on main in any form is not "absent".
+    for (const e of tree.tree) if (e && typeof e.path === "string") blobs.set(e.path, `${e.type}:${e.sha}`);
+    const shas = {};
+    const normalized = [];
+    for (let f of files) {
+      for (const p of [f.filename, f.status === "renamed" ? f.previous_filename : undefined]) {
+        if (typeof p === "string") shas[p] = blobs.has(p) ? blobs.get(p) : null;
+      }
+      // Branch side is always a file blob; a submodule/tree on either side never matches (fail-safe).
+      if (f.status !== "removed" && typeof f.sha === "string") f = { ...f, sha: `blob:${f.sha}` };
+      normalized.push(f);
+    }
+    return filesMatchMain(normalized, shas);
+  } catch { return null; }
 }
 
 /** Read-only REST compare: commits on branch not reachable from default branch (null on any error). */
@@ -71,14 +129,17 @@ export async function fetchStaleBranches({ owner = "cknowlesbadluck", repos = ["
       }
       if (cursor) throw new Error("too many branches");
       const stale = staleBranches(branches, [...(heads ?? []), ...extraHeads], { now, defaultBranch: def });
-      const ahead = {};
+      const ahead = {}; const inMain = {};
       const deadline = clock() + compareBudgetMs; // total per-repo budget; leftovers stay unknown (safeDelete false)
       for (const e of stale) {
         const left = deadline - clock();
         if (left <= 0) break;
-        if (e.pr) ahead[e.name] = await aheadBy({ owner, repo, base: def, head: e.name, token, fetchImpl, timeoutMs: Math.min(timeoutMs, left) });
+        if (!e.pr) continue;
+        ahead[e.name] = await aheadBy({ owner, repo, base: def, head: e.name, token, fetchImpl, timeoutMs: Math.min(timeoutMs, left) });
+        const left2 = deadline - clock();
+        if (ahead[e.name] > 0 && left2 > 0) inMain[e.name] = await contentInMain({ owner, repo, base: def, head: e.name, token, fetchImpl, timeoutMs: Math.min(timeoutMs, left2) });
       }
-      out[repo] = markSafeDelete(stale, ahead);
+      out[repo] = markSafeDelete(stale, ahead, inMain);
     } catch { out[repo] = null; }
   }
   return out;
