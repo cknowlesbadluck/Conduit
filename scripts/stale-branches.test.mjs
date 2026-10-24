@@ -116,8 +116,8 @@ test("contentInMain: compares branch blobs to main via read-only GETs; errors ->
   const f = async (url, init) => {
     seen.push(init?.method ?? "GET");
     if (url.includes("/compare/")) return { ok: true, json: async () => ({ files: [{ filename: "x/a b.ts", sha: "s1" }, { filename: "gone", status: "removed" }] }) };
-    if (url.includes("/contents/gone")) return { ok: false, status: 404 };
-    if (url.includes("/contents/x/a%20b.ts?ref=main")) return { ok: true, status: 200, json: async () => ({ sha: "s1" }) };
+    if (url.includes("/commits/main")) return { ok: true, status: 200, json: async () => ({ commit: { tree: { sha: "T" } } }) };
+    if (url.includes("/git/trees/T?recursive=1")) return { ok: true, status: 200, json: async () => ({ truncated: false, tree: [{ path: "x/a b.ts", type: "blob", sha: "s1" }] }) };
     return { ok: false, status: 500 };
   };
   assert.equal(await contentInMain({ owner: "o", repo: "r", base: "main", head: "h", token: "t", fetchImpl: f }), true);
@@ -128,16 +128,37 @@ test("contentInMain: compares branch blobs to main via read-only GETs; errors ->
   assert.equal(await contentInMain({ owner: "o", repo: "r", base: "main", head: "h", token: "t", fetchImpl: many }), null);
 });
 
-test("contentInMain shares one deadline across compare and contents requests", async () => {
-  const { contentInMain } = await import("./stale-branches.mjs");
+function fakeGh(files, tree, { truncated = false } = {}) {
   const signals = [];
   const fetchImpl = async (url, opts) => {
     signals.push(opts.signal);
-    if (url.includes("/compare/")) return { ok: true, status: 200, json: async () => ({ files: [{ filename: "a", status: "modified", sha: "x" }, { filename: "b", status: "modified", sha: "y" }] }) };
-    return { ok: true, status: 200, json: async () => ({ sha: url.includes("/a?") ? "x" : "y" }) };
+    if (url.includes("/compare/")) return { ok: true, status: 200, json: async () => ({ files }) };
+    if (url.includes("/commits/")) return { ok: true, status: 200, json: async () => ({ commit: { tree: { sha: "T1" } } }) };
+    if (url.includes("/git/trees/T1")) return { ok: true, status: 200, json: async () => ({ truncated, tree }) };
+    return { ok: false, status: 500, json: async () => ({}) };
   };
-  const r = await contentInMain({ owner: "o", repo: "r", base: "main", head: "h", token: "t", fetchImpl, timeoutMs: 5000 });
-  assert.equal(r, true);
+  return { fetchImpl, signals };
+}
+const args = { owner: "o", repo: "r", base: "main", head: "h", token: "t", timeoutMs: 5000 };
+
+test("contentInMain: one shared deadline, one pinned tree snapshot", async () => {
+  const { contentInMain } = await import("./stale-branches.mjs");
+  const { fetchImpl, signals } = fakeGh([{ filename: "a", status: "modified", sha: "x" }, { filename: "b", status: "modified", sha: "y" }],
+    [{ path: "a", type: "blob", sha: "x" }, { path: "b", type: "blob", sha: "y" }]);
+  assert.equal(await contentInMain({ ...args, fetchImpl }), true);
   assert.equal(signals.length, 3);
   assert.ok(signals.every((s) => s === signals[0]));
+});
+
+test("contentInMain: symlink on main is compared by its own blob, not dereferenced", async () => {
+  const { contentInMain } = await import("./stale-branches.mjs");
+  const { fetchImpl } = fakeGh([{ filename: "link", status: "modified", sha: "target-bytes" }],
+    [{ path: "link", type: "blob", mode: "120000", sha: "symlink-blob" }, { path: "target", type: "blob", sha: "target-bytes" }]);
+  assert.equal(await contentInMain({ ...args, fetchImpl }), false);
+});
+
+test("contentInMain: truncated tree or removed file handled fail-safe", async () => {
+  const { contentInMain } = await import("./stale-branches.mjs");
+  assert.equal(await contentInMain({ ...args, fetchImpl: fakeGh([{ filename: "a", status: "modified", sha: "x" }], [], { truncated: true }).fetchImpl }), null);
+  assert.equal(await contentInMain({ ...args, fetchImpl: fakeGh([{ filename: "gone", status: "removed", sha: "0" }], []).fetchImpl }), true);
 });

@@ -64,18 +64,23 @@ export async function contentInMain({ owner, repo, base, head, token, fetchImpl 
     if (!res.ok) return null;
     const files = (await res.json())?.files;
     if (!Array.isArray(files) || files.length === 0 || files.length > maxFiles || files.length >= 300) return null;
-    const paths = new Set();
-    for (const f of files) { paths.add(f.filename); if (f.status === "renamed" && f.previous_filename) paths.add(f.previous_filename); }
+    // Pin one default-branch commit and read its git tree: every path is resolved against the same
+    // snapshot, and tree entries are raw blobs (symlinks are not dereferenced like the Contents API).
+    const c = await fetchImpl(`${api}/commits/${encodeURIComponent(base)}`, { headers: h, signal });
+    if (!c.ok) return null;
+    const treeSha = (await c.json())?.commit?.tree?.sha;
+    if (typeof treeSha !== "string") return null;
+    const t = await fetchImpl(`${api}/git/trees/${encodeURIComponent(treeSha)}?recursive=1`, { headers: h, signal });
+    if (!t.ok) return null;
+    const tree = await t.json();
+    if (!tree || tree.truncated !== false || !Array.isArray(tree.tree)) return null;
+    const blobs = new Map();
+    for (const e of tree.tree) if (e && e.type === "blob" && typeof e.path === "string") blobs.set(e.path, e.sha);
     const shas = {};
-    for (const p of paths) {
-      const enc = String(p).split("/").map(encodeURIComponent).join("/");
-      const r = await fetchImpl(`${api}/contents/${enc}?ref=${encodeURIComponent(base)}`, { headers: h, signal });
-      if (signal.aborted) return null;
-      if (r.status === 404) { shas[p] = null; continue; }
-      if (!r.ok) return null;
-      const j = await r.json();
-      if (Array.isArray(j) || typeof j?.sha !== "string") return null;
-      shas[p] = j.sha;
+    for (const f of files) {
+      for (const p of [f.filename, f.status === "renamed" ? f.previous_filename : undefined]) {
+        if (typeof p === "string") shas[p] = blobs.has(p) ? blobs.get(p) : null;
+      }
     }
     return filesMatchMain(files, shas);
   } catch { return null; }
