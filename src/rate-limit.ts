@@ -12,7 +12,10 @@ export class SlidingWindowLimiter {
   private readonly now: () => number;
 
   constructor(private readonly options: RateLimitOptions) {
-    if (options.limit < 1 || options.windowMs < 1 || options.maxKeys < 1) throw new Error("invalid_rate_limit_options");
+    // Number.isFinite also rejects NaN, which would otherwise pass `< 1` and silently disable limiting.
+    for (const value of [options.limit, options.windowMs, options.maxKeys]) {
+      if (!Number.isFinite(value) || value < 1) throw new Error("invalid_rate_limit_options");
+    }
     this.now = options.now ?? (() => Date.now());
   }
 
@@ -78,28 +81,41 @@ export class SlidingWindowLimiter {
   }
 }
 
+/**
+ * Reads a positive integer from the environment. Missing, empty, non-numeric, non-finite or < 1 values
+ * fall back to the default, so a typo can neither disable rate limiting (NaN) nor crash boot (0 / "").
+ */
+export function envPositiveInt(raw: string | undefined, fallback: number): number {
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 1) return fallback;
+  return Math.floor(value);
+}
+
+const env = (name: string, fallback: number) => envPositiveInt(process.env[name], fallback);
+
 export const MCP_RATE_LIMITER = new SlidingWindowLimiter({
-  limit: Number(process.env.CONDUIT_RATE_LIMIT ?? 120),
-  windowMs: Number(process.env.CONDUIT_RATE_WINDOW_MS ?? 60_000),
-  maxKeys: Number(process.env.CONDUIT_RATE_MAX_KEYS ?? 10_000),
+  limit: env("CONDUIT_RATE_LIMIT", 120),
+  windowMs: env("CONDUIT_RATE_WINDOW_MS", 60_000),
+  maxKeys: env("CONDUIT_RATE_MAX_KEYS", 10_000),
 });
 
 export const TOOL_RATE_LIMITER = new SlidingWindowLimiter({
-  limit: Number(process.env.CONDUIT_TOOL_RATE_LIMIT ?? 30),
-  windowMs: Number(process.env.CONDUIT_TOOL_RATE_WINDOW_MS ?? 60_000),
-  maxKeys: Number(process.env.CONDUIT_RATE_MAX_KEYS ?? 10_000),
+  limit: env("CONDUIT_TOOL_RATE_LIMIT", 30),
+  windowMs: env("CONDUIT_TOOL_RATE_WINDOW_MS", 60_000),
+  maxKeys: env("CONDUIT_RATE_MAX_KEYS", 10_000),
 });
 
 export const EXTERNAL_RATE_LIMITER = new SlidingWindowLimiter({
-  limit: Number(process.env.CONDUIT_EXTERNAL_RATE_LIMIT ?? 20),
-  windowMs: Number(process.env.CONDUIT_EXTERNAL_RATE_WINDOW_MS ?? 60_000),
-  maxKeys: Number(process.env.CONDUIT_RATE_MAX_KEYS ?? 10_000),
+  limit: env("CONDUIT_EXTERNAL_RATE_LIMIT", 20),
+  windowMs: env("CONDUIT_EXTERNAL_RATE_WINDOW_MS", 60_000),
+  maxKeys: env("CONDUIT_RATE_MAX_KEYS", 10_000),
 });
 
 // /diagnostics is unauthenticated and fans out to ~8 outbound fetches per call,
 // so it gets a much tighter budget than MCP traffic.
 export const DIAGNOSTICS_RATE_LIMITER = new SlidingWindowLimiter({
-  limit: Number(process.env.CONDUIT_DIAGNOSTICS_RATE_LIMIT ?? 10),
-  windowMs: Number(process.env.CONDUIT_DIAGNOSTICS_RATE_WINDOW_MS ?? 60_000),
-  maxKeys: Number(process.env.CONDUIT_RATE_MAX_KEYS ?? 10_000),
+  limit: env("CONDUIT_DIAGNOSTICS_RATE_LIMIT", 10),
+  windowMs: env("CONDUIT_DIAGNOSTICS_RATE_WINDOW_MS", 60_000),
+  maxKeys: env("CONDUIT_RATE_MAX_KEYS", 10_000),
 });
