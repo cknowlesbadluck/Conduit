@@ -1,4 +1,4 @@
-import { countActivity, countAgents, countTasks, countTools, listActivity, listAgents, listTasks, listTools } from "./store.js";
+import { countActivity, countAgents, countTasks, countTools, existingAgentIds, listActivity, listAgents, listTasks, listTools } from "./store.js";
 import { SERVICE_NAME, VERSION } from "./version.js";
 
 type ConduitConnectionStatus = "connected" | "registered";
@@ -119,12 +119,11 @@ export async function getConduitStatus(): Promise<ConduitStatus> {
 
 /** Unauthenticated public projection. Counts only — no agent IDs, task titles, or activity payloads. */
 export async function getPublicConduitStatus(): Promise<ConduitPublicStatus> {
-  const [agents, tasks, tools, activity, agentList, recent] = await Promise.all([
+  const [agents, tasks, tools, activity, recent] = await Promise.all([
     countAgents(),
     countTasks(),
     countTools(),
     countActivity(),
-    listAgents(),
     listActivity(200),
   ]);
 
@@ -138,11 +137,9 @@ export async function getPublicConduitStatus(): Promise<ConduitPublicStatus> {
       if (actorId && typeof actorId === "string") activeAgentIds.add(actorId);
     }
   }
-  // Performance Optimization: Count connected agents in single loop without allocating filtered array.
-  let connected = 0;
-  for (const agent of agentList) {
-    if (activeAgentIds.has(agent.id)) connected++;
-  }
+  // Count active ids that are registered agents with one bounded lookup (<= 200 events' actors)
+  // instead of loading the whole agents table, which listAgents no longer returns unbounded.
+  const connected = (await existingAgentIds([...activeAgentIds])).size;
   return {
     service: SERVICE_NAME,
     version: VERSION,

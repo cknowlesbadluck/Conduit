@@ -1,10 +1,7 @@
-import { DATABASE_CONNECT_TIMEOUT_MS } from "./db-timeouts.js";
-import pg from "pg";
+import { getSharedPool } from "./db-pool.js";
 
-const useDatabase = Boolean(process.env.DATABASE_URL) && process.env.CONDUIT_TEST_MEMORY !== "true";
-const sslRejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === "true";
-const sslOption = process.env.DATABASE_SSL === "false" ? false : { rejectUnauthorized: sslRejectUnauthorized };
-const pool = useDatabase ? new pg.Pool({ connectionString: process.env.DATABASE_URL, ssl: sslOption, max: 2, connectionTimeoutMillis: DATABASE_CONNECT_TIMEOUT_MS }) : null;
+// Shared with store.ts (see db-pool.ts); previously a separate pool of 2.
+const pool = getSharedPool();
 
 /** In-memory fallback used when CONDUIT_TEST_MEMORY=true. registerAgent in store.ts also maintains boundAgentSubjects; this map is filled by rememberSubjectBinding. */
 const memorySubjects = new Map<string, Set<string>>();
