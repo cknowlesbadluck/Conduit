@@ -42,16 +42,18 @@ test("fetchHygiene is GET-only, skips token-only calls without a token, never th
   const fetchImpl = async (url, init) => {
     calls.push({ url, init });
     if (url.includes("/pulls?")) return { ok: true, json: async () => [{ number: 1 }] };
-    if (url.includes("/actions/runs")) return { ok: true, json: async () => ({ workflow_runs: [{ name: "CI", status: "completed", conclusion: "success", created_at: "2026-10-24T00:00:00Z" }] }) };
+    if (url.endsWith("/actions/workflows?per_page=100")) return { ok: true, json: async () => ({ workflows: [{ id: 7, state: "active" }, { id: 8, state: "disabled_manually" }] }) };
+    if (url.includes("/workflows/7/runs")) return { ok: true, json: async () => ({ workflow_runs: [{ workflow_id: 7, name: "CI", status: "completed", conclusion: "success", created_at: "2026-10-24T00:00:00Z" }] }) };
     return { ok: false, status: 404 };
   };
-  const r = await fetchHygiene({ repos: ["Conduit"], token: undefined, fetchImpl });
+  const r = await fetchHygiene({ repos: ["Conduit"], token: null, fetchImpl });
   assert.equal(r.Conduit.openPrs, 1);
   assert.equal(r.Conduit.ci.status, "green");
   assert.equal(r.Conduit.docsOnlyPrs, null);
   assert.equal(r.Conduit.dependabot, null);
   assert.ok(calls.every((c) => !c.init.method && !c.init.headers.authorization));
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
+  assert.ok(!calls.some((c) => c.url.includes("/workflows/8/")));
 
   const boom = await fetchHygiene({ repos: ["X"], token: "t", fetchImpl: async () => { throw new Error("net"); } });
   assert.deepEqual(boom.X, { openPrs: null, docsOnlyPrs: null, ci: null, dependabot: null, staleBranches: null, safeDelete: null });
@@ -71,4 +73,27 @@ test("fetchHygiene counts docs-only PRs and Dependabot alerts with a token", asy
   assert.equal(r.R.ci, null);
   assert.equal(r.R.staleBranches, 2);
   assert.equal(r.R.safeDelete, 1);
+});
+
+test("fetchHygiene: capped file list -> docs-only unavailable; Dependabot fetched even when PR list fails", async () => {
+  const capped = await fetchHygiene({ repos: ["R"], token: "t", fetchImpl: async (url) => {
+    if (url.includes("/pulls?")) return { ok: true, json: async () => [{ number: 1 }] };
+    if (url.includes("/files")) return { ok: true, json: async () => Array.from({ length: 100 }, () => ({ filename: "docs/a.md" })) };
+    return { ok: false, status: 500 };
+  } });
+  assert.equal(capped.R.docsOnlyPrs, null);
+  const noPrs = await fetchHygiene({ repos: ["R"], token: "t", fetchImpl: async (url) => {
+    if (url.includes("/dependabot/")) return { ok: true, json: async () => [{}] };
+    return { ok: false, status: 500 };
+  } });
+  assert.equal(noPrs.R.openPrs, null);
+  assert.equal(noPrs.R.dependabot, 1);
+});
+
+test("mainCiStatus groups by workflow_id, not display name", () => {
+  const runs = [
+    { workflow_id: 1, name: "CI", status: "completed", conclusion: "failure", created_at: "2026-10-23T00:00:00Z" },
+    { workflow_id: 2, name: "CI", status: "completed", conclusion: "success", created_at: "2026-10-24T00:00:00Z" },
+  ];
+  assert.equal(mainCiStatus(runs).status, "red");
 });

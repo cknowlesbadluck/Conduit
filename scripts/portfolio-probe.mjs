@@ -223,17 +223,16 @@ if (isMain) {
   const prEntropyReport = process.argv.includes("--entropy") ? await openPrEntropy() : undefined;
   const decisions = process.argv.includes("--decisions") ? await (await import("./decision-queue.mjs")).fetchDecisionQueue() : undefined;
   const staleBranches = process.argv.includes("--stale-branches") ? await (await import("./stale-branches.mjs")).fetchStaleBranches() : undefined;
+  const hygiene = process.argv.includes("--hygiene-checklist")
+    ? await (await import("./hygiene-checklist.mjs")).fetchHygiene({ stale: staleBranches ?? await (await import("./stale-branches.mjs")).fetchStaleBranches() })
+    : undefined;
   const score = portfolioScore(results);
   const consistency = process.argv.includes("--consistency") ? crossPlaneConsistency(results) : undefined;
   if (consistency && !process.argv.includes("--json")) console.log("Cross-plane consistency:", JSON.stringify(consistency));
   if (prEntropyReport && process.argv.includes("--markdown")) console.log(entropyMarkdown(prEntropyReport));
-  else if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), score, prCounts, prEntropy: prEntropyReport, consistency, decisions, staleBranches, results }, null, 2));
+  else if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), score, prCounts, prEntropy: prEntropyReport, consistency, decisions, staleBranches, hygiene, results }, null, 2));
   else { console.log("Portfolio maturity score:", score, "/10"); results.forEach(r => console.log(r.name, r.outcome, r.ok ? "OK" : "FAIL", r.drift ? "DRIFT" : "")); console.log("Open PR entropy:", JSON.stringify(prCounts)); if (prEntropyReport) console.log("PR age/stack:", JSON.stringify(prEntropyReport)); if (decisions) for (const [repo, q] of Object.entries(decisions)) console.log("Decisions", repo, q ? JSON.stringify(q.byCategory) : "unavailable"); if (staleBranches) for (const [repo, l] of Object.entries(staleBranches)) console.log("Stale branches", repo, l ? JSON.stringify(l.map((b) => `${b.name} (${b.ageDays}d)`)) : "unavailable"); }
-  if (process.argv.includes("--hygiene-checklist")) {
-    const h = await import("./hygiene-checklist.mjs");
-    const stale = staleBranches ?? await (await import("./stale-branches.mjs")).fetchStaleBranches();
-    console.log(h.hygieneChecklist(await h.fetchHygiene({ stale })));
-  }
+  if (hygiene && !process.argv.includes("--json")) console.log((await import("./hygiene-checklist.mjs")).hygieneChecklist(hygiene));
   const pass = process.argv.includes("--drift-only") ? results.every((r) => !r.drift || !TARGETS.find((t) => t.name === r.name)?.expect) : results.every((r) => r.ok);
   process.exitCode = pass ? 0 : 1;
 }

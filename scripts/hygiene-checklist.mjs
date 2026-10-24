@@ -17,8 +17,9 @@ export function mainCiStatus(runs, { ignore = [] } = {}) {
   const latest = new Map();
   for (const r of runs) {
     if (!r || typeof r.name !== "string" || ignore.includes(r.name)) continue;
-    const prev = latest.get(r.name);
-    if (!prev || Date.parse(r.created_at) > Date.parse(prev.created_at)) latest.set(r.name, r);
+    const key = r.workflow_id ?? r.name;
+    const prev = latest.get(key);
+    if (!prev || Date.parse(r.created_at) > Date.parse(prev.created_at)) latest.set(key, r);
   }
   if (latest.size === 0) return { status: "unknown", failing: [] };
   const vals = [...latest.values()];
@@ -65,17 +66,32 @@ export async function fetchHygiene({ owner = "cknowlesbadluck", repos = ["Quicks
     const d = { openPrs: null, docsOnlyPrs: null, ci: null, dependabot: null, staleBranches: null, safeDelete: null };
     let prs = null;
     try { const j = await getJson(`${api}/${repo}/pulls?state=open&per_page=100`, o); if (Array.isArray(j) && j.length < 100) { prs = j; d.openPrs = j.length; } } catch {}
-    try { const j = await getJson(`${api}/${repo}/actions/runs?branch=main&per_page=30`, o); d.ci = mainCiStatus(j?.workflow_runs, { ignore: ignoreWorkflows[repo] ?? [] }); } catch {}
+    try {
+      // Latest main run of every active workflow, so infrequent workflows are never missed.
+      const wf = await getJson(`${api}/${repo}/actions/workflows?per_page=100`, o);
+      if (!Array.isArray(wf?.workflows) || wf.workflows.length >= 100) throw new Error("incomplete");
+      const runs = [];
+      for (const w of wf.workflows) {
+        if (w?.state !== "active" || !Number.isInteger(w.id)) continue;
+        const j = await getJson(`${api}/${repo}/actions/workflows/${w.id}/runs?branch=main&per_page=1`, o);
+        if (!Array.isArray(j?.workflow_runs)) throw new Error("bad runs");
+        runs.push(...j.workflow_runs);
+      }
+      d.ci = mainCiStatus(runs, { ignore: ignoreWorkflows[repo] ?? [] });
+    } catch { d.ci = null; }
+    if (token) {
+      try { const j = await getJson(`${api}/${repo}/dependabot/alerts?state=open&per_page=100`, o); d.dependabot = Array.isArray(j) && j.length < 100 ? j.length : null; } catch {}
+    }
     if (token && prs) {
       try {
         let n = 0;
         for (const pr of prs) {
           const files = await getJson(`${api}/${repo}/pulls/${pr.number}/files?per_page=100`, o);
-          if (Array.isArray(files) && files.length < 100 && isDocsOnly(files.map((f) => f?.filename))) n++;
+          if (!Array.isArray(files) || files.length >= 100) throw new Error("incomplete file list");
+          if (isDocsOnly(files.map((f) => f?.filename))) n++;
         }
         d.docsOnlyPrs = n;
       } catch { d.docsOnlyPrs = null; }
-      try { const j = await getJson(`${api}/${repo}/dependabot/alerts?state=open&per_page=100`, o); d.dependabot = Array.isArray(j) && j.length < 100 ? j.length : null; } catch {}
     }
     const s = stale?.[repo];
     if (Array.isArray(s)) { d.staleBranches = s.length; d.safeDelete = s.filter((b) => b?.safeDelete === true).length; }
