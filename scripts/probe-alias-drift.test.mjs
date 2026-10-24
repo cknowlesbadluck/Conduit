@@ -46,3 +46,13 @@ test("full-contract 503 not_ready still counts as Resonance (identity is not rea
   assert.equal(d.ok, true);
   assert.equal(d.aliases[0].reason, "ready_contract_present");
 });
+
+test("a weaker per-target parity pin cannot produce a false Resonance verdict", () => {
+  const weak = { ...alias, parity: { fields: ["status", "service"], contractRevision: RESONANCE_MAIN_READY.contractRevision } };
+  const obs = { status: 200, headers: {}, body: JSON.stringify({ status: "ready", service: "resonance-nexus" }) };
+  const r = attachParity(weak, obs, classify(alias, obs));
+  assert.deepEqual(r.missingContractFields, []);
+  const d = aliasDrift([r], [alias]);
+  assert.equal(d.ok, false);
+  assert.equal(d.aliases[0].reason, "ready_contract_incomplete");
+});

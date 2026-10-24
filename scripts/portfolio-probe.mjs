@@ -189,7 +189,7 @@ export function attachParity(target, observation, result) {
   const keys = Object.keys(json);
   const missingContractFields = target.parity.fields.filter((f) => !keys.includes(f));
   const revisionMatches = json.contractRevision === target.parity.contractRevision;
-  return { ...result, behindMain: missingContractFields.length > 0 || !revisionMatches, missingContractFields };
+  return { ...result, behindMain: missingContractFields.length > 0 || !revisionMatches, missingContractFields, presentFields: keys };
 }
 
 export async function probeAll(targets = TARGETS, options) {
@@ -241,7 +241,8 @@ export function aliasDrift(results, targets = TARGETS, contract = RESONANCE_MAIN
     // Identity is separate from readiness: a full-contract not_ready (503, owner-gate key missing)
     // is still Resonance, so not_ready/regression bypass the r.ok guard.
     if (r && ((r.ok && r.outcome === "ready") || r.outcome === "not_ready" || r.outcome === "regression")) {
-      const missing = Array.isArray(r.missingContractFields) ? r.missingContractFields : contract.fields;
+      // Check the main contract itself, never the target's own (possibly weaker) parity pin.
+      const missing = Array.isArray(r.presentFields) ? contract.fields.filter((f) => !r.presentFields.includes(f)) : contract.fields;
       if (missing.length === 0) { verdict = "resonance"; reason = "ready_contract_present"; }
       else reason = "ready_contract_incomplete";
     } else if (r && r.outcome === "stranger_occupant") reason = "stranger_occupant";
