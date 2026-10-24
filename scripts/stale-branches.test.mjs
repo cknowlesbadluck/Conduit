@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { staleBranches, fetchStaleBranches } from "./stale-branches.mjs";
+import { staleBranches, fetchStaleBranches, markSafeDelete, aheadBy } from "./stale-branches.mjs";
 
 const now = Date.parse("2026-10-23T22:00:00Z");
 test("staleBranches: 14+ days, no open PR, not default branch", () => {
@@ -59,8 +59,36 @@ test("fetchStaleBranches: reads lastPr alias (report only)", async () => {
   const body = { data: { repository: { defaultBranchRef: { name: "main" }, pullRequests: { totalCount: 0, nodes: [] },
     refs: { pageInfo: { hasNextPage: false }, nodes: [
       { name: "done", associatedPullRequests: { totalCount: 0 }, lastPr: { nodes: [{ number: 3, state: "MERGED" }] }, target: { committedDate: "2026-10-22T00:00:00Z" } }] } } } };
-  let sent;
-  const r = await fetchStaleBranches({ repos: ["A"], token: "t", fetchImpl: async (u, i) => { sent = i; return { ok: true, json: async () => body }; }, now });
-  assert.deepEqual(r.A, [{ name: "done", committedAt: "2026-10-22T00:00:00Z", ageDays: 1, reason: "pr_merged", pr: { number: 3, state: "MERGED" } }]);
+  let sent, cmp;
+  const r = await fetchStaleBranches({ repos: ["A"], token: "t", fetchImpl: async (u, i) => { if (u.endsWith("/graphql")) { sent = i; return { ok: true, json: async () => body }; } cmp = u; return { ok: true, json: async () => ({ ahead_by: 0 }) }; }, now });
+  assert.deepEqual(r.A, [{ name: "done", committedAt: "2026-10-22T00:00:00Z", ageDays: 1, reason: "pr_merged", pr: { number: 3, state: "MERGED" }, aheadBy: 0, safeDelete: true }]);
+  assert.equal(cmp, "https://api.github.com/repos/cknowlesbadluck/A/compare/main...done");
   assert.equal(sent.method, "POST"); assert.match(JSON.parse(sent.body).query, /^query/);
+});
+
+test("markSafeDelete: only merged/closed PR with aheadBy 0 is safe; unknown is not", () => {
+  const e = [{ name: "a", pr: { number: 1, state: "MERGED" } }, { name: "b", pr: { number: 2, state: "CLOSED" } }, { name: "c", pr: { number: 3, state: "MERGED" } }, { name: "d" }];
+  const r = markSafeDelete(e, { a: 0, b: 2, d: 0 });
+  assert.deepEqual(r.map((x) => [x.name, x.aheadBy, x.safeDelete]), [["a", 0, true], ["b", 2, false], ["c", null, false], ["d", 0, false]]);
+  assert.equal(markSafeDelete([{ name: "o", pr: { number: 9, state: "OPEN" } }], { o: 0 })[0].safeDelete, false);
+});
+
+test("aheadBy: encodes refs, returns ahead_by, null on http error/bad body/throw", async () => {
+  let u;
+  assert.equal(await aheadBy({ owner: "o", repo: "r", base: "main", head: "feat/x#1", token: "t", fetchImpl: async (url) => { u = url; return { ok: true, json: async () => ({ ahead_by: 0 }) }; } }), 0);
+  assert.equal(u, "https://api.github.com/repos/o/r/compare/main...feat%2Fx%231");
+  assert.equal(await aheadBy({ owner: "o", repo: "r", base: "main", head: "x", token: "t", fetchImpl: async () => ({ ok: false }) }), null);
+  assert.equal(await aheadBy({ owner: "o", repo: "r", base: "main", head: "x", token: "t", fetchImpl: async () => ({ ok: true, json: async () => ({}) }) }), null);
+  assert.equal(await aheadBy({ owner: "o", repo: "r", base: "main", head: "x", token: "t", fetchImpl: async () => { throw new Error("n"); } }), null);
+});
+
+test("fetchStaleBranches: compare budget exhausted leaves aheadBy unknown and safeDelete false", async () => {
+  const now = Date.parse("2026-10-23T00:00:00Z");
+  const body = { data: { repository: { defaultBranchRef: { name: "main" }, pullRequests: { totalCount: 0, nodes: [] },
+    refs: { pageInfo: { hasNextPage: false }, nodes: ["x", "y"].map((name, k) => ({ name, associatedPullRequests: { totalCount: 0 }, lastPr: { nodes: [{ number: k + 1, state: "MERGED" }] }, target: { committedDate: "2026-10-22T00:00:00Z" } })) } } } };
+  let t = 0, compares = 0;
+  const r = await fetchStaleBranches({ repos: ["A"], token: "t", now, compareBudgetMs: 10, clock: () => t,
+    fetchImpl: async (u) => { if (u.endsWith("/graphql")) return { ok: true, json: async () => body }; compares++; t += 20; return { ok: true, json: async () => ({ ahead_by: 0 }) }; } });
+  assert.equal(compares, 1);
+  assert.deepEqual(r.A.map((e) => [e.aheadBy, e.safeDelete]).sort(), [[0, true], [null, false]].sort());
 });
