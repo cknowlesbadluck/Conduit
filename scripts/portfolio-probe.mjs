@@ -192,7 +192,9 @@ export async function probeAll(targets = TARGETS, options) {
 export function crossPlaneConsistency(results, targets = TARGETS) {
   const planes = [];
   for (const r of results) {
-    if (r.outcome !== "ready" && r.outcome !== "contract_changed") continue;
+    const answered = r.outcome === "ready" || r.outcome === "contract_changed"
+      || (r.outcome === "shape_changed" && (r.previousOutcome === "ready" || r.previousOutcome === "contract_changed"));
+    if (!answered) continue;
     const t = targets.find((x) => x.name === r.name) ?? {};
     const expected = t.expect?.contractRevision ?? t.parity?.contractRevision;
     const actual = r.contractRevision;

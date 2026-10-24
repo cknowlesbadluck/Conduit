@@ -33,3 +33,12 @@ test("ignores planes that are not ready (unreachable/not_ready)", () => {
   const r = crossPlaneConsistency([{ name: "a", outcome: "unreachable" }, { name: "b", outcome: "not_ready" }], targets);
   assert.deepEqual(r, { consistent: true, mismatched: [], planes: [] });
 });
+
+test("revision mismatch hidden by shape_changed is still flagged", () => {
+  const r = crossPlaneConsistency([
+    { name: "a", outcome: "shape_changed", previousOutcome: "contract_changed", contractRevision: "rev-x" },
+    { name: "b", outcome: "shape_changed", previousOutcome: "not_ready", contractRevision: "rev-x" },
+  ], targets);
+  assert.equal(r.consistent, false);
+  assert.deepEqual(r.mismatched, ["a"]);
+});
