@@ -37,3 +37,12 @@ test("timeout, absent alias and unprobed alias all fail closed", () => {
   assert.equal(aliasDrift([run({ status: 404, headers: { "x-vercel-error": "DEPLOYMENT_NOT_FOUND" }, body: "" })], [alias]).aliases[0].reason, "alias_absent");
   assert.equal(aliasDrift([], [alias]).aliases[0].reason, "not_probed");
 });
+
+test("full-contract 503 not_ready still counts as Resonance (identity is not readiness)", () => {
+  const body = JSON.parse(fullBody); body.status = "not_ready"; body.missingRequired = ["SOME_OWNER_KEY"];
+  const r = run({ status: 503, headers: {}, body: JSON.stringify(body) });
+  assert.equal(r.ok, false);
+  const d = aliasDrift([r], [alias]);
+  assert.equal(d.ok, true);
+  assert.equal(d.aliases[0].reason, "ready_contract_present");
+});

@@ -238,7 +238,9 @@ export function aliasDrift(results, targets = TARGETS, contract = RESONANCE_MAIN
   for (const t of targets.filter(isResonanceAlias)) {
     const r = results.find((x) => x.name === t.name);
     let verdict = "drift", reason = r ? r.outcome : "not_probed";
-    if (r && r.ok && (r.outcome === "ready" || r.outcome === "not_ready")) {
+    // Identity is separate from readiness: a full-contract not_ready (503, owner-gate key missing)
+    // is still Resonance, so not_ready/regression bypass the r.ok guard.
+    if (r && ((r.ok && r.outcome === "ready") || r.outcome === "not_ready" || r.outcome === "regression")) {
       const missing = Array.isArray(r.missingContractFields) ? r.missingContractFields : contract.fields;
       if (missing.length === 0) { verdict = "resonance"; reason = "ready_contract_present"; }
       else reason = "ready_contract_incomplete";
