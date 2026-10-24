@@ -10,6 +10,7 @@ import { MCP_RATE_LIMITER, TOOL_RATE_LIMITER } from "./rate-limit.js";
 import { getPublicConduitStatus } from "./status.js";
 import { checkPersistence } from "./db-ready.js";
 import { isReady } from "./store.js";
+import { resolveTrustProxy } from "./trust-proxy.js";
 import { createDiagnosticsHandler } from "./diagnostics-route.js";
 import { conduitUiHtml, CONDUIT_UI_CSS, CONDUIT_UI_JS } from "./ui.js";
 
@@ -37,6 +38,7 @@ function rateLimitMcp(req: Request, res: Response, next: NextFunction) {
 export function createConduitApp(options: ConduitAppOptions = {}) {
   const app = express();
   app.disable("x-powered-by");
+  app.set("trust proxy", resolveTrustProxy());
   app.use((_req, res, next) => {
     const requestId = _req.get("x-request-id")?.slice(0, 80) || crypto.randomUUID();
     res.set({
