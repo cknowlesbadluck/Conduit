@@ -162,3 +162,10 @@ test("contentInMain: truncated tree or removed file handled fail-safe", async ()
   assert.equal(await contentInMain({ ...args, fetchImpl: fakeGh([{ filename: "a", status: "modified", sha: "x" }], [], { truncated: true }).fetchImpl }), null);
   assert.equal(await contentInMain({ ...args, fetchImpl: fakeGh([{ filename: "gone", status: "removed", sha: "0" }], []).fetchImpl }), true);
 });
+
+test("contentInMain: branch removing a submodule that main still has is not a match", async () => {
+  const { contentInMain } = await import("./stale-branches.mjs");
+  const { fetchImpl } = fakeGh([{ filename: "vendor/lib", status: "removed", sha: "0" }],
+    [{ path: "vendor/lib", type: "commit", mode: "160000", sha: "c0ffee" }]);
+  assert.equal(await contentInMain({ ...args, fetchImpl }), false);
+});

@@ -75,14 +75,19 @@ export async function contentInMain({ owner, repo, base, head, token, fetchImpl 
     const tree = await t.json();
     if (!tree || tree.truncated !== false || !Array.isArray(tree.tree)) return null;
     const blobs = new Map();
-    for (const e of tree.tree) if (e && e.type === "blob" && typeof e.path === "string") blobs.set(e.path, e.sha);
+    // Keep every entry (blob, tree, submodule commit): a path that still exists on main in any form is not "absent".
+    for (const e of tree.tree) if (e && typeof e.path === "string") blobs.set(e.path, `${e.type}:${e.sha}`);
     const shas = {};
-    for (const f of files) {
+    const normalized = [];
+    for (let f of files) {
       for (const p of [f.filename, f.status === "renamed" ? f.previous_filename : undefined]) {
         if (typeof p === "string") shas[p] = blobs.has(p) ? blobs.get(p) : null;
       }
+      // Branch side is always a file blob; a submodule/tree on either side never matches (fail-safe).
+      if (f.status !== "removed" && typeof f.sha === "string") f = { ...f, sha: `blob:${f.sha}` };
+      normalized.push(f);
     }
-    return filesMatchMain(files, shas);
+    return filesMatchMain(normalized, shas);
   } catch { return null; }
 }
 
