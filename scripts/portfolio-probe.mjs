@@ -122,7 +122,8 @@ function classifyRaw(target, observation) {
     const raw = json.missingRequired;
     const missing = Array.isArray(raw) ? raw.filter((m) => typeof m === "string" && ENV_NAME.test(m)) : [];
     const missingClean = Array.isArray(raw) && missing.length === raw.length;
-    return { ...base, outcome: "not_ready", ok: false, status, missing, missingClean };
+    // Keep the published contractRevision so the read-only --revision-skew check still works while gated.
+    return { ...base, outcome: "not_ready", ok: false, status, missing, missingClean, ...(typeof json.contractRevision === "string" && json.contractRevision ? { contractRevision: json.contractRevision } : {}) };
   }
   if (status === 503 && body.trim() === "" && /cloudflare/i.test(String(headers.server ?? ""))) {
     return { ...base, outcome: "unknown", ok: false, status, reason: "edge_503_empty_origin_unavailable" };

@@ -26,3 +26,16 @@ test("missing or unparseable revisions are unknown, never warn", () => {
   assert.equal(revisionSkew(res(undefined, "2026-10-03-x")).status, "unknown");
   assert.equal(revisionSkew([]).status, "unknown");
 });
+
+test("revisionSkew sees revisions from classified not_ready (503) responses", async () => {
+  const { classify, TARGETS } = await import("./portfolio-probe.mjs");
+  const conduitT = TARGETS.find((t) => t.name === "conduit");
+  const resT = TARGETS.find((t) => t.name === "resonance-netlify");
+  const conduitR = classify(conduitT, { status: 200, headers: {}, body: JSON.stringify({ status: "ready", service: conduitT.expectService, contractRevision: "2026-10-03-ready-surface" }) });
+  const resR = classify(resT, { status: 503, headers: {}, body: JSON.stringify({ status: "not_ready", service: resT.expectService, missingRequired: [], contractRevision: "2026-09-01-old" }) });
+  assert.equal(resR.outcome === "not_ready" || resR.outcome === "regression", true);
+  assert.equal(resR.contractRevision, "2026-09-01-old");
+  const skew = revisionSkew([conduitR, resR]);
+  assert.equal(skew.status, "warn");
+  assert.equal(skew.skewDays, 32);
+});
