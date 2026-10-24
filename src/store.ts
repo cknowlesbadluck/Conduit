@@ -596,8 +596,8 @@ const isAfterCursor = (row: KeysetRow, time: string, cursorId: string) => rowTim
 
 async function keysetPage<T extends KeysetRow>(spec: PageSpec<T>): Promise<Page<T>> {
   const limit = pageLimit(spec.limit);
-  const expected = { collection: spec.collection, projectId: spec.projectId, filters: spec.filters };
-  const decoded = spec.cursor ? cursorCodec.decode(spec.cursor, expected) : undefined;
+  // Performance Optimization: Defer expected object creation until cursor exists (avoids object allocation on initial page queries).
+  const decoded = spec.cursor ? cursorCodec.decode(spec.cursor, { collection: spec.collection, projectId: spec.projectId, filters: spec.filters }) : undefined;
   let candidates: T[];
   if (pool) {
     const conditions = spec.conditions ?? [];
@@ -647,7 +647,12 @@ export const listContactsPage = (options: PageOptions & { projectId?: string } =
 export const listToolsPage = (options: PageOptions & { projectId?: string } = {}) => scopedPage<Tool>({ ...options, collection: "tools", sql: toolSelect, normalize: normalizeTool, memory: [...tools.values()].filter(row => !row.archivedAt && (!options.projectId || row.projectId === options.projectId)) });
 
 export function listTasksPage(options: TaskPageOptions = {}) {
-  const filters = Object.fromEntries(Object.entries({ status: options.status, claimedBy: options.claimedBy, createdBy: options.createdBy }).filter((entry): entry is [string, string] => Boolean(entry[1])));
+  // Performance Optimization: Direct conditional property assignment avoids temporary object/array/tuple allocations
+  // from Object.fromEntries(Object.entries(...).filter(...)).
+  const filters: Record<string, string> = {};
+  if (options.status) filters.status = options.status;
+  if (options.claimedBy) filters.claimedBy = options.claimedBy;
+  if (options.createdBy) filters.createdBy = options.createdBy;
   const conditions: Array<[string, unknown]> = [];
   if (options.projectId) conditions.push(["project_id=?", options.projectId]);
   if (options.status) conditions.push(["status=?", options.status]);

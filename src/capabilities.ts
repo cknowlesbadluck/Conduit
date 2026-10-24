@@ -23,12 +23,14 @@ export type CapabilityRequest = {
 
 const normalizeMethod = (method: string) => method.toUpperCase();
 
+// Performance Optimization: Fast-path leading slash checks before evaluating scheme prefixes.
 function normalizePath(path: string) {
+  if (path.startsWith("/")) return path;
   if (path.startsWith("http://") || path.startsWith("https://")) {
     const url = new URL(path);
     return `${url.origin}${url.pathname}${url.search}`;
   }
-  return path.startsWith("/") ? path : `/${path}`;
+  return `/${path}`;
 }
 
 /**
