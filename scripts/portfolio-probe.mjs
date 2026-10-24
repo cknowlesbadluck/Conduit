@@ -25,7 +25,7 @@
  * mirrored by Resonance scripts/deploy-parity.mjs). When the service answered with JSON, the
  * result gains `behindMain` + `missingContractFields`. It never changes ok/drift/exit code.
  *
- * Usage: node scripts/portfolio-probe.mjs [--json] [--drift-only] [--entropy] [--decisions] [--stale-branches]
+ * Usage: node scripts/portfolio-probe.mjs [--json] [--drift-only] [--entropy [--markdown]] [--decisions] [--stale-branches]
  *   --stale-branches: read-only list of branches with no open PR and no commit in 14+ days (scripts/stale-branches.mjs); requires GH_TOKEN; never deletes.
  *   --decisions: read-only owner decision queue (scripts/decision-queue.mjs); requires GH_TOKEN (never printed); repos are null without it.
  *   default: exit 1 if any target is not ok; --drift-only: exit 1 only if any pinned target drifted.
@@ -192,7 +192,8 @@ if (isMain) {
   const decisions = process.argv.includes("--decisions") ? await (await import("./decision-queue.mjs")).fetchDecisionQueue() : undefined;
   const staleBranches = process.argv.includes("--stale-branches") ? await (await import("./stale-branches.mjs")).fetchStaleBranches() : undefined;
   const score = portfolioScore(results);
-  if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), score, prCounts, prEntropy: prEntropyReport, decisions, staleBranches, results }, null, 2));
+  if (prEntropyReport && process.argv.includes("--markdown")) console.log(entropyMarkdown(prEntropyReport));
+  else if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), score, prCounts, prEntropy: prEntropyReport, decisions, staleBranches, results }, null, 2));
   else { console.log("Portfolio maturity score:", score, "/10"); results.forEach(r => console.log(r.name, r.outcome, r.ok ? "OK" : "FAIL", r.drift ? "DRIFT" : "")); console.log("Open PR entropy:", JSON.stringify(prCounts)); if (prEntropyReport) console.log("PR age/stack:", JSON.stringify(prEntropyReport)); if (decisions) for (const [repo, q] of Object.entries(decisions)) console.log("Decisions", repo, q ? JSON.stringify(q.byCategory) : "unavailable"); if (staleBranches) for (const [repo, l] of Object.entries(staleBranches)) console.log("Stale branches", repo, l ? JSON.stringify(l.map((b) => `${b.name} (${b.ageDays}d)`)) : "unavailable"); }
   const pass = process.argv.includes("--drift-only") ? results.every((r) => !r.drift || !TARGETS.find((t) => t.name === r.name)?.expect) : results.every((r) => r.ok);
   process.exitCode = pass ? 0 : 1;
@@ -272,4 +273,20 @@ export async function openPrEntropy({ repos = ["Resonance", "Conduit"], fetchImp
     } catch { out[repo] = null; }
   }
   return out;
+}
+
+/**
+ * Pure markdown table for an openPrEntropy() report (--entropy --markdown).
+ * null repos render as "unavailable" (fail-closed); cell values are numbers only.
+ */
+export function entropyMarkdown(report) {
+  const n = (v) => (Number.isFinite(v) ? String(v) : "-");
+  const rows = ["| Repo | Open | <1d | 1-7d | 7-30d | >30d | Oldest (d) | Stacked | Max depth | Drafts |", "|---|---|---|---|---|---|---|---|---|---|"];
+  for (const [repo, e] of Object.entries(report ?? {})) {
+    const name = String(repo).replace(/[^A-Za-z0-9._-]/g, "");
+    if (!e) { rows.push(`| ${name} | unavailable | | | | | | | | |`); continue; }
+    const b = e.ageBuckets ?? {};
+    rows.push(`| ${name} | ${n(e.open)} | ${n(b.lt1d)} | ${n(b.d1to7)} | ${n(b.d7to30)} | ${n(b.gt30d)} | ${n(e.oldestDays)} | ${n(e.stacked)} | ${n(e.maxStackDepth)} | ${n(e.drafts)} |`);
+  }
+  return rows.join("\n");
 }
