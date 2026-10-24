@@ -51,9 +51,10 @@ test("black-box MCP HTTP initializes and lists tools", async () => {
     assert.ok(address && typeof address === "object");
     const baseUrl = `http://127.0.0.1:${address.port}`;
 
+    const requestId = "http-test-request-id";
     const initialize = await fetch(`${baseUrl}/mcp`, {
       method: "POST",
-      headers: mcpHeaders(),
+      headers: { ...mcpHeaders(), "X-Request-Id": requestId },
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: 1,
@@ -66,6 +67,7 @@ test("black-box MCP HTTP initializes and lists tools", async () => {
       }),
     });
     assert.equal(initialize.status, 200);
+    assert.equal(initialize.headers.get("X-Request-Id"), requestId);
     const initializeBody = await readMcpResponse(initialize);
     const initializeResult = initializeBody.result as { serverInfo?: { name?: string } } | undefined;
     assert.equal(initializeResult?.serverInfo?.name, SERVICE_NAME);
