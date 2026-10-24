@@ -127,3 +127,17 @@ test("contentInMain: compares branch blobs to main via read-only GETs; errors ->
   const many = async () => ({ ok: true, json: async () => ({ files: Array.from({ length: 60 }, (_, i) => ({ filename: `f${i}`, sha: "s" })) }) });
   assert.equal(await contentInMain({ owner: "o", repo: "r", base: "main", head: "h", token: "t", fetchImpl: many }), null);
 });
+
+test("contentInMain shares one deadline across compare and contents requests", async () => {
+  const { contentInMain } = await import("./stale-branches.mjs");
+  const signals = [];
+  const fetchImpl = async (url, opts) => {
+    signals.push(opts.signal);
+    if (url.includes("/compare/")) return { ok: true, status: 200, json: async () => ({ files: [{ filename: "a", status: "modified", sha: "x" }, { filename: "b", status: "modified", sha: "y" }] }) };
+    return { ok: true, status: 200, json: async () => ({ sha: url.includes("/a?") ? "x" : "y" }) };
+  };
+  const r = await contentInMain({ owner: "o", repo: "r", base: "main", head: "h", token: "t", fetchImpl, timeoutMs: 5000 });
+  assert.equal(r, true);
+  assert.equal(signals.length, 3);
+  assert.ok(signals.every((s) => s === signals[0]));
+});

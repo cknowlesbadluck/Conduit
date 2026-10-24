@@ -56,9 +56,11 @@ export function filesMatchMain(files = [], mainShas = {}) {
 /** Read-only: does the branch's net content already exist on the default branch? null on error or >maxFiles files. */
 export async function contentInMain({ owner, repo, base, head, token, fetchImpl = fetch, timeoutMs = 15_000, maxFiles = 50 }) {
   try {
+    // One shared deadline for the compare call plus every contents call (not a fresh timeout per request).
+    const signal = AbortSignal.timeout(timeoutMs);
     const h = { authorization: `bearer ${token}`, accept: "application/vnd.github+json" };
     const api = `https://api.github.com/repos/${owner}/${repo}`;
-    const res = await fetchImpl(`${api}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}?per_page=100`, { headers: h, signal: AbortSignal.timeout(timeoutMs) });
+    const res = await fetchImpl(`${api}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}?per_page=100`, { headers: h, signal });
     if (!res.ok) return null;
     const files = (await res.json())?.files;
     if (!Array.isArray(files) || files.length === 0 || files.length > maxFiles || files.length >= 300) return null;
@@ -67,7 +69,8 @@ export async function contentInMain({ owner, repo, base, head, token, fetchImpl 
     const shas = {};
     for (const p of paths) {
       const enc = String(p).split("/").map(encodeURIComponent).join("/");
-      const r = await fetchImpl(`${api}/contents/${enc}?ref=${encodeURIComponent(base)}`, { headers: h, signal: AbortSignal.timeout(timeoutMs) });
+      const r = await fetchImpl(`${api}/contents/${enc}?ref=${encodeURIComponent(base)}`, { headers: h, signal });
+      if (signal.aborted) return null;
       if (r.status === 404) { shas[p] = null; continue; }
       if (!r.ok) return null;
       const j = await r.json();
