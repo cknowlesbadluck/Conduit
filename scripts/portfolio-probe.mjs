@@ -84,6 +84,10 @@ export function withDrift(target, r) {
     return { ...r, drift: false };
   }
   if (r.outcome === "not_ready" && Array.isArray(expect.missingRequired)) {
+    // Empty pin = key-present state: any not_ready (even with missingRequired []) is a regression.
+    if (expect.missingRequired.length === 0) {
+      return { ...r, outcome: "regression", drift: true, expectedMissing: [], reason: "not_ready_with_empty_pin" };
+    }
     if (!r.missingClean || !sameSet(r.missing, expect.missingRequired)) {
       return { ...r, outcome: "regression", drift: true, expectedMissing: [...expect.missingRequired], reason: r.missingClean ? "missing_set_changed" : "missing_list_malformed" };
     }

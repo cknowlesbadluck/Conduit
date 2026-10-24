@@ -111,6 +111,8 @@ test("drift: key-present Resonance pin accepts ready only with authMode required
   assert.equal(inc.ok, false); assert.equal(inc.reason, "ready_with_missing_required");
   const back = classify(t, obs({ status: "not_ready", missingRequired: ["SUPABASE_SERVICE_ROLE_KEY"] }, 503));
   assert.equal(back.outcome, "regression"); assert.equal(back.drift, true);
+  const empty = classify(t, obs({ status: "not_ready", missingRequired: [] }, 503));
+  assert.equal(empty.outcome, "regression"); assert.equal(empty.ok, false); assert.equal(empty.reason, "not_ready_with_empty_pin");
 });
 
 test("parity: Resonance live body lacking main's fields is behindMain, without changing ok/drift", () => {
