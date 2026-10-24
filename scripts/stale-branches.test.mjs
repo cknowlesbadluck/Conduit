@@ -61,7 +61,7 @@ test("fetchStaleBranches: reads lastPr alias (report only)", async () => {
       { name: "done", associatedPullRequests: { totalCount: 0 }, lastPr: { nodes: [{ number: 3, state: "MERGED" }] }, target: { committedDate: "2026-10-22T00:00:00Z" } }] } } } };
   let sent, cmp;
   const r = await fetchStaleBranches({ repos: ["A"], token: "t", fetchImpl: async (u, i) => { if (u.endsWith("/graphql")) { sent = i; return { ok: true, json: async () => body }; } cmp = u; return { ok: true, json: async () => ({ ahead_by: 0 }) }; }, now });
-  assert.deepEqual(r.A, [{ name: "done", committedAt: "2026-10-22T00:00:00Z", ageDays: 1, reason: "pr_merged", pr: { number: 3, state: "MERGED" }, aheadBy: 0, safeDelete: true }]);
+  assert.deepEqual(r.A, [{ name: "done", committedAt: "2026-10-22T00:00:00Z", ageDays: 1, reason: "pr_merged", pr: { number: 3, state: "MERGED" }, aheadBy: 0, contentInMain: null, safeDelete: true }]);
   assert.equal(cmp, "https://api.github.com/repos/cknowlesbadluck/A/compare/main...done");
   assert.equal(sent.method, "POST"); assert.match(JSON.parse(sent.body).query, /^query/);
 });
@@ -91,4 +91,39 @@ test("fetchStaleBranches: compare budget exhausted leaves aheadBy unknown and sa
     fetchImpl: async (u) => { if (u.endsWith("/graphql")) return { ok: true, json: async () => body }; compares++; t += 20; return { ok: true, json: async () => ({ ahead_by: 0 }) }; } });
   assert.equal(compares, 1);
   assert.deepEqual(r.A.map((e) => [e.aheadBy, e.safeDelete]).sort(), [[0, true], [null, false]].sort());
+});
+
+import { filesMatchMain, contentInMain } from "./stale-branches.mjs";
+test("filesMatchMain: identical blobs true, diff false, unknown null, removed must be absent, renames", () => {
+  assert.equal(filesMatchMain([{ filename: "a", sha: "1" }], { a: "1" }), true);
+  assert.equal(filesMatchMain([{ filename: "a", sha: "1" }], { a: "2" }), false);
+  assert.equal(filesMatchMain([{ filename: "a", sha: "1" }], {}), null);
+  assert.equal(filesMatchMain([{ filename: "a", status: "removed" }], { a: null }), true);
+  assert.equal(filesMatchMain([{ filename: "a", status: "removed" }], { a: "x" }), false);
+  assert.equal(filesMatchMain([{ filename: "b", sha: "1", status: "renamed", previous_filename: "a" }], { b: "1", a: "1" }), false);
+  assert.equal(filesMatchMain([{ filename: "b", sha: "1", status: "renamed", previous_filename: "a" }], { b: "1", a: null }), true);
+  assert.equal(filesMatchMain([], {}), false);
+});
+
+test("markSafeDelete: squash-merged (ahead>0, contentInMain) is safe; unknown content is not", () => {
+  const e = [{ name: "s", pr: { number: 1, state: "MERGED" } }, { name: "u", pr: { number: 2, state: "MERGED" } }, { name: "o", reason: "age" }];
+  const r = markSafeDelete(e, { s: 3, u: 3, o: 0 }, { s: true, o: true });
+  assert.deepEqual(r.map((x) => [x.name, x.safeDelete, x.contentInMain]), [["s", true, true], ["u", false, null], ["o", false, true]]);
+});
+
+test("contentInMain: compares branch blobs to main via read-only GETs; errors -> null", async () => {
+  const seen = [];
+  const f = async (url, init) => {
+    seen.push(init?.method ?? "GET");
+    if (url.includes("/compare/")) return { ok: true, json: async () => ({ files: [{ filename: "x/a b.ts", sha: "s1" }, { filename: "gone", status: "removed" }] }) };
+    if (url.includes("/contents/gone")) return { ok: false, status: 404 };
+    if (url.includes("/contents/x/a%20b.ts?ref=main")) return { ok: true, status: 200, json: async () => ({ sha: "s1" }) };
+    return { ok: false, status: 500 };
+  };
+  assert.equal(await contentInMain({ owner: "o", repo: "r", base: "main", head: "h", token: "t", fetchImpl: f }), true);
+  assert.ok(seen.every((m) => m === "GET"));
+  const bad = async () => { throw new Error("net"); };
+  assert.equal(await contentInMain({ owner: "o", repo: "r", base: "main", head: "h", token: "t", fetchImpl: bad }), null);
+  const many = async () => ({ ok: true, json: async () => ({ files: Array.from({ length: 60 }, (_, i) => ({ filename: `f${i}`, sha: "s" })) }) });
+  assert.equal(await contentInMain({ owner: "o", repo: "r", base: "main", head: "h", token: "t", fetchImpl: many }), null);
 });
