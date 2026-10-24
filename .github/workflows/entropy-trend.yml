@@ -1,0 +1,42 @@
+name: entropy-trend (non-blocking)
+
+# Runs scripts/entropy-trend.mjs (#309) against docs/baselines/pr-entropy-baseline.json.
+# Non-blocking by design: continue-on-error on the job, read-only token, no secrets,
+# persist-credentials: false, SHA-pinned actions (same pins as portfolio-probe.yml).
+on:
+  schedule:
+    - cron: "41 */6 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "scripts/entropy-trend.mjs"
+      - "scripts/portfolio-probe.mjs"
+      - "docs/baselines/pr-entropy-baseline.json"
+      - ".github/workflows/entropy-trend.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: entropy-trend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  trend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Unit tests (pure trend logic)
+        run: node --test scripts/entropy-trend.test.mjs
+      - name: Entropy trend vs baseline (non-blocking)
+        run: |
+          node scripts/entropy-trend.mjs --json > trend.json; rc=$?
+          { echo "## Open-PR entropy trend (exit $rc; non-blocking)"; echo; echo '```json'; sed 's/```/` ` `/g' trend.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
