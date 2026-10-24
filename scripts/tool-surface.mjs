@@ -6,16 +6,39 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = join(fileURLToPath(new URL(".", import.meta.url)), "..");
+
+/** Remove line and block comments while keeping string and template literals intact. */
+export function stripComments(src) {
+  let out = "", i = 0, q = null;
+  while (i < src.length) {
+    const c = src[i], n = src[i + 1];
+    if (q) {
+      out += c;
+      if (c === "\\") { out += n ?? ""; i += 2; continue; }
+      if (c === q) q = null;
+      i++;
+    } else if (c === '"' || c === "'" || c === "`") { q = c; out += c; i++; }
+    else if (c === "/" && n === "/") { while (i < src.length && src[i] !== "\n") i++; }
+    else if (c === "/" && n === "*") { const e = src.indexOf("*/", i + 2); i = e < 0 ? src.length : e + 2; out += " "; }
+    else { out += c; i++; }
+  }
+  return out;
+}
+
+/** Tool names in live registerTool("name"|'name', ...) calls (comments ignored). */
+export function toolNamesIn(source) {
+  return [...stripComments(source).matchAll(/registerTool\(\s*(["'])([a-z][a-z0-9_]*)\1/g)].map((m) => m[2]);
+}
 
 /** Tool names registered by non-test TypeScript sources. */
 export function registeredTools(srcDir = join(root, "src")) {
   const names = new Set();
   for (const f of readdirSync(srcDir)) {
     if (!f.endsWith(".ts") || f.endsWith(".test.ts")) continue;
-    for (const m of readFileSync(join(srcDir, f), "utf8").matchAll(/registerTool\(\s*"([a-z][a-z0-9_]*)"/g)) names.add(m[1]);
+    for (const n of toolNamesIn(readFileSync(join(srcDir, f), "utf8"))) names.add(n);
   }
   return [...names].sort();
 }
@@ -32,7 +55,7 @@ export function toolSurfaceDrift(documented, registered) {
   return { ok: undocumented.length === 0 && missing.length === 0, undocumented, missing, count: registered.length };
 }
 
-const isMain = import.meta.url === `file://${process.argv[1]}`;
+const isMain = Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   const result = toolSurfaceDrift(documentedTools(readFileSync(join(root, "docs", "MCP-TOOLS.md"), "utf8")), registeredTools());
   console.log(JSON.stringify(result));
