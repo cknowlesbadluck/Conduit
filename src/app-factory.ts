@@ -1,4 +1,5 @@
 import express, { type NextFunction, type Request, type Response } from "express";
+import { resolveRequestId } from "./request-id.js";
 import { getOAuthProtectedResourceMetadataUrl, mcpAuthMetadataRouter, requireBearerAuth } from "@modelcontextprotocol/express";
 import { toNodeHandler } from "@modelcontextprotocol/node";
 import { createMcpHandler } from "@modelcontextprotocol/server";
@@ -38,7 +39,7 @@ export function createConduitApp(options: ConduitAppOptions = {}) {
   const app = express();
   app.disable("x-powered-by");
   app.use((_req, res, next) => {
-    const requestId = _req.get("x-request-id")?.slice(0, 80) || crypto.randomUUID();
+    const requestId = resolveRequestId(_req.get("x-request-id"));
     res.set({
       "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
