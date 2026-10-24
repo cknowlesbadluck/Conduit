@@ -94,7 +94,25 @@ test("drift: pinned gate cleared (ready) asks for pin update; unknown outcomes d
 
 test("drift: production targets pin the noon owner-probe values", () => {
   assert.equal(TARGETS.find((t) => t.name === "conduit").expect.contractRevision, "2026-10-03-ready-surface");
-  assert.deepEqual(TARGETS.find((t) => t.name === "resonance-netlify").expect.missingRequired, ["SUPABASE_SERVICE_ROLE_KEY"]);
+  assert.deepEqual(TARGETS.find((t) => t.name === "resonance-netlify").expect.missingRequired, []);
+  assert.equal(TARGETS.find((t) => t.name === "resonance-netlify").expect.authMode, "required");
+});
+
+test("drift: key-present Resonance pin accepts ready only with authMode required", () => {
+  const t = TARGETS.find((x) => x.name === "resonance-netlify");
+  const obs = (b, status = 200) => ({ status, body: JSON.stringify({ service: "resonance-nexus", ...b }) });
+  const ok = classify(t, obs({ status: "ready", authMode: "required", missingRequired: [] }));
+  assert.equal(ok.ok, true); assert.equal(ok.drift, false);
+  for (const authMode of ["optional", "disabled", undefined]) {
+    const r = classify(t, obs({ status: "ready", authMode, missingRequired: [] }));
+    assert.equal(r.ok, false); assert.equal(r.drift, true); assert.equal(r.reason, "auth_mode_changed");
+  }
+  const inc = classify(t, obs({ status: "ready", authMode: "required", missingRequired: ["X_KEY"] }));
+  assert.equal(inc.ok, false); assert.equal(inc.reason, "ready_with_missing_required");
+  const back = classify(t, obs({ status: "not_ready", missingRequired: ["SUPABASE_SERVICE_ROLE_KEY"] }, 503));
+  assert.equal(back.outcome, "regression"); assert.equal(back.drift, true);
+  const empty = classify(t, obs({ status: "not_ready", missingRequired: [] }, 503));
+  assert.equal(empty.outcome, "regression"); assert.equal(empty.ok, false); assert.equal(empty.reason, "not_ready_with_empty_pin");
 });
 
 test("parity: Resonance live body lacking main's fields is behindMain, without changing ok/drift", () => {

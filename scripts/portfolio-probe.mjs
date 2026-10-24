@@ -42,7 +42,7 @@ export const RESONANCE_MAIN_READY = Object.freeze({
 export const TARGETS = [
   { name: "conduit", url: "https://conduit-feco.onrender.com/ready", expectService: "conduit", schema: "conduit-ready", expect: { contractRevision: "2026-10-03-ready-surface" } },
   // Owner gate: the service role key is the ONLY thing Resonance prod may be missing.
-  { name: "resonance-netlify", url: "https://resonancenexus.netlify.app/api/ready", expectService: "resonance-nexus", schema: "resonance-ready", expect: { missingRequired: ["SUPABASE_SERVICE_ROLE_KEY"] }, parity: RESONANCE_MAIN_READY },
+  { name: "resonance-netlify", url: "https://resonancenexus.netlify.app/api/ready", expectService: "resonance-nexus", schema: "resonance-ready", expect: { missingRequired: [], authMode: "required" }, parity: RESONANCE_MAIN_READY },
   { name: "resonance-vercel", url: "https://resonance.vercel.app/api/ready", expectService: "resonance-nexus" },
   { name: "resonancenexus-vercel", url: "https://resonancenexus.vercel.app/api/ready", expectService: "resonance-nexus" },
   { name: "quicksilver-vercel", url: "https://quicksilver.vercel.app/", expectService: "quicksilver" },
@@ -72,10 +72,22 @@ export function withDrift(target, r) {
     if (expect.contractRevision !== undefined && r.contractRevision !== expect.contractRevision) {
       return { ...r, outcome: "contract_changed", ok: false, drift: true, expectedContractRevision: expect.contractRevision };
     }
+    // Key-present state: a pinned authMode must match exactly (absent/other = fail closed),
+    // and a "ready" body that still lists missing keys is incoherent, not healthy.
+    if (expect.authMode !== undefined && r.authMode !== expect.authMode) {
+      return { ...r, outcome: "regression", ok: false, drift: true, reason: "auth_mode_changed", expectedAuthMode: expect.authMode };
+    }
+    if (Array.isArray(expect.missingRequired) && expect.missingRequired.length === 0 && r.readyMissingCount > 0) {
+      return { ...r, outcome: "regression", ok: false, drift: true, reason: "ready_with_missing_required" };
+    }
     if (expect.missingRequired?.length) return { ...r, drift: true, reason: "owner_gate_cleared_update_pin" };
     return { ...r, drift: false };
   }
   if (r.outcome === "not_ready" && Array.isArray(expect.missingRequired)) {
+    // Empty pin = key-present state: any not_ready (even with missingRequired []) is a regression.
+    if (expect.missingRequired.length === 0) {
+      return { ...r, outcome: "regression", drift: true, expectedMissing: [], reason: "not_ready_with_empty_pin" };
+    }
     if (!r.missingClean || !sameSet(r.missing, expect.missingRequired)) {
       return { ...r, outcome: "regression", drift: true, expectedMissing: [...expect.missingRequired], reason: r.missingClean ? "missing_set_changed" : "missing_list_malformed" };
     }
@@ -102,7 +114,7 @@ function classifyRaw(target, observation) {
   const service = json && typeof json === "object" ? json.service : undefined;
   if (status === 200) {
     if (service !== target.expectService) return { ...base, outcome: "stranger_occupant", ok: false, status, reason: service ? "service_mismatch" : "no_service_stamp" };
-    if (json.status === "ready") return { ...base, outcome: "ready", ok: true, status, ...(json.version ? { version: String(json.version) } : {}), ...(json.contractRevision ? { contractRevision: String(json.contractRevision) } : {}) };
+    if (json.status === "ready") return { ...base, outcome: "ready", ok: true, status, ...(json.version ? { version: String(json.version) } : {}), ...(json.contractRevision ? { contractRevision: String(json.contractRevision) } : {}), ...(typeof json.authMode === "string" ? { authMode: json.authMode } : {}), ...(Array.isArray(json.missingRequired) ? { readyMissingCount: json.missingRequired.length } : {}) };
     return { ...base, outcome: "unknown", ok: false, status, reason: "200_without_ready" };
   }
   if (status === 503 && service === target.expectService && json.status === "not_ready") {
