@@ -28,7 +28,8 @@ export function staleBranches(branches = [], openHeads = [], { now = Date.now(),
 export function markSafeDelete(entries = [], ahead = {}) {
   return entries.map((e) => {
     const a = Number.isInteger(ahead[e.name]) ? ahead[e.name] : null;
-    return { ...e, aheadBy: a, safeDelete: Boolean(e.pr) && a === 0 };
+    const done = e.pr?.state === "MERGED" || e.pr?.state === "CLOSED";
+    return { ...e, aheadBy: a, safeDelete: done && a === 0 };
   });
 }
 
@@ -48,7 +49,7 @@ const QUERY = `query($o:String!,$r:String!,$c:String){repository(owner:$o,name:$
  pullRequests(states:OPEN,first:100){totalCount nodes{headRefName isCrossRepository}}}}`;
 
 /** Read-only GraphQL fetch. Returns null per repo without a token, on errors, or if open PRs are truncated. */
-export async function fetchStaleBranches({ owner = "cknowlesbadluck", repos = ["QuicksilverV1", "Conduit", "Resonance"], token = process.env.GH_TOKEN, fetchImpl = fetch, now = Date.now(), timeoutMs = 15_000 } = {}) {
+export async function fetchStaleBranches({ owner = "cknowlesbadluck", repos = ["QuicksilverV1", "Conduit", "Resonance"], token = process.env.GH_TOKEN, fetchImpl = fetch, now = Date.now(), timeoutMs = 15_000, compareBudgetMs = 60_000, clock = Date.now } = {}) {
   const out = {};
   for (const repo of repos) {
     if (!token) { out[repo] = null; continue; }
@@ -71,7 +72,12 @@ export async function fetchStaleBranches({ owner = "cknowlesbadluck", repos = ["
       if (cursor) throw new Error("too many branches");
       const stale = staleBranches(branches, [...(heads ?? []), ...extraHeads], { now, defaultBranch: def });
       const ahead = {};
-      for (const e of stale) if (e.pr) ahead[e.name] = await aheadBy({ owner, repo, base: def, head: e.name, token, fetchImpl, timeoutMs });
+      const deadline = clock() + compareBudgetMs; // total per-repo budget; leftovers stay unknown (safeDelete false)
+      for (const e of stale) {
+        const left = deadline - clock();
+        if (left <= 0) break;
+        if (e.pr) ahead[e.name] = await aheadBy({ owner, repo, base: def, head: e.name, token, fetchImpl, timeoutMs: Math.min(timeoutMs, left) });
+      }
       out[repo] = markSafeDelete(stale, ahead);
     } catch { out[repo] = null; }
   }
