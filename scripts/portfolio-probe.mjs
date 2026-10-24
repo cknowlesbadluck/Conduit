@@ -25,7 +25,7 @@
  * mirrored by Resonance scripts/deploy-parity.mjs). When the service answered with JSON, the
  * result gains `behindMain` + `missingContractFields`. It never changes ok/drift/exit code.
  *
- * Usage: node scripts/portfolio-probe.mjs [--json] [--drift-only] [--entropy [--markdown]] [--decisions] [--stale-branches]
+ * Usage: node scripts/portfolio-probe.mjs [--json] [--drift-only] [--entropy [--markdown]] [--decisions] [--stale-branches] [--consistency]
  *   --stale-branches: read-only list of branches with no open PR and no commit in 14+ days (scripts/stale-branches.mjs); requires GH_TOKEN; never deletes.
  *   --decisions: read-only owner decision queue (scripts/decision-queue.mjs); requires GH_TOKEN (never printed); repos are null without it.
  *   default: exit 1 if any target is not ok; --drift-only: exit 1 only if any pinned target drifted.
@@ -184,6 +184,24 @@ export async function probeAll(targets = TARGETS, options) {
   return Promise.all(targets.map(async (t) => { const o = await observe(t.url, options); return attachShape(t, o, attachParity(t, o, classify(t, o))); }));
 }
 
+/**
+ * Read-only cross-plane consistency: for every ready plane that reports a contractRevision,
+ * compare it to the revision this repo expects (target.expect, else target.parity). Planes
+ * with no expectation are listed but never fail. Pure; no network.
+ */
+export function crossPlaneConsistency(results, targets = TARGETS) {
+  const planes = [];
+  for (const r of results) {
+    if (r.outcome !== "ready" && r.outcome !== "contract_changed") continue;
+    const t = targets.find((x) => x.name === r.name) ?? {};
+    const expected = t.expect?.contractRevision ?? t.parity?.contractRevision;
+    const actual = r.contractRevision;
+    planes.push({ name: r.name, version: r.version ?? null, contractRevision: actual ?? null, expected: expected ?? null, match: expected === undefined ? null : actual === expected });
+  }
+  const mismatched = planes.filter((p) => p.match === false).map((p) => p.name);
+  return { consistent: mismatched.length === 0, mismatched, planes };
+}
+
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 if (isMain) {
   const results = await probeAll();
@@ -192,8 +210,10 @@ if (isMain) {
   const decisions = process.argv.includes("--decisions") ? await (await import("./decision-queue.mjs")).fetchDecisionQueue() : undefined;
   const staleBranches = process.argv.includes("--stale-branches") ? await (await import("./stale-branches.mjs")).fetchStaleBranches() : undefined;
   const score = portfolioScore(results);
+  const consistency = process.argv.includes("--consistency") ? crossPlaneConsistency(results) : undefined;
+  if (consistency && !process.argv.includes("--json")) console.log("Cross-plane consistency:", JSON.stringify(consistency));
   if (prEntropyReport && process.argv.includes("--markdown")) console.log(entropyMarkdown(prEntropyReport));
-  else if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), score, prCounts, prEntropy: prEntropyReport, decisions, staleBranches, results }, null, 2));
+  else if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), score, prCounts, prEntropy: prEntropyReport, consistency, decisions, staleBranches, results }, null, 2));
   else { console.log("Portfolio maturity score:", score, "/10"); results.forEach(r => console.log(r.name, r.outcome, r.ok ? "OK" : "FAIL", r.drift ? "DRIFT" : "")); console.log("Open PR entropy:", JSON.stringify(prCounts)); if (prEntropyReport) console.log("PR age/stack:", JSON.stringify(prEntropyReport)); if (decisions) for (const [repo, q] of Object.entries(decisions)) console.log("Decisions", repo, q ? JSON.stringify(q.byCategory) : "unavailable"); if (staleBranches) for (const [repo, l] of Object.entries(staleBranches)) console.log("Stale branches", repo, l ? JSON.stringify(l.map((b) => `${b.name} (${b.ageDays}d)`)) : "unavailable"); }
   const pass = process.argv.includes("--drift-only") ? results.every((r) => !r.drift || !TARGETS.find((t) => t.name === r.name)?.expect) : results.every((r) => r.ok);
   process.exitCode = pass ? 0 : 1;
