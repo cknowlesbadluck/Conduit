@@ -1,3 +1,4 @@
+import { redactUrl } from "./url-redact.js";
 import { AUTH_DISCOVERY_TIMEOUT_MS } from "./db-timeouts.js";
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import type { AuthInfo, OAuthTokenVerifier } from "@modelcontextprotocol/server";
@@ -48,6 +49,8 @@ export async function loadAuthConfig(): Promise<ConduitAuthConfig | null> {
   if (parsedResourceUrl.protocol !== "https:" && process.env.NODE_ENV === "production") {
     throw new Error("MCP_RESOURCE_URL must use HTTPS in production");
   }
+  // Never carry userinfo or token-like query params into the audience, metadata or logs.
+  parsedResourceUrl = new URL(redactUrl(parsedResourceUrl));
 
   let parsedDiscoveryUrl: URL;
   try {
