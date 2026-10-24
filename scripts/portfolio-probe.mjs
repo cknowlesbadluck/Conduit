@@ -25,7 +25,7 @@
  * mirrored by Resonance scripts/deploy-parity.mjs). When the service answered with JSON, the
  * result gains `behindMain` + `missingContractFields`. It never changes ok/drift/exit code.
  *
- * Usage: node scripts/portfolio-probe.mjs [--json] [--drift-only] [--entropy [--markdown]] [--decisions] [--stale-branches] [--consistency]
+ * Usage: node scripts/portfolio-probe.mjs [--json] [--drift-only] [--entropy [--markdown]] [--decisions] [--stale-branches] [--consistency] [--revision-skew]
  *   --stale-branches: read-only list of branches with no open PR and no commit in 14+ days (scripts/stale-branches.mjs); requires GH_TOKEN; never deletes.
  *   --decisions: read-only owner decision queue (scripts/decision-queue.mjs); requires GH_TOKEN (never printed); repos are null without it.
  *   default: exit 1 if any target is not ok; --drift-only: exit 1 only if any pinned target drifted.
@@ -226,8 +226,10 @@ if (isMain) {
   const score = portfolioScore(results);
   const consistency = process.argv.includes("--consistency") ? crossPlaneConsistency(results) : undefined;
   if (consistency && !process.argv.includes("--json")) console.log("Cross-plane consistency:", JSON.stringify(consistency));
+  const revisionSkewReport = process.argv.includes("--revision-skew") ? (await import("./revision-skew.mjs")).revisionSkew(results) : undefined;
+  if (revisionSkewReport && !process.argv.includes("--json")) console.log("Contract revision skew:", JSON.stringify(revisionSkewReport));
   if (prEntropyReport && process.argv.includes("--markdown")) console.log(entropyMarkdown(prEntropyReport));
-  else if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), score, prCounts, prEntropy: prEntropyReport, consistency, decisions, staleBranches, results }, null, 2));
+  else if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), score, prCounts, prEntropy: prEntropyReport, consistency, revisionSkew: revisionSkewReport, decisions, staleBranches, results }, null, 2));
   else { console.log("Portfolio maturity score:", score, "/10"); results.forEach(r => console.log(r.name, r.outcome, r.ok ? "OK" : "FAIL", r.drift ? "DRIFT" : "")); console.log("Open PR entropy:", JSON.stringify(prCounts)); if (prEntropyReport) console.log("PR age/stack:", JSON.stringify(prEntropyReport)); if (decisions) for (const [repo, q] of Object.entries(decisions)) console.log("Decisions", repo, q ? JSON.stringify(q.byCategory) : "unavailable"); if (staleBranches) for (const [repo, l] of Object.entries(staleBranches)) console.log("Stale branches", repo, l ? JSON.stringify(l.map((b) => `${b.name} (${b.ageDays}d)`)) : "unavailable"); }
   const pass = process.argv.includes("--drift-only") ? results.every((r) => !r.drift || !TARGETS.find((t) => t.name === r.name)?.expect) : results.every((r) => r.ok);
   process.exitCode = pass ? 0 : 1;
