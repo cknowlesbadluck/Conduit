@@ -97,3 +97,12 @@ test("mainCiStatus groups by workflow_id, not display name", () => {
   ];
   assert.equal(mainCiStatus(runs).status, "red");
 });
+
+test("fetchHygiene: a code file renamed into docs/ is not docs-only", async () => {
+  const r = await fetchHygiene({ repos: ["R"], token: "t", fetchImpl: async (url) => {
+    if (url.includes("/pulls?")) return { ok: true, json: async () => [{ number: 1 }] };
+    if (url.includes("/files")) return { ok: true, json: async () => [{ filename: "docs/old.ts", previous_filename: "src/old.ts", status: "renamed" }] };
+    return { ok: false, status: 500 };
+  } });
+  assert.equal(r.R.docsOnlyPrs, 0);
+});

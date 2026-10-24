@@ -88,7 +88,7 @@ export async function fetchHygiene({ owner = "cknowlesbadluck", repos = ["Quicks
         for (const pr of prs) {
           const files = await getJson(`${api}/${repo}/pulls/${pr.number}/files?per_page=100`, o);
           if (!Array.isArray(files) || files.length >= 100) throw new Error("incomplete file list");
-          if (isDocsOnly(files.map((f) => f?.filename))) n++;
+          if (isDocsOnly(files.flatMap((f) => (f?.previous_filename !== undefined ? [f?.filename, f.previous_filename] : [f?.filename])))) n++;
         }
         d.docsOnlyPrs = n;
       } catch { d.docsOnlyPrs = null; }
