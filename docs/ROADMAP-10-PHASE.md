@@ -14,7 +14,7 @@ Phases are ordered by leverage: each one makes the later ones cheaper or safer.
 | 6 | Honest posture | `/ready` reports commitSha (#247). Scheduled portfolio-probe workflow actually runs from main. Report Vercel alias drift. | Probe artifact every 6h. A deploy/main SHA mismatch raises an alert. | [in progress] |
 | 7 | Contracts + coverage | Tool-surface snapshot ✓. Raise the coverage gate to ≥70% lines. Add a contract test for `/ready` shape. | Coverage gate ≥70/70/70 enforced in CI | [in progress] |
 | 8 | Operable release | Runbook (cold start, rollback, rotate secrets). Tag 0.9.0. Graceful SSE drain (#119). | A rollback has been rehearsed. Tagged release notes exist. | [in progress] |
-| 9 | Bridge trust | Destination allowlist for mcp_bridge_call (#256, report-first). Signed HMAC grant receipts (#257) with an offline verifier. | Every bridged call is attributable and verifiable offline | [in progress] |
+| 9 | Bridge trust | Destination allowlist for mcp_bridge_call (#256, report-first). HMAC-chained grant receipts (#257) with an offline verifier. The HMAC key stays with the Conduit operator, and the verifier holds the same key. If verifiers must not be able to mint receipts, move to public-key (Ed25519) signatures. | Every bridged call has a tamper-evident receipt that the key holder can verify offline. This is not third-party attribution. | [in progress] |
 | 10 | Free-tier and ecosystem fit | MCP SDK 2.4 Skills extension (`ext/skills`) to publish Conduit's operating skills read-only. Document free-tier cold start (keep-warm probe within free limits). | Zero paid add-ons. Skills listed over MCP. Cold start p95 documented. | [in progress] |
 
 ## Risks
@@ -24,6 +24,6 @@ Phases are ordered by leverage: each one makes the later ones cheaper or safer.
 
 ## Innovation ideas (practical, no lock-in)
 1. **Skills over MCP (SDK 2.4)**: expose the runbook and probe skills as read-only MCP skills, so any client can discover how to operate Conduit.
-2. **Grant receipts + offline verifier** (#257): tamper-evident audit without a paid log service.
+2. **Grant receipts + offline verifier** (#257): tamper-evident audit (for key holders) without a paid log service. Ed25519 is the upgrade path if third-party attribution is needed.
 3. **Squash-aware safe-delete report** (#298): branch pruning backed by evidence, kept report-only.
 4. **Deploy-parity probe**: compare the commitSha in `/ready` with main HEAD every 6h, using a free Actions cron.
