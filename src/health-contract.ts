@@ -18,6 +18,8 @@ export type ReadyBody = {
   version: string;
   contractRevision: string;
   persistence: PersistenceMode;
+  /** Additive (2026-10-24): true only when NODE_ENV === "production". Lets cross-plane checks assert both planes run in production. */
+  production: boolean;
 };
 
 export type SurfaceSplit =
@@ -56,6 +58,7 @@ export function readyBody(input: {
     version: VERSION,
     contractRevision: HEALTH_CONTRACT_REVISION,
     persistence: input.persistence,
+    production: process.env.NODE_ENV === "production",
   };
 }
 
