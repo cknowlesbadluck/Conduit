@@ -33,6 +33,7 @@ jobs:
       - name: Test (coverage) + cancelled-test gate
         run: |
           set -o pipefail
+          node --test scripts/test-summary-gate.test.mjs
           npm run test:coverage 2>&1 | tee test-output.txt
           node scripts/test-summary-gate.mjs test-output.txt
       - run: npm run build

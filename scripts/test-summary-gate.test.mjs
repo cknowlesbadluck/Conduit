@@ -26,3 +26,4 @@ test("indented subtest lines are not top-level summary", () => {
 test("spec reporter summary (ℹ) is parsed too", () => {
   assert.equal(evaluate("ℹ tests 3\nℹ pass 3\nℹ fail 0\nℹ cancelled 1").ok, false);
 });
+test("missing fail line fails closed", () => assert.equal(evaluate(tap({ tests: 1, pass: 1, cancelled: 0 })).ok, false));

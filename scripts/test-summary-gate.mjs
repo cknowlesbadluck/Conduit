@@ -25,6 +25,7 @@ export function evaluate(text) {
   const reasons = [];
   if (s.tests === undefined) reasons.push("no '# tests' summary found (runner crashed or output truncated)");
   else if (s.tests === 0) reasons.push("zero tests ran");
+  if (s.fail === undefined && s.tests !== undefined) reasons.push("no '# fail' summary line");
   if ((s.fail ?? 0) > 0) reasons.push(`fail=${s.fail}`);
   if (s.cancelled === undefined && s.tests !== undefined) reasons.push("no '# cancelled' summary line");
   if ((s.cancelled ?? 0) > 0) reasons.push(`cancelled=${s.cancelled} (tests that never completed)`);
