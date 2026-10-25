@@ -267,9 +267,11 @@ export function portfolioScoreBreakdown(results) {
   const byFactor = {};
   for (const row of rows) {
     const k = row.factor.split(":")[0];
-    byFactor[k] = byFactor[k] ?? { count: 0, contribution: 0 };
-    byFactor[k].count++; byFactor[k].contribution = Math.round((byFactor[k].contribution + row.points / n) * 100) / 100;
+    byFactor[k] = byFactor[k] ?? { count: 0, points: 0 };
+    byFactor[k].count++; byFactor[k].points += row.points;
   }
+  // Sum unrounded points per factor, round once for display (no per-row rounding drift).
+  for (const f of Object.values(byFactor)) { f.contribution = Math.round((f.points / n) * 100) / 100; delete f.points; }
   const score = Math.round((rows.reduce((a, r) => a + r.points, 0) / n) * 10) / 10;
   return { score, targets: n, rows, byFactor };
 }

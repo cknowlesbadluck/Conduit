@@ -38,3 +38,12 @@ test("text table lists every target and total", () => {
   assert.match(t, /2\.7 \/10 \(mean of 6\)/);
   assert.equal(t.split("\n").length, 8);
 });
+
+test("byFactor sums unrounded points (no per-row rounding drift)", () => {
+  const six = Array.from({ length: 6 }, (_, i) => ({ name: `a${i}`, outcome: "alias_absent", ok: false }));
+  const bd = portfolioScoreBreakdown(six);
+  assert.equal(bd.score, 1);
+  assert.equal(bd.byFactor.alias_absent.contribution, 1); // not 1.02
+  const many = Array.from({ length: 300 }, (_, i) => ({ name: `a${i}`, outcome: "alias_absent", ok: false }));
+  assert.equal(portfolioScoreBreakdown(many).byFactor.alias_absent.contribution, 1); // not 0
+});
