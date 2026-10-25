@@ -19,7 +19,10 @@ const DAY_MS = 86_400_000;
 
 const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 const isOk = (a) => isObj(a) && a.status === 200 && !a.error;
-const isTransient = (a) => isObj(a) && !isOk(a) && (TRANSIENT_STATUS.has(a.status) || ((a.status === undefined || a.status === 0) && TRANSIENT_ERRORS.has(a.error)));
+const isTransient = (a) => isObj(a) && !isOk(a) && (a.error === undefined || TRANSIENT_ERRORS.has(a.error))
+  && (TRANSIENT_STATUS.has(a.status) || ((a.status === undefined || a.status === 0) && TRANSIENT_ERRORS.has(a.error)));
+/** Hard contract checks on a 200 body; returns a not_ready reason or null. */
+const bodyProblem = (body) => !isObj(body) ? "malformed_body" : REQUIRED.some((k) => !(k in body)) ? "missing_contract_fields" : body.production !== true ? "production_not_true" : body.status !== "ready" ? "status_not_ready" : null;
 
 /** Parse a contractRevision like "2026-10-03-ready-surface" to a UTC date (ms) or null. */
 export function revisionDate(rev) {
@@ -41,6 +44,9 @@ export function classifyPlane(plane, { now = Date.now(), maxAgeDays = null, expe
   if (!list.slice(0, idx).every(isTransient)) return out("not_ready", "hard_error_before_200", { attempts: list.length });
   if (list.slice(idx + 1).some((a) => !isOk(a))) return out("not_ready", "regressed_after_200", { attempts: list.length });
   const body = list[idx].body;
+  const later = list.slice(idx + 1);
+  if (later.some((a) => bodyProblem(a.body) !== null || a.body.contractRevision !== body?.contractRevision || a.body.service !== body?.service))
+    return out("not_ready", "regressed_after_200", { attempts: list.length });
   if (!isObj(body)) return out("not_ready", "malformed_body");
   const missing = REQUIRED.filter((k) => !(k in body));
   if (missing.length) return out("not_ready", "missing_contract_fields", { missing });

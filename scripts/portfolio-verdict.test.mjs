@@ -75,3 +75,14 @@ test("2026-10-25 live snapshot: both planes 200 with well-formed 2026-10-03 revi
   assert.equal(portfolioVerdict({ now: NOW, planes }).verdict, "ready");
   assert.equal(portfolioVerdict({ now: NOW, planes, maxAgeDays: 14 }).verdict, "drift");
 });
+test("hard error with transient status is not transient", () => {
+  assert.equal(c([{ status: 503, error: "permission_denied" }, ok()]).reason, "hard_error_before_200");
+  assert.equal(c([{ status: 503, error: "timeout" }, ok()]).state, "degraded_cold_start");
+});
+test("later 200 with regressed body is not_ready", () => {
+  assert.equal(c([ok(), ok(body({ production: false }))]).reason, "regressed_after_200");
+  assert.equal(c([ok(), ok(body({ status: "not_ready" }))]).reason, "regressed_after_200");
+  assert.equal(c([ok(), { status: 200 }]).reason, "regressed_after_200");
+  assert.equal(c([ok(), ok(body({ contractRevision: "2026-10-21-y" }))]).reason, "regressed_after_200");
+  assert.equal(c([ok(), ok()]).state, "ready");
+});
