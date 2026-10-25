@@ -29,3 +29,10 @@ Tags: **[passed]** · **[in progress]** · **[blocked]** (owner).
 1. Five auth/security PRs have waited about 7 days for human review. This is the largest real risk.
 2. Probe PRs stacked on one file (#305–#309, #314/#315) make merge order matter. Merge oldest first, then rebase the rest.
 3. Workers Builds noise teaches everyone to ignore red checks.
+
+## Midnight status (2026-10-25 00:00 ET)
+- main CI green (CI run 40119129271, Live Smoke, scheduled portfolio-probe). Local suite on main: 289 tests, 288 pass, 0 fail, 0 cancelled, 1 skipped. `npm audit --omit=dev`: 0 vulnerabilities.
+- `/ready` (Render free tier): first probe 200 after a 22.5s cold start; later probes 200 in about 0.35s. contractRevision `2026-10-03-ready-surface`, persistence `postgres`.
+- Phase 3/4: #317 adds a fail-closed terminal JSON error handler. Before it, body-parser and route errors fell through to Express's HTML finalhandler, which shows stacks whenever NODE_ENV != production.
+- Phase 1: 23 open PRs and 2 open issues (#201 and #202, both owner decisions, kept). That is still far above the ≤10 target. The keep list blocks most closures.
+- Open: `MAX_JSON_BODY` is env-controlled with no upper bound. `/mcp` route wiring is duplicated in `index.ts` and `app-factory.ts`, so they can drift.
