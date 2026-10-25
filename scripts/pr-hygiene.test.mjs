@@ -70,3 +70,15 @@ test("review fixes: rerun ordering by start time, ERROR status is red, truncated
   assert.equal(isDocsOnly(hundred, 150), false);
   assert.equal(isDocsOnly(hundred, 100), true);
 });
+
+test("check runs and commit statuses with the same name are separate gates", () => {
+  assert.equal(ciState([
+    { __typename: "CheckRun", name: "ci", status: "COMPLETED", conclusion: "SUCCESS", startedAt: "2026-10-24T02:00:00Z" },
+    { __typename: "StatusContext", context: "ci", state: "FAILURE", startedAt: "2026-10-24T01:00:00Z" },
+  ]), "red");
+});
+
+test("fetchOpenPrs passes a large maxBuffer", () => {
+  let opts; fetchOpenPrs("Conduit", { exec: (_c, _a, o) => { opts = o; return "[]"; } });
+  assert.ok(opts.maxBuffer >= 16 * 1024 * 1024);
+});
