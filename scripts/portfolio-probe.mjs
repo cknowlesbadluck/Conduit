@@ -46,11 +46,14 @@ export const TARGETS = [
   { name: "conduit", url: "https://conduit-feco.onrender.com/ready", expectService: "conduit", schema: "conduit-ready", expect: { contractRevision: "2026-10-03-ready-surface" } },
   // Owner gate: the service role key is the ONLY thing Resonance prod may be missing.
   { name: "resonance-netlify", url: "https://resonancenexus.netlify.app/api/ready", expectService: "resonance-nexus", schema: "resonance-ready", expect: { missingRequired: [], authMode: "required" }, parity: RESONANCE_MAIN_READY },
-  { name: "resonance-vercel", url: "https://resonance.vercel.app/api/ready", expectService: "resonance-nexus" },
-  { name: "resonancenexus-vercel", url: "https://resonancenexus.vercel.app/api/ready", expectService: "resonance-nexus" },
-  { name: "quicksilver-vercel", url: "https://quicksilver.vercel.app/", expectService: "quicksilver" },
-  { name: "quicksilverv1-vercel", url: "https://quicksilverv1.vercel.app/", expectService: "quicksilver" },
+  { name: "resonance-vercel", owned: false, url: "https://resonance.vercel.app/api/ready", expectService: "resonance-nexus" },
+  { name: "resonancenexus-vercel", owned: false, url: "https://resonancenexus.vercel.app/api/ready", expectService: "resonance-nexus" },
+  { name: "quicksilver-vercel", owned: false, url: "https://quicksilver.vercel.app/", expectService: "quicksilver" },
+  { name: "quicksilverv1-vercel", owned: false, url: "https://quicksilverv1.vercel.app/", expectService: "quicksilver" },
 ];
+
+/** Targets we do not own (third-party or absent Vercel aliases). Probed for information only; excluded from the owned score. */
+export const UNOWNED_TARGETS = Object.freeze(new Set(TARGETS.filter((t) => t.owned === false).map((t) => t.name)));
 
 const ENV_NAME = /^[A-Z][A-Z0-9_]{0,63}$/;
 
@@ -226,15 +229,16 @@ if (isMain) {
   const prEntropyReport = process.argv.includes("--entropy") ? await openPrEntropy() : undefined;
   const decisions = process.argv.includes("--decisions") ? await (await import("./decision-queue.mjs")).fetchDecisionQueue() : undefined;
   const staleBranches = process.argv.includes("--stale-branches") ? await (await import("./stale-branches.mjs")).fetchStaleBranches() : undefined;
-  const scoreBreakdown = portfolioScoreBreakdown(results);
+  const scoreBreakdown = portfolioScoreBreakdown(results, { ownedOnly: true });
+  const legacyScore = portfolioScoreBreakdown(results).score;
   const score = scoreBreakdown.score;
   const consistency = process.argv.includes("--consistency") ? crossPlaneConsistency(results) : undefined;
   if (consistency && !process.argv.includes("--json")) console.log("Cross-plane consistency:", JSON.stringify(consistency));
   const authGate = process.argv.includes("--auth-gate") ? await (await import("./auth-gate.mjs")).runAuthGate() : undefined;
   if (authGate && !process.argv.includes("--json")) console.log("Auth gate (unauthenticated must be 401/403):", JSON.stringify(authGate));
   if (prEntropyReport && process.argv.includes("--markdown")) console.log(entropyMarkdown(prEntropyReport));
-  else if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), score, scoreBreakdown, prCounts, prEntropy: prEntropyReport, consistency, authGate, decisions, staleBranches, results }, null, 2));
-  else { console.log("Portfolio maturity score:", score, "/10"); console.log(scoreBreakdownTable(scoreBreakdown)); results.forEach(r => console.log(r.name, r.outcome, r.ok ? "OK" : "FAIL", r.drift ? "DRIFT" : "")); console.log("Open PR entropy:", JSON.stringify(prCounts)); if (prEntropyReport) console.log("PR age/stack:", JSON.stringify(prEntropyReport)); if (decisions) for (const [repo, q] of Object.entries(decisions)) console.log("Decisions", repo, q ? JSON.stringify(q.byCategory) : "unavailable"); if (staleBranches) for (const [repo, l] of Object.entries(staleBranches)) console.log("Stale branches", repo, l ? JSON.stringify(l.map((b) => `${b.name} (${b.ageDays}d)`)) : "unavailable"); }
+  else if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), score, scoreScope: "owned", legacyScore, scoreBreakdown, prCounts, prEntropy: prEntropyReport, consistency, authGate, decisions, staleBranches, results }, null, 2));
+  else { console.log("Portfolio maturity score (owned targets):", score, "/10; legacy all-target:", legacyScore); console.log(scoreBreakdownTable(scoreBreakdown)); results.forEach(r => console.log(r.name, r.outcome, r.ok ? "OK" : "FAIL", r.drift ? "DRIFT" : "")); console.log("Open PR entropy:", JSON.stringify(prCounts)); if (prEntropyReport) console.log("PR age/stack:", JSON.stringify(prEntropyReport)); if (decisions) for (const [repo, q] of Object.entries(decisions)) console.log("Decisions", repo, q ? JSON.stringify(q.byCategory) : "unavailable"); if (staleBranches) for (const [repo, l] of Object.entries(staleBranches)) console.log("Stale branches", repo, l ? JSON.stringify(l.map((b) => `${b.name} (${b.ageDays}d)`)) : "unavailable"); }
   const pass = process.argv.includes("--drift-only") ? results.every((r) => !r.drift || !TARGETS.find((t) => t.name === r.name)?.expect) : results.every((r) => r.ok);
   process.exitCode = pass && (!authGate || authGate.ok) ? 0 : 1;
 }
@@ -256,33 +260,42 @@ function targetFactor(r) {
   return [`other_not_ok:${r?.outcome ?? "unknown"}`, SCORE_POINTS.other_not_ok];
 }
 
-/** Per-target contributions; contributions sum to the score (before rounding). */
-export function portfolioScoreBreakdown(results) {
-  if (!Array.isArray(results) || results.length === 0) return { score: 0, targets: 0, rows: [], byFactor: {} };
-  const n = results.length;
+/**
+ * Per-target contributions; contributions sum to the score (before rounding).
+ * ownedOnly: rows whose name is in `unowned` are kept for visibility (factor "informational",
+ * weight 0) but excluded from the mean, so the score reflects only deployments we own.
+ * Default is the legacy all-target mean (unchanged behaviour for existing callers).
+ */
+export function portfolioScoreBreakdown(results, { ownedOnly = false, unowned = UNOWNED_TARGETS } = {}) {
+  if (!Array.isArray(results) || results.length === 0) return { score: 0, targets: 0, rows: [], byFactor: {}, ownedOnly };
+  const isScored = (r) => !(ownedOnly && unowned.has(r?.name));
+  const n = results.filter(isScored).length;
   const rows = results.map((r) => {
+    if (!isScored(r)) return { name: r?.name ?? "?", outcome: r?.outcome ?? "unknown", factor: "informational", points: 0, weight: 0, contribution: 0 };
     const [factor, points] = targetFactor(r);
     return { name: r?.name ?? "?", outcome: r?.outcome ?? "unknown", factor, points, weight: Math.round((1 / n) * 1000) / 1000, contribution: Math.round((points / n) * 100) / 100 };
   });
+  if (n === 0) return { score: 0, targets: 0, rows, byFactor: {}, ownedOnly };
   const byFactor = {};
   for (const row of rows) {
+    if (row.factor === "informational") continue;
     const k = row.factor.split(":")[0];
     byFactor[k] = byFactor[k] ?? { count: 0, contribution: 0 };
     byFactor[k].count++; byFactor[k].contribution = Math.round((byFactor[k].contribution + row.points / n) * 100) / 100;
   }
-  const score = Math.round((rows.reduce((a, r) => a + r.points, 0) / n) * 10) / 10;
-  return { score, targets: n, rows, byFactor };
+  const score = Math.round((rows.filter((r) => r.factor !== "informational").reduce((a, r) => a + r.points, 0) / n) * 10) / 10;
+  return { score, targets: n, rows, byFactor, ownedOnly };
 }
 
-export function portfolioScore(results) {
-  return portfolioScoreBreakdown(results).score;
+export function portfolioScore(results, opts) {
+  return portfolioScoreBreakdown(results, opts).score;
 }
 
 /** Short text table for humans. */
 export function scoreBreakdownTable(bd) {
   const lines = ["target                  outcome             factor              pts  contrib"];
   for (const r of bd.rows) lines.push(`${r.name.padEnd(24)}${r.outcome.padEnd(20)}${r.factor.split(":")[0].padEnd(20)}${String(r.points).padStart(3)}  ${r.contribution.toFixed(2).padStart(7)}`);
-  lines.push(`${"total".padEnd(64)}${bd.score.toFixed(1).padStart(7)} /10 (mean of ${bd.targets})`);
+  lines.push(`${"total".padEnd(64)}${bd.score.toFixed(1).padStart(7)} /10 (mean of ${bd.targets}${bd.ownedOnly ? " owned" : ""})`);
   return lines.join("\n");
 }
 

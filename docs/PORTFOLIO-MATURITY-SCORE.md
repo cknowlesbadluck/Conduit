@@ -15,3 +15,9 @@ The score is the **unweighted mean** of per-target points (each of the N targets
 
 6 targets: Conduit cold 503 (2) + Resonance Netlify ready (10) + four Vercel alias rows (1 each) = 16 / 6 = **2.67 → 2.7**.
 Four of six targets are third-party or absent aliases, so the score mostly measures alias drift, not service health. Live re-run at 06:10 ET with Conduit warm (200) still scored 2.7, because Conduit was classified `shape_changed` against schemas/ready/conduit-ready (2 points, same as a cold 503); fixing that shape drift would raise it to 18/6 = 3.0. This is a known limitation; any reweighting (for example excluding informational alias rows) should be a separate, explicit change.
+
+## Owned-only score (2026-10-25 09:00 ET)
+
+The four Vercel alias targets (`resonance-vercel`, `resonancenexus-vercel`, `quicksilver-vercel`, `quicksilverv1-vercel`) are marked `owned: false` in `TARGETS`. They are still probed and still appear in the breakdown as `informational` (weight 0), but the headline score is now the mean over **owned** targets only (Conduit on Render, Resonance on Netlify). `resonance.vercel.app` is an unrelated third-party site.
+
+`--json` adds `scoreScope: "owned"` and `legacyScore` (the previous all-target mean) so trend lines stay comparable. Both owned planes ready = 10/10 regardless of alias drift. Revert = drop `{ ownedOnly: true }` at the call site.
