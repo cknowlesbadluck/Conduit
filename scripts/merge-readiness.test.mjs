@@ -79,3 +79,14 @@ test("second review round: short env assignment, auth wiring, renames, error dia
   assert.equal(fetchPr("o/r", 1, () => { const e = new Error("x"); e.stderr = "HTTP 404: Not Found\nmore"; throw e; }), null);
   assert.equal(fetchPr.lastError, "HTTP 404: Not Found");
 });
+
+test("third review round: hasNextPage without endCursor fails closed (no silent restart at page 1)", () => {
+  const run = (a) => {
+    if (a[0] === "pr") return JSON.stringify({ number: 6, isDraft: false, mergeable: "MERGEABLE", headRefName: "h", headRefOid: "abc", baseRefName: "main", changedFiles: 1, body: "", reviews: [], statusCheckRollup: [] });
+    if (a[1] === "--paginate") return "a.md\n";
+    if (a[1].startsWith("repos/")) return JSON.stringify({ b: 0 });
+    return JSON.stringify({ data: { repository: { pullRequest: { reviewThreads: { nodes: [], pageInfo: { hasNextPage: true, endCursor: null } } } } } });
+  };
+  assert.equal(fetchPr("o/r", 6, run), null);
+  assert.match(fetchPr.lastError, /endCursor/);
+});

@@ -66,6 +66,7 @@ export function fetchPr(repo, number, run = gh) {
       const rt = JSON.parse(run(args)).data.repository.pullRequest.reviewThreads;
       unresolvedThreads += rt.nodes.filter((x) => !x.isResolved).length;
       if (!rt.pageInfo?.hasNextPage) { cursor = null; break; }
+      if (!rt.pageInfo.endCursor) throw new Error("review thread pagination: hasNextPage without endCursor");
       cursor = rt.pageInfo.endCursor;
     }
     if (cursor) throw new Error("too many review thread pages");
