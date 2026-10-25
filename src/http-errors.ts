@@ -16,9 +16,19 @@ const CLIENT_ERRORS: Record<string, { status: number; code: string }> = {
 };
 
 export function classifyHttpError(error: unknown): { status: number; code: string } {
-  const type = typeof error === "object" && error !== null ? (error as { type?: unknown }).type : undefined;
-  if (typeof type === "string" && Object.hasOwn(CLIENT_ERRORS, type)) return CLIENT_ERRORS[type]!;
-  return { status: 500, code: "internal_error" };
+  const fallback = { status: 500, code: "internal_error" };
+  if (typeof error !== "object" || error === null) return fallback;
+  let type: unknown;
+  let status: unknown;
+  try {
+    // Accessors may throw; an unreadable error is treated as unknown (generic 500), never rethrown.
+    type = (error as { type?: unknown }).type;
+    status = (error as { status?: unknown }).status ?? (error as { statusCode?: unknown }).statusCode;
+  } catch { return fallback; }
+  if (typeof type !== "string" || !Object.hasOwn(CLIENT_ERRORS, type)) return fallback;
+  const mapped = CLIENT_ERRORS[type]!;
+  // Only trust the allow-listed mapping when the status matches what body-parser assigns for that type.
+  return status === mapped.status ? mapped : fallback;
 }
 
 export function jsonErrorHandler(error: unknown, _req: Request, res: Response, next: NextFunction): void {

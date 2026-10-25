@@ -12,8 +12,8 @@ async function withServer(app: express.Express, fn: (base: string) => Promise<vo
 }
 
 test("classifyHttpError maps body-parser types, defaults to 500", () => {
-  assert.deepEqual(classifyHttpError({ type: "entity.parse.failed" }), { status: 400, code: "invalid_json" });
-  assert.deepEqual(classifyHttpError({ type: "entity.too.large" }), { status: 413, code: "payload_too_large" });
+  assert.deepEqual(classifyHttpError({ type: "entity.parse.failed", status: 400 }), { status: 400, code: "invalid_json" });
+  assert.deepEqual(classifyHttpError({ type: "entity.too.large", status: 413 }), { status: 413, code: "payload_too_large" });
   assert.deepEqual(classifyHttpError({ type: "toString" }), { status: 500, code: "internal_error" });
   assert.deepEqual(classifyHttpError({ status: 400, type: "custom" }), { status: 500, code: "internal_error" });
   assert.deepEqual(classifyHttpError(null), { status: 500, code: "internal_error" });
@@ -48,9 +48,19 @@ test("conduit app: malformed JSON -> 400 invalid_json, no parser detail echoed",
 });
 
 test("conduit app: oversized JSON -> 413 payload_too_large", async () => {
-  await withServer(createConduitApp(), async (base) => {
+  const saved = process.env.MAX_JSON_BODY;
+  process.env.MAX_JSON_BODY = "1mb";
+  try { await withServer(createConduitApp(), async (base) => {
     const res = await fetch(`${base}/mcp`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ x: "a".repeat(1024 * 1024 + 10) }) });
     assert.equal(res.status, 413);
     assert.deepEqual(await res.json(), { error: "payload_too_large" });
-  });
+  }); } finally { if (saved === undefined) delete process.env.MAX_JSON_BODY; else process.env.MAX_JSON_BODY = saved; }
+});
+
+test("classifyHttpError: throwing accessor and mismatched status fall back to generic 500", () => {
+  const throwing = Object.defineProperty({}, "type", { get() { throw new Error("boom"); } });
+  assert.deepEqual(classifyHttpError(throwing), { status: 500, code: "internal_error" });
+  assert.deepEqual(classifyHttpError({ type: "entity.parse.failed", status: 500 }), { status: 500, code: "internal_error" });
+  assert.deepEqual(classifyHttpError({ type: "entity.parse.failed" }), { status: 500, code: "internal_error" });
+  assert.deepEqual(classifyHttpError({ type: "entity.too.large", statusCode: 413 }), { status: 413, code: "payload_too_large" });
 });
