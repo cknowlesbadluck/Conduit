@@ -15,7 +15,8 @@
     "test:coverage": "npm run compile && NODE_ENV=test CONDUIT_TEST_MEMORY=true node --test --experimental-test-coverage --test-coverage-exclude='dist/**/*.test.js' --test-coverage-lines=64 --test-coverage-branches=70 --test-coverage-functions=66 $(find dist -name '*.test.js')",
     "verify:production": "node scripts/verify-production.mjs",
     "merge-train": "node scripts/merge-train.mjs",
-    "lint": "eslint . --max-warnings=0"
+    "lint": "eslint . --max-warnings=0",
+    "audit:deps": "node scripts/dep-audit.mjs --level high"
   },
   "dependencies": {
     "@modelcontextprotocol/express": "^2.0.0",
