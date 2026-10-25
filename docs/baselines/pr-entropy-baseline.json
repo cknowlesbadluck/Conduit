@@ -1,0 +1,5 @@
+{
+  "at": "2026-10-24T22:00:00Z",
+  "note": "Committed open-PR baseline after the 2026-10-24 prune (Resonance 41->17, Conduit 25->14). Update deliberately in a reviewed PR.",
+  "counts": { "QuicksilverV1": 12, "Resonance": 17, "Conduit": 14 }
+}
