@@ -1,5 +1,6 @@
 import express, { type NextFunction, type Request, type Response } from "express";
 import { resolveRequestId } from "./request-id.js";
+import { jsonErrorHandler } from "./http-errors.js";
 import { getOAuthProtectedResourceMetadataUrl, mcpAuthMetadataRouter, requireBearerAuth } from "@modelcontextprotocol/express";
 import { toNodeHandler } from "@modelcontextprotocol/node";
 import { createMcpHandler } from "@modelcontextprotocol/server";
@@ -97,5 +98,6 @@ export function createConduitApp(options: ConduitAppOptions = {}) {
     app.all("/mcp", (_req, res) => res.status(503).json({ error: "auth_not_configured" }));
   }
 
+  app.use(jsonErrorHandler);
   return app;
 }
