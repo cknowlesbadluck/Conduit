@@ -39,6 +39,9 @@ export const RESONANCE_MAIN_READY = Object.freeze({
   fields: Object.freeze(["status", "service", "stage", "production", "authMode", "authModeOk", "persistenceConfigured", "githubAdapterConfigured", "missingRequired", "ownerActionRequired", "contractRevision", "ownerKeys", "agentActionRequired", "posture", "timestamp"]),
 });
 
+/** Maturity score points per target factor (declared early: the CLI block below runs at import). */
+export const SCORE_POINTS = { ready: 10, known_owner_gate: 6, alias_absent: 1, stranger_occupant: 1, other_not_ok: 2 };
+
 export const TARGETS = [
   { name: "conduit", url: "https://conduit-feco.onrender.com/ready", expectService: "conduit", schema: "conduit-ready", expect: { contractRevision: "2026-10-03-ready-surface" } },
   // Owner gate: the service role key is the ONLY thing Resonance prod may be missing.
@@ -223,33 +226,64 @@ if (isMain) {
   const prEntropyReport = process.argv.includes("--entropy") ? await openPrEntropy() : undefined;
   const decisions = process.argv.includes("--decisions") ? await (await import("./decision-queue.mjs")).fetchDecisionQueue() : undefined;
   const staleBranches = process.argv.includes("--stale-branches") ? await (await import("./stale-branches.mjs")).fetchStaleBranches() : undefined;
-  const score = portfolioScore(results);
+  const scoreBreakdown = portfolioScoreBreakdown(results);
+  const score = scoreBreakdown.score;
   const consistency = process.argv.includes("--consistency") ? crossPlaneConsistency(results) : undefined;
   if (consistency && !process.argv.includes("--json")) console.log("Cross-plane consistency:", JSON.stringify(consistency));
   const authGate = process.argv.includes("--auth-gate") ? await (await import("./auth-gate.mjs")).runAuthGate() : undefined;
   if (authGate && !process.argv.includes("--json")) console.log("Auth gate (unauthenticated must be 401/403):", JSON.stringify(authGate));
   if (prEntropyReport && process.argv.includes("--markdown")) console.log(entropyMarkdown(prEntropyReport));
-  else if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), score, prCounts, prEntropy: prEntropyReport, consistency, authGate, decisions, staleBranches, results }, null, 2));
-  else { console.log("Portfolio maturity score:", score, "/10"); results.forEach(r => console.log(r.name, r.outcome, r.ok ? "OK" : "FAIL", r.drift ? "DRIFT" : "")); console.log("Open PR entropy:", JSON.stringify(prCounts)); if (prEntropyReport) console.log("PR age/stack:", JSON.stringify(prEntropyReport)); if (decisions) for (const [repo, q] of Object.entries(decisions)) console.log("Decisions", repo, q ? JSON.stringify(q.byCategory) : "unavailable"); if (staleBranches) for (const [repo, l] of Object.entries(staleBranches)) console.log("Stale branches", repo, l ? JSON.stringify(l.map((b) => `${b.name} (${b.ageDays}d)`)) : "unavailable"); }
+  else if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), score, scoreBreakdown, prCounts, prEntropy: prEntropyReport, consistency, authGate, decisions, staleBranches, results }, null, 2));
+  else { console.log("Portfolio maturity score:", score, "/10"); console.log(scoreBreakdownTable(scoreBreakdown)); results.forEach(r => console.log(r.name, r.outcome, r.ok ? "OK" : "FAIL", r.drift ? "DRIFT" : "")); console.log("Open PR entropy:", JSON.stringify(prCounts)); if (prEntropyReport) console.log("PR age/stack:", JSON.stringify(prEntropyReport)); if (decisions) for (const [repo, q] of Object.entries(decisions)) console.log("Decisions", repo, q ? JSON.stringify(q.byCategory) : "unavailable"); if (staleBranches) for (const [repo, l] of Object.entries(staleBranches)) console.log("Stale branches", repo, l ? JSON.stringify(l.map((b) => `${b.name} (${b.ageDays}d)`)) : "unavailable"); }
   const pass = process.argv.includes("--drift-only") ? results.every((r) => !r.drift || !TARGETS.find((t) => t.name === r.name)?.expect) : results.every((r) => r.ok);
   process.exitCode = pass && (!authGate || authGate.ok) ? 0 : 1;
 }
 
 /**
- * Innovative portfolio maturity score (0-10).
- * ready = 10, known not_ready (owner gate) = 6, other not_ok = 2, weighted average.
- * Pure, fail-closed, no secrets.
+ * Portfolio maturity score (0-10) = unweighted mean of per-target factor points:
+ *   ready (ok)                          = 10  factor "ready"
+ *   not_ready with known owner gate     =  6  factor "known_owner_gate"
+ *   alias_absent / stranger_occupant    =  1  factor "alias_absent" / "stranger_occupant"
+ *   anything else (503, timeout, drift) =  2  factor "other_not_ok:<outcome>"
+ * Every target weighs 1/N, so alias rows dominate when most targets are aliases.
+ * Pure, fail-closed, no secrets. See docs/PORTFOLIO-MATURITY-SCORE.md.
  */
-export function portfolioScore(results) {
-  if (!results?.length) return 0;
-  const scores = results.map(r => {
-    if (r.ok && r.outcome === "ready") return 10;
-    if (r.outcome === "not_ready" && r.reason === "known_owner_gate") return 6;
-    if (r.outcome === "alias_absent" || r.outcome === "stranger_occupant") return 1;
-    return 2;
+
+function targetFactor(r) {
+  if (r?.ok && r.outcome === "ready") return ["ready", SCORE_POINTS.ready];
+  if (r?.outcome === "not_ready" && r.reason === "known_owner_gate") return ["known_owner_gate", SCORE_POINTS.known_owner_gate];
+  if (r?.outcome === "alias_absent" || r?.outcome === "stranger_occupant") return [r.outcome, SCORE_POINTS[r.outcome]];
+  return [`other_not_ok:${r?.outcome ?? "unknown"}`, SCORE_POINTS.other_not_ok];
+}
+
+/** Per-target contributions; contributions sum to the score (before rounding). */
+export function portfolioScoreBreakdown(results) {
+  if (!Array.isArray(results) || results.length === 0) return { score: 0, targets: 0, rows: [], byFactor: {} };
+  const n = results.length;
+  const rows = results.map((r) => {
+    const [factor, points] = targetFactor(r);
+    return { name: r?.name ?? "?", outcome: r?.outcome ?? "unknown", factor, points, weight: Math.round((1 / n) * 1000) / 1000, contribution: Math.round((points / n) * 100) / 100 };
   });
-  const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-  return Math.round(avg * 10) / 10;
+  const byFactor = {};
+  for (const row of rows) {
+    const k = row.factor.split(":")[0];
+    byFactor[k] = byFactor[k] ?? { count: 0, contribution: 0 };
+    byFactor[k].count++; byFactor[k].contribution = Math.round((byFactor[k].contribution + row.points / n) * 100) / 100;
+  }
+  const score = Math.round((rows.reduce((a, r) => a + r.points, 0) / n) * 10) / 10;
+  return { score, targets: n, rows, byFactor };
+}
+
+export function portfolioScore(results) {
+  return portfolioScoreBreakdown(results).score;
+}
+
+/** Short text table for humans. */
+export function scoreBreakdownTable(bd) {
+  const lines = ["target                  outcome             factor              pts  contrib"];
+  for (const r of bd.rows) lines.push(`${r.name.padEnd(24)}${r.outcome.padEnd(20)}${r.factor.split(":")[0].padEnd(20)}${String(r.points).padStart(3)}  ${r.contribution.toFixed(2).padStart(7)}`);
+  lines.push(`${"total".padEnd(64)}${bd.score.toFixed(1).padStart(7)} /10 (mean of ${bd.targets})`);
+  return lines.join("\n");
 }
 
 /**
