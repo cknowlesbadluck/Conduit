@@ -40,8 +40,8 @@ test("observe sends no credentials, does not follow redirects, maps errors", asy
   const o = await observe("https://x/ready", { fetchImpl: fake });
   assert.equal(o.status, 200); assert.equal(seen.redirect, "manual");
   assert.equal(Object.keys(seen.headers).some((h) => /authorization|cookie/i.test(h)), false);
-  assert.deepEqual(await observe("https://x", { fetchImpl: async () => { throw new TypeError("fetch failed"); } }), { error: "unreachable" });
-  assert.deepEqual(await observe("https://x", { timeoutMs: 5, fetchImpl: (_u, init) => new Promise((_r, rej) => init.signal.addEventListener("abort", () => rej(Object.assign(new Error("a"), { name: "AbortError" })))) }), { error: "timeout" });
+  assert.equal((await observe("https://x", { fetchImpl: async () => { throw new TypeError("fetch failed"); } })).error, "unreachable");
+  assert.equal((await observe("https://x", { timeoutMs: 5, fetchImpl: (_u, init) => new Promise((_r, rej) => init.signal.addEventListener("abort", () => rej(Object.assign(new Error("a"), { name: "AbortError" })))) })).error, "timeout");
 });
 
 test("challenge: Cloudflare managed challenge is its own fail-closed outcome", () => {

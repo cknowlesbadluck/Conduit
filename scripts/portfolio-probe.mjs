@@ -32,6 +32,7 @@
  */
 
 import { checkShape } from "./ready-shape.mjs";
+import { classifyAttempts } from "./probe-cold-start.mjs";
 
 /** Resonance main's /api/ready contract (src/deploy/health.ts `Readiness`, deployLag.ts revision). */
 export const RESONANCE_MAIN_READY = Object.freeze({
@@ -142,6 +143,7 @@ const defaultSleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export async function observe(url, { timeoutMs = 20_000, fetchImpl = fetch, retries = 1, sleep = defaultSleep, random = Math.random } = {}) {
   retries = Math.min(Math.max(0, Math.floor(Number(retries) || 0)), 1); // at most one retry
+  const attempts = []; // per-attempt log for the cold_start vs down classifier (report-only)
   for (let attempt = 0; attempt <= retries; attempt++) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -150,7 +152,8 @@ export async function observe(url, { timeoutMs = 20_000, fetchImpl = fetch, retr
       // alias cannot bounce us somewhere else and look healthy.
       const res = await fetchImpl(url, { signal: controller.signal, redirect: "manual", headers: { accept: "application/json" } });
       const body = (await res.text()).slice(0, 16_384);
-      const observation = { status: res.status, headers: { "x-vercel-error": res.headers.get("x-vercel-error") ?? "", "cf-mitigated": res.headers.get("cf-mitigated") ?? "", server: res.headers.get("server") ?? "" }, body };
+      attempts.push({ status: res.status });
+      const observation = { attempts, status: res.status, headers: { "x-vercel-error": res.headers.get("x-vercel-error") ?? "", "cf-mitigated": res.headers.get("cf-mitigated") ?? "", server: res.headers.get("server") ?? "" }, body };
       // Retry once on free-tier cold-start 503s that aren't the known owner-gate not_ready
       if (attempt < retries && res.status === 503) {
         let json;
@@ -162,14 +165,22 @@ export async function observe(url, { timeoutMs = 20_000, fetchImpl = fetch, retr
       }
       return observation;
     } catch (error) {
+      attempts.push({ error: controller.signal.aborted || error?.name === "AbortError" ? "timeout" : "unreachable" });
       if (attempt < retries && (controller.signal.aborted || error?.name === "AbortError")) {
         await sleep(retryDelayMs(1000, random));
         continue;
       }
-      return { error: controller.signal.aborted || error?.name === "AbortError" ? "timeout" : "unreachable" };
+      return { attempts, error: controller.signal.aborted || error?.name === "AbortError" ? "timeout" : "unreachable" };
     } finally { clearTimeout(timer); }
   }
-  return { error: "unreachable" };
+  return { attempts, error: "unreachable" };
+}
+
+/** Report-only: annotate whether the plane was ready, cold-starting, down, or erroring. Never flips ok. */
+export function attachStartup(observation, result) {
+  if (!Array.isArray(observation?.attempts)) return result;
+  const { classification, firstOkAttempt } = classifyAttempts(observation.attempts);
+  return { ...result, startup: classification, attempts: observation.attempts.length, firstOkAttempt };
 }
 
 /** Add the schema verdict for targets that pin one, only when the service actually answered. */
@@ -193,7 +204,7 @@ export function attachParity(target, observation, result) {
 }
 
 export async function probeAll(targets = TARGETS, options) {
-  return Promise.all(targets.map(async (t) => { const o = await observe(t.url, options); return attachShape(t, o, attachParity(t, o, classify(t, o))); }));
+  return Promise.all(targets.map(async (t) => { const o = await observe(t.url, options); return attachStartup(o, attachShape(t, o, attachParity(t, o, classify(t, o)))); }));
 }
 
 /**
