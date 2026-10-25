@@ -8,8 +8,16 @@ import { pathToFileURL } from "node:url";
 export const IGNORED_CHECKS = new Set(["Workers Builds: conduit"]);
 export const NEVER_MERGE = new Set([206, 212, 234, 238, 243, 209, 155, 120, 321]);
 // auth/grants/migrations/secrets/DB TLS/proxy trust and env surfaces are owner-only.
-export const SENSITIVE = [/(^|\/)auth/i, /grant/i, /migrat/i, /secret/i, /(^|\/)\.env/i, /tls/i, /proxy/i, /trust/i, /render\.yaml$/i, /\.github\/workflows\//i];
+export const SENSITIVE = [/(^|\/)auth/i, /grant/i, /migrat/i, /secret/i, /(^|\/)\.env/i, /tls/i, /proxy/i, /trust/i, /render\.yaml$/i, /\.github\/workflows\//i,
+  // DB TLS / pool SSL config lives in these files (DATABASE_SSL_REJECT_UNAUTHORIZED, sslOption).
+  /^src\/(store|db-ready|binding-subjects|capability-store)\.ts$/];
 const GREEN = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"]);
+
+/** Per line: a concrete VAR=value always counts; a generic env-var phrase counts unless that same line is a "no env vars" disclaimer. */
+export function envVarMentioned(body) {
+  return String(body ?? "").split(/\r?\n/).some((line) =>
+    /\b[A-Z][A-Z0-9_]{2,}=/.test(line) || (/new env var|environment variable|env vars?\b/i.test(line) && !/\bno (new )?env(ironment)? var(iable)?s?\b/i.test(line)));
+}
 
 /** Pure. pr = { number, isDraft, mergeable, reviews:[{author,state}], checks:[{name,conclusion|state}], files:[path], behindBy, unresolvedThreads, body } */
 export function evaluate(pr) {
@@ -35,7 +43,8 @@ export function evaluate(pr) {
   }
   if (!Array.isArray(pr.files) || pr.files.length === 0) blockers.push("files_unknown");
   else for (const f of pr.files) if (SENSITIVE.some((re) => re.test(f))) { blockers.push(`sensitive_path:${f}`); }
-  if (/\b[A-Z][A-Z0-9_]{2,}=|new env var|environment variable/i.test(pr.body ?? "") && !/no env vars?/i.test(pr.body ?? "")) blockers.push("mentions_env_vars");
+  if (envVarMentioned(pr.body)) blockers.push("mentions_env_vars");
+  if (Number.isInteger(pr.changedFiles) && Array.isArray(pr.files) && pr.changedFiles !== pr.files.length) blockers.push("files_incomplete");
   return { ready: blockers.length === 0, blockers };
 }
 
@@ -44,16 +53,25 @@ function gh(args) { return execFileSync("gh", args, { encoding: "utf8", timeout:
 export function fetchPr(repo, number, run = gh) {
   try {
     const [owner, name] = repo.split("/");
-    const v = JSON.parse(run(["pr", "view", String(number), "-R", repo, "--json", "number,isDraft,mergeable,headRefName,baseRefName,body,files,reviews,statusCheckRollup"]));
-    const behindBy = JSON.parse(run(["api", `repos/${repo}/compare/main...${v.headRefName}`, "--jq", "{b:.behind_by}"])).b;
-    const q = `query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n){pullRequest(number:$p){reviewThreads(first:100){nodes{isResolved}}}}}`;
-    const t = JSON.parse(run(["api", "graphql", "-f", `query=${q}`, "-f", `o=${owner}`, "-f", `n=${name}`, "-F", `p=${number}`]));
+    const v = JSON.parse(run(["pr", "view", String(number), "-R", repo, "--json", "number,isDraft,mergeable,headRefName,headRefOid,baseRefName,changedFiles,body,files,reviews,statusCheckRollup"]));
+    const behindBy = JSON.parse(run(["api", `repos/${repo}/compare/main...${v.headRefOid}`, "--jq", "{b:.behind_by}"])).b;
+    const q = `query($o:String!,$n:String!,$p:Int!,$c:String){repository(owner:$o,name:$n){pullRequest(number:$p){reviewThreads(first:100,after:$c){nodes{isResolved} pageInfo{hasNextPage endCursor}}}}}`;
+    let unresolvedThreads = 0, cursor = null;
+    for (let page = 0; page < 50; page++) {
+      const args = ["api", "graphql", "-f", `query=${q}`, "-f", `o=${owner}`, "-f", `n=${name}`, "-F", `p=${number}`];
+      if (cursor) args.push("-f", `c=${cursor}`);
+      const rt = JSON.parse(run(args)).data.repository.pullRequest.reviewThreads;
+      unresolvedThreads += rt.nodes.filter((x) => !x.isResolved).length;
+      if (!rt.pageInfo?.hasNextPage) { cursor = null; break; }
+      cursor = rt.pageInfo.endCursor;
+    }
+    if (cursor) throw new Error("too many review thread pages");
     return {
-      number: v.number, baseRefName: v.baseRefName, isDraft: v.isDraft, mergeable: v.mergeable, body: v.body, behindBy,
+      number: v.number, baseRefName: v.baseRefName, changedFiles: v.changedFiles, isDraft: v.isDraft, mergeable: v.mergeable, body: v.body, behindBy,
       files: (v.files ?? []).map((f) => f.path),
       reviews: (v.reviews ?? []).map((r) => ({ author: r.author?.login, state: r.state })),
       checks: (v.statusCheckRollup ?? []).map((c) => ({ name: c.name ?? c.context, conclusion: c.conclusion || c.state })),
-      unresolvedThreads: t.data.repository.pullRequest.reviewThreads.nodes.filter((x) => !x.isResolved).length,
+      unresolvedThreads,
     };
   } catch { return null; }
 }
@@ -62,6 +80,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const i = process.argv.indexOf("--repo");
   const repo = i > 0 ? process.argv[i + 1] : "cknowlesbadluck/Conduit";
   const nums = process.argv.slice(2).filter((a, k, all) => /^\d+$/.test(a) && all[k - 1] !== "--repo").map(Number);
+  if (nums.length === 0) { console.error("usage: merge-readiness.mjs <pr> [<pr> ...] [--repo owner/name] [--json]"); process.exit(2); }
   const out = nums.map((n) => { const pr = fetchPr(repo, n); return { number: n, ...(pr ? evaluate(pr) : { ready: false, blockers: ["fetch_failed"] }) }; });
   if (process.argv.includes("--json")) console.log(JSON.stringify(out, null, 2));
   else for (const r of out) console.log(`#${r.number} ${r.ready ? "READY" : "BLOCKED"}${r.blockers.length ? " — " + r.blockers.join(", ") : ""}`);

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { evaluate, fetchPr } from "./merge-readiness.mjs";
+import { evaluate, fetchPr, envVarMentioned } from "./merge-readiness.mjs";
 
 const ok = () => ({ number: 400, isDraft: false, baseRefName: "main", mergeable: "MERGEABLE", behindBy: 0, unresolvedThreads: 0, body: "No env vars.",
   files: ["scripts/x.mjs"], reviews: [{ author: "coderabbitai", state: "COMMENTED" }],
@@ -40,8 +40,25 @@ test("fetchPr maps gh output (read-only commands only)", () => {
   const run = (a) => { calls.push(a);
     if (a[0] === "pr") return JSON.stringify({ number: 5, isDraft: false, mergeable: "MERGEABLE", headRefName: "h", body: "", files: [{ path: "a.md" }], reviews: [{ author: { login: "x" }, state: "APPROVED" }], statusCheckRollup: [{ name: "verify", conclusion: "SUCCESS" }] });
     if (a[1].startsWith("repos/")) return JSON.stringify({ b: 0 });
-    return JSON.stringify({ data: { repository: { pullRequest: { reviewThreads: { nodes: [{ isResolved: false }, { isResolved: true }] } } } } }); };
+    const second = a.includes("c=CUR");
+    return JSON.stringify({ data: { repository: { pullRequest: { reviewThreads: second
+      ? { nodes: [{ isResolved: false }], pageInfo: { hasNextPage: false } }
+      : { nodes: [{ isResolved: false }, { isResolved: true }], pageInfo: { hasNextPage: true, endCursor: "CUR" } } } } } }); };
   const pr = fetchPr("o/r", 5, run);
-  assert.equal(pr.unresolvedThreads, 1); assert.equal(pr.behindBy, 0); assert.deepEqual(pr.files, ["a.md"]);
+  assert.equal(pr.unresolvedThreads, 2); // paginated assert.equal(pr.behindBy, 0); assert.deepEqual(pr.files, ["a.md"]);
   assert.ok(calls.every((a) => (a[0] === "pr" && a[1] === "view") || (a[0] === "api" && !a.includes("-X"))));
+});
+
+test("review fixes: env-var lines, DB TLS files, incomplete file lists, head SHA compare", () => {
+  assert.equal(envVarMentioned("No env vars.\nSet FOO_TOKEN=1 on Render"), true);
+  assert.equal(envVarMentioned("No env vars. No auth changes."), false);
+  assert.equal(envVarMentioned("Adds a new env var for timeouts"), true);
+  assert.deepEqual(evaluate({ ...ok(), files: ["src/store.ts"] }).blockers, ["sensitive_path:src/store.ts"]);
+  assert.deepEqual(evaluate({ ...ok(), changedFiles: 150, files: Array.from({ length: 100 }, (_, i) => `d/${i}.md`) }).blockers, ["files_incomplete"]);
+  const calls = [];
+  fetchPr("o/r", 5, (a) => { calls.push(a.join(" "));
+    if (a[0] === "pr") return JSON.stringify({ number: 5, headRefName: "same-name", headRefOid: "abc123", files: [], reviews: [], statusCheckRollup: [] });
+    if (a[1].startsWith("repos/")) return JSON.stringify({ b: 0 });
+    return JSON.stringify({ data: { repository: { pullRequest: { reviewThreads: { nodes: [], pageInfo: { hasNextPage: false } } } } } }); });
+  assert.ok(calls.some((c) => c.includes("compare/main...abc123")));
 });
