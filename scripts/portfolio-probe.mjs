@@ -261,7 +261,7 @@ function targetFactor(r) {
 }
 
 /**
- * Per-target contributions; contributions sum to the score (before rounding).
+ * Per-target contributions (unrounded; round only for display) sum exactly to the score.
  * ownedOnly: rows whose name is in `unowned` are kept for visibility (factor "informational",
  * weight 0) but excluded from the mean, so the score reflects only deployments we own.
  * Default is the legacy all-target mean (unchanged behaviour for existing callers).
@@ -273,7 +273,7 @@ export function portfolioScoreBreakdown(results, { ownedOnly = false, unowned = 
   const rows = results.map((r) => {
     if (!isScored(r)) return { name: r?.name ?? "?", outcome: r?.outcome ?? "unknown", factor: "informational", points: 0, weight: 0, contribution: 0 };
     const [factor, points] = targetFactor(r);
-    return { name: r?.name ?? "?", outcome: r?.outcome ?? "unknown", factor, points, weight: Math.round((1 / n) * 1000) / 1000, contribution: Math.round((points / n) * 100) / 100 };
+    return { name: r?.name ?? "?", outcome: r?.outcome ?? "unknown", factor, points, weight: Math.round((1 / n) * 1000) / 1000, contribution: points / n };
   });
   if (n === 0) return { score: 0, targets: 0, rows, byFactor: {}, ownedOnly };
   const byFactor = {};
