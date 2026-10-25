@@ -8,6 +8,17 @@
  */
 export const STALE_DAYS = 14;
 
+/**
+ * Pure: the command that recreates a branch at its recorded tip if someone later deletes it by hand.
+ * Report-only (this script never deletes). null unless the name is a safe ref and the SHA is a full 40-hex oid,
+ * so nothing shell-unsafe is ever emitted.
+ */
+export function restoreCommand(name, oid) {
+  if (typeof name !== "string" || typeof oid !== "string" || !/^[0-9a-f]{40}$/.test(oid)) return null;
+  if (!/^[A-Za-z0-9._/-]+$/.test(name) || name.includes("..") || name.startsWith("-") || name.startsWith("/") || name.endsWith("/") || name.endsWith(".lock")) return null;
+  return `git push origin ${oid}:refs/heads/${name}`;
+}
+
 /** branches: [{name, committedAt}], openHeads: Set|array of head ref names. Pure. */
 export function staleBranches(branches = [], openHeads = [], { now = Date.now(), days = STALE_DAYS, defaultBranch = "main" } = {}) {
   const heads = new Set(openHeads);
@@ -19,7 +30,7 @@ export function staleBranches(branches = [], openHeads = [], { now = Date.now(),
       const old = Number.isFinite(t) && t <= cutoff;
       const pr = b.lastPr && Number.isInteger(b.lastPr.number) && (b.lastPr.state === "MERGED" || b.lastPr.state === "CLOSED") ? b.lastPr : null;
       if (!old && !pr) return null;
-      return { name: b.name, committedAt: b.committedAt, ageDays: Number.isFinite(t) ? Math.floor((now - t) / 86_400_000) : null,
+      return { name: b.name, committedAt: b.committedAt, ...(restoreCommand(b.name, b.oid) ? { tipSha: b.oid, restore: restoreCommand(b.name, b.oid) } : {}), ageDays: Number.isFinite(t) ? Math.floor((now - t) / 86_400_000) : null,
         reason: pr ? (pr.state === "MERGED" ? "pr_merged" : "pr_closed") : "age", ...(pr ? { pr: { number: pr.number, state: pr.state } } : {}) };
     })
     .filter(Boolean)
@@ -103,7 +114,7 @@ export async function aheadBy({ owner, repo, base, head, token, fetchImpl = fetc
 }
 
 const QUERY = `query($o:String!,$r:String!,$c:String){repository(owner:$o,name:$r){defaultBranchRef{name}
- refs(refPrefix:"refs/heads/",first:100,after:$c){pageInfo{hasNextPage endCursor} nodes{name associatedPullRequests(states:OPEN,first:1){totalCount} lastPr:associatedPullRequests(states:[MERGED,CLOSED],first:1,orderBy:{field:UPDATED_AT,direction:DESC}){nodes{number state}} target{... on Commit{committedDate}}}}
+ refs(refPrefix:"refs/heads/",first:100,after:$c){pageInfo{hasNextPage endCursor} nodes{name associatedPullRequests(states:OPEN,first:1){totalCount} lastPr:associatedPullRequests(states:[MERGED,CLOSED],first:1,orderBy:{field:UPDATED_AT,direction:DESC}){nodes{number state}} target{... on Commit{committedDate oid}}}}
  pullRequests(states:OPEN,first:100){totalCount nodes{headRefName isCrossRepository}}}}`;
 
 /** Read-only GraphQL fetch. Returns null per repo without a token, on errors, or if open PRs are truncated. */
@@ -123,7 +134,7 @@ export async function fetchStaleBranches({ owner = "cknowlesbadluck", repos = ["
         if (r.pullRequests.totalCount > r.pullRequests.nodes.length) throw new Error("truncated");
         heads = r.pullRequests.nodes.filter((n) => !n.isCrossRepository).map((n) => n.headRefName);
         for (const n of r.refs.nodes) if (n.associatedPullRequests?.totalCount > 0) extraHeads.push(n.name);
-        for (const n of r.refs.nodes) branches.push({ name: n.name, committedAt: n.target?.committedDate, lastPr: n.lastPr?.nodes?.[0] ?? null });
+        for (const n of r.refs.nodes) branches.push({ name: n.name, committedAt: n.target?.committedDate, oid: n.target?.oid, lastPr: n.lastPr?.nodes?.[0] ?? null });
         if (!r.refs.pageInfo.hasNextPage) { cursor = null; break; }
         cursor = r.refs.pageInfo.endCursor;
       }
