@@ -39,13 +39,16 @@ test("fetchPr maps gh output (read-only commands only)", () => {
   const calls = [];
   const run = (a) => { calls.push(a);
     if (a[0] === "pr") return JSON.stringify({ number: 5, isDraft: false, mergeable: "MERGEABLE", headRefName: "h", body: "", files: [{ path: "a.md" }], reviews: [{ author: { login: "x" }, state: "APPROVED" }], statusCheckRollup: [{ name: "verify", conclusion: "SUCCESS" }] });
+    if (a[1] === "--paginate") return "a.md\n";
     if (a[1].startsWith("repos/")) return JSON.stringify({ b: 0 });
     const second = a.includes("c=CUR");
     return JSON.stringify({ data: { repository: { pullRequest: { reviewThreads: second
       ? { nodes: [{ isResolved: false }], pageInfo: { hasNextPage: false } }
       : { nodes: [{ isResolved: false }, { isResolved: true }], pageInfo: { hasNextPage: true, endCursor: "CUR" } } } } } }); };
   const pr = fetchPr("o/r", 5, run);
-  assert.equal(pr.unresolvedThreads, 2); // paginated assert.equal(pr.behindBy, 0); assert.deepEqual(pr.files, ["a.md"]);
+  assert.equal(pr.unresolvedThreads, 2); // paginated
+  assert.equal(pr.behindBy, 0);
+  assert.deepEqual(pr.files, ["a.md"]);
   assert.ok(calls.every((a) => (a[0] === "pr" && a[1] === "view") || (a[0] === "api" && !a.includes("-X"))));
 });
 
@@ -58,7 +61,21 @@ test("review fixes: env-var lines, DB TLS files, incomplete file lists, head SHA
   const calls = [];
   fetchPr("o/r", 5, (a) => { calls.push(a.join(" "));
     if (a[0] === "pr") return JSON.stringify({ number: 5, headRefName: "same-name", headRefOid: "abc123", files: [], reviews: [], statusCheckRollup: [] });
+    if (a[1] === "--paginate") return "a.md\n";
     if (a[1].startsWith("repos/")) return JSON.stringify({ b: 0 });
     return JSON.stringify({ data: { repository: { pullRequest: { reviewThreads: { nodes: [], pageInfo: { hasNextPage: false } } } } } }); });
   assert.ok(calls.some((c) => c.includes("compare/main...abc123")));
+});
+
+test("second review round: short env assignment, auth wiring, renames, error diagnostics", () => {
+  assert.equal(envVarMentioned("DB=prod"), true);
+  assert.deepEqual(evaluate({ ...ok(), files: ["src/index.ts"] }).blockers, ["sensitive_path:src/index.ts"]);
+  const pr = fetchPr("o/r", 5, (a) => {
+    if (a[0] === "pr") return JSON.stringify({ number: 5, headRefOid: "h", reviews: [], statusCheckRollup: [] });
+    if (a[1] === "--paginate") return "docs/x.md\nsrc/store.ts\n"; // rename src/store.ts -> docs/x.md
+    if (a[1].startsWith("repos/")) return JSON.stringify({ b: 0 });
+    return JSON.stringify({ data: { repository: { pullRequest: { reviewThreads: { nodes: [], pageInfo: { hasNextPage: false } } } } } }); });
+  assert.ok(evaluate({ ...ok(), files: pr.files }).blockers.includes("sensitive_path:src/store.ts"));
+  assert.equal(fetchPr("o/r", 1, () => { const e = new Error("x"); e.stderr = "HTTP 404: Not Found\nmore"; throw e; }), null);
+  assert.equal(fetchPr.lastError, "HTTP 404: Not Found");
 });
