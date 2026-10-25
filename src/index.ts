@@ -1,3 +1,4 @@
+import { jsonErrorHandler } from "./http-errors.js";
 import express from "express";
 import { getOAuthProtectedResourceMetadataUrl, hostHeaderValidation, mcpAuthMetadataRouter, originValidation, requireBearerAuth } from "@modelcontextprotocol/express";
 import { toNodeHandler } from "@modelcontextprotocol/node";
@@ -121,6 +122,7 @@ async function boot() {
     app.all("/mcp", (_req, res) => res.status(503).json({ error: "auth_not_configured", message: "Configure DESCOPE_MCP_SERVER_WELL_KNOWN_URL in production" }));
     console.error("No MCP OAuth authentication configured; /mcp is disabled");
   }
+  app.use(jsonErrorHandler);
   const server = app.listen(port, "0.0.0.0", () => console.log(`Conduit listening on ${port}`));
   const shutdown = async () => { server.close(); process.exit(0); };
   process.once("SIGTERM", shutdown); process.once("SIGINT", shutdown);
