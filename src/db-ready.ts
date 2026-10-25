@@ -21,16 +21,26 @@ function getProbePool(): pg.Pool {
   return probePool;
 }
 
+/**
+ * Race a promise against a timeout and always clear the timer, so repeated /ready
+ * probes do not leave live timers behind.
+ */
+export async function raceWithTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("persistence_probe_timeout")), ms);
+  });
+  try {
+    return await Promise.race([work, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function checkPersistence(): Promise<boolean> {
   if (!persistenceConfigured()) return true;
   try {
-    const query = getProbePool().query("SELECT 1");
-    await Promise.race([
-      query,
-      new Promise((_, reject) => {
-        setTimeout(() => reject(new Error("persistence_probe_timeout")), PROBE_TIMEOUT_MS);
-      }),
-    ]);
+    await raceWithTimeout(getProbePool().query("SELECT 1"), PROBE_TIMEOUT_MS);
     return true;
   } catch {
     return false;
