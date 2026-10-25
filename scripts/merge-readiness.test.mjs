@@ -90,3 +90,9 @@ test("third review round: hasNextPage without endCursor fails closed (no silent 
   assert.equal(fetchPr("o/r", 6, run), null);
   assert.match(fetchPr.lastError, /endCursor/);
 });
+
+test("fourth review round: capability grant enforcement is owner-only", () => {
+  for (const f of ["src/capabilities.ts", "src/tool-gates.test.ts"]) {
+    assert.deepEqual(evaluate({ ...ok(), files: [f] }).blockers, [`sensitive_path:${f}`], f);
+  }
+});
