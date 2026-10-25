@@ -27,3 +27,6 @@ Phases are ordered by leverage: each one makes the later ones cheaper or safer.
 2. **Grant receipts + offline verifier** (#257): tamper-evident audit (for key holders) without a paid log service. Ed25519 is the upgrade path if third-party attribution is needed.
 3. **Squash-aware safe-delete report** (#298): branch pruning backed by evidence, kept report-only.
 4. **Deploy-parity probe**: compare the commitSha in `/ready` with main HEAD every 6h, using a free Actions cron.
+
+## Late 2026-10-24 status
+See [AUDIT-2026-10-24-LATE.md](AUDIT-2026-10-24-LATE.md). `/ready` is ready on 0.8.0 with postgres, main CI is green, and open PRs dropped from 25 to 14. The entropy-trend gate is in #309.
