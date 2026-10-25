@@ -39,4 +39,5 @@ jobs:
         run: |
           rc=0; node scripts/entropy-trend.mjs --json > trend.json || rc=$?
           { echo "## Open-PR entropy trend (exit $rc; non-blocking)"; echo; echo '```json'; sed 's/```/` ` `/g' trend.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-          exit $rc
+          # Non-blocking by design: a worse-than-baseline trend is a warning, not a red check.
+          if [ "$rc" -ne 0 ]; then echo "::warning title=entropy-trend::open-PR entropy trend exit $rc (see step summary)"; fi
