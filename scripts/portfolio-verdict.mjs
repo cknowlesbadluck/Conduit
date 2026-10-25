@@ -1,10 +1,12 @@
 /**
  * Cross-plane readiness verdict (pure, read-only: no network, no env, no imports).
- * Input: { planes: { [name]: { attempts: [{ status?: number, error?: string, body?: object }] } }, now?: string|Date, maxRevisionAgeDays?: number }
+ * Input: { planes: { [name]: { attempts: [...], expectedRevision?: string } }, now?: string|Date, maxAgeDays?: number|null }
+ * Age alone is NOT drift: ageDays is informational. An age gate applies only when maxAgeDays is explicitly set (default off).
  * Per plane state:
- *   ready               - first attempt 200, production === true, contract fields present, revision fresh
+ *   ready               - first attempt 200, production === true, contract fields present, revision well-formed (and matches expectedRevision if given)
  *   degraded_cold_start - one or more 502/503/504/timeout attempts, then 200 (otherwise ready)
- *   drift               - reached 200 but contractRevision is older than maxRevisionAgeDays (default 14) or shape is wrong
+ *   drift               - reached 200 but contractRevision is malformed/non-string, or != plane.expectedRevision,
+ *                         or (only if maxAgeDays is set) older than maxAgeDays
  *   not_ready           - never 200, a hard error, production !== true, missing fields, or malformed input
  * Portfolio verdict = worst plane state (not_ready > drift > degraded_cold_start > ready). Fails closed: no planes = not_ready.
  */
@@ -29,7 +31,7 @@ export function revisionDate(rev) {
   return d.getUTCFullYear() === +m[1] && d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3] ? t : null;
 }
 
-export function classifyPlane(plane, { now = Date.now(), maxRevisionAgeDays = 14 } = {}) {
+export function classifyPlane(plane, { now = Date.now(), maxAgeDays = null, expectedRevision } = {}) {
   const out = (state, reason, extra = {}) => ({ state, reason, ...extra });
   if (!isObj(plane) || !Array.isArray(plane.attempts) || plane.attempts.length === 0) return out("not_ready", "malformed_or_no_attempts");
   const list = plane.attempts;
@@ -46,19 +48,22 @@ export function classifyPlane(plane, { now = Date.now(), maxRevisionAgeDays = 14
   if (body.status !== "ready") return out("not_ready", "status_not_ready");
   const nowMs = now instanceof Date ? now.getTime() : typeof now === "string" ? Date.parse(now) : now;
   if (typeof nowMs !== "number" || !Number.isFinite(nowMs)) return out("not_ready", "invalid_now");
+  if (maxAgeDays !== null && maxAgeDays !== undefined && !(Number.isFinite(maxAgeDays) && maxAgeDays >= 0)) return out("not_ready", "invalid_max_age");
+  const expected = plane.expectedRevision ?? expectedRevision;
+  if (expected !== undefined && typeof expected !== "string") return out("not_ready", "invalid_expected_revision");
   if (typeof body.service !== "string" || typeof body.contractRevision !== "string") return out("drift", "contract_shape_mismatch");
   const rev = revisionDate(body.contractRevision);
   if (rev === null) return out("drift", "unparseable_contract_revision");
   const ageDays = Math.floor((nowMs - rev) / DAY_MS);
-  if (!(Number.isFinite(maxRevisionAgeDays) && maxRevisionAgeDays >= 0)) return out("not_ready", "invalid_max_age");
-  if (ageDays > maxRevisionAgeDays) return out("drift", "stale_contract_revision", { ageDays });
+  if (expected !== undefined && body.contractRevision !== expected) return out("drift", "contract_revision_mismatch", { expected, actual: body.contractRevision, ageDays });
+  if (maxAgeDays !== null && maxAgeDays !== undefined && ageDays > maxAgeDays) return out("drift", "stale_contract_revision", { ageDays, maxAgeDays });
   if (idx > 0) return out("degraded_cold_start", "recovered_after_transient", { firstOkAttempt: idx + 1, ageDays });
   return out("ready", "ok", { ageDays });
 }
 
 export function portfolioVerdict(input) {
   if (!isObj(input) || !isObj(input.planes) || Object.keys(input.planes).length === 0) return { verdict: "not_ready", planes: {}, reason: "no_planes" };
-  const opts = { now: input.now ?? Date.now(), maxRevisionAgeDays: input.maxRevisionAgeDays ?? 14 };
+  const opts = { now: input.now ?? Date.now(), maxAgeDays: input.maxAgeDays ?? null };
   const planes = {};
   let worst = "ready";
   for (const [name, p] of Object.entries(input.planes)) {

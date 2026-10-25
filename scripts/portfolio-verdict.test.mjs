@@ -26,11 +26,21 @@ test("missing contract fields is not_ready", () => {
   const b = body(); delete b.contractRevision;
   assert.deepEqual(c([ok(b)]).missing, ["contractRevision"]);
 });
-test("stale revision (>14d) is drift", () => {
+test("old revision alone is NOT drift (age is informational)", () => {
   const r = c([ok(body({ contractRevision: "2026-10-03-ready-surface" }))]);
-  assert.equal(r.state, "drift"); assert.equal(r.ageDays, 22);
+  assert.equal(r.state, "ready"); assert.equal(r.ageDays, 22);
 });
-test("exactly 14 days is still fresh", () => assert.equal(c([ok(body({ contractRevision: "2026-10-11-x" }))]).state, "ready"));
+test("explicit maxAgeDays opt-in gates on age", () => {
+  const r = c([ok(body({ contractRevision: "2026-10-03-ready-surface" }))], { maxAgeDays: 14 });
+  assert.equal(r.state, "drift"); assert.equal(r.reason, "stale_contract_revision");
+  assert.equal(c([ok(body({ contractRevision: "2026-10-11-x" }))], { maxAgeDays: 14 }).state, "ready");
+});
+test("expectedRevision mismatch is drift; match is ready", () => {
+  assert.equal(c([ok()], { expectedRevision: "2026-10-03-owner-gate" }).reason, "contract_revision_mismatch");
+  assert.equal(c([ok()], { expectedRevision: "2026-10-20-x" }).state, "ready");
+  assert.equal(classifyPlane({ attempts: [ok()], expectedRevision: "2026-10-01-y" }, { now: NOW }).state, "drift");
+  assert.equal(c([ok()], { expectedRevision: 5 }).state, "not_ready");
+});
 test("shape mismatch and unparseable revision are drift", () => {
   assert.equal(c([ok(body({ contractRevision: 7 }))]).reason, "contract_shape_mismatch");
   assert.equal(c([ok(body({ contractRevision: "latest" }))]).reason, "unparseable_contract_revision");
@@ -41,7 +51,7 @@ test("malformed input fails closed", () => {
     assert.equal(classifyPlane(p, { now: NOW }).state, "not_ready");
   assert.equal(c([ok("nope")]).state, "not_ready");
   assert.equal(c([ok()], { now: "garbage" }).state, "not_ready");
-  assert.equal(c([ok()], { maxRevisionAgeDays: NaN }).state, "not_ready");
+  assert.equal(c([ok()], { maxAgeDays: NaN }).state, "not_ready");
 });
 test("revisionDate", () => {
   assert.equal(revisionDate("2026-10-03-owner-gate"), Date.UTC(2026, 9, 3));
@@ -52,15 +62,16 @@ test("revisionDate", () => {
 test("portfolio verdict is worst plane", () => {
   const v = portfolioVerdict({ now: NOW, planes: { conduit: { attempts: [{ status: 503 }, ok()] }, resonance: { attempts: [ok()] } } });
   assert.equal(v.verdict, "degraded_cold_start");
-  assert.equal(portfolioVerdict({ now: NOW, planes: { a: { attempts: [ok()] }, b: { attempts: [ok(body({ contractRevision: "2026-01-01" }))] } } }).verdict, "drift");
+  assert.equal(portfolioVerdict({ now: NOW, planes: { a: { attempts: [ok()] }, b: { attempts: [ok(body({ contractRevision: "latest" }))] } } }).verdict, "drift");
   assert.equal(portfolioVerdict({ now: NOW, planes: { a: { attempts: [ok()] }, b: null } }).verdict, "not_ready");
 });
 test("portfolio fails closed on bad input", () => {
   for (const i of [null, {}, { planes: {} }, { planes: [] }]) assert.equal(portfolioVerdict(i).verdict, "not_ready");
 });
-test("2026-10-25 05:00 ET live snapshot: both planes 200 but revisions >14d -> drift", () => {
-  const v = portfolioVerdict({ now: NOW, planes: {
-    conduit: { attempts: [ok(body({ contractRevision: "2026-10-03-ready-surface" }))] },
-    resonance: { attempts: [ok(body({ service: "resonance-nexus", contractRevision: "2026-10-03-owner-gate" }))] } } });
-  assert.equal(v.verdict, "drift");
+test("2026-10-25 live snapshot: both planes 200 with well-formed 2026-10-03 revisions -> ready (age is not drift)", () => {
+  const planes = {
+    conduit: { attempts: [ok(body({ contractRevision: "2026-10-03-ready-surface" }))], expectedRevision: "2026-10-03-ready-surface" },
+    resonance: { attempts: [ok(body({ service: "resonance-nexus", contractRevision: "2026-10-03-owner-gate" }))], expectedRevision: "2026-10-03-owner-gate" } };
+  assert.equal(portfolioVerdict({ now: NOW, planes }).verdict, "ready");
+  assert.equal(portfolioVerdict({ now: NOW, planes, maxAgeDays: 14 }).verdict, "drift");
 });
