@@ -37,8 +37,9 @@ export function ciState(rollup) {
     const name = c?.name ?? c?.context ?? "?";
     if (IGNORED_CHECKS.has(name)) continue;
     const at = runTime(c?.startedAt) || runTime(c?.completedAt); // order reruns by start time; gh zero-times count as missing
-    const prev = latest.get(name);
-    if (!prev || at >= prev.at) latest.set(name, { at, c });
+    const key = `${c?.__typename ?? (c?.context !== undefined ? "StatusContext" : "CheckRun")}:${name}`; // check runs and statuses are separate gates
+    const prev = latest.get(key);
+    if (!prev || at >= prev.at) latest.set(key, { at, c });
   }
   let pending = false;
   for (const { c } of latest.values()) {
@@ -96,7 +97,7 @@ export function hygieneMarkdown(report) {
 const FIELDS = "number,title,headRefName,baseRefName,isDraft,mergeable,reviewDecision,createdAt,updatedAt,files,changedFiles,statusCheckRollup";
 export function fetchOpenPrs(repo, { owner = "cknowlesbadluck", exec = execFileSync } = {}) {
   try {
-    const out = exec("gh", ["pr", "list", "-R", `${owner}/${repo}`, "--state", "open", "--limit", "200", "--json", FIELDS], { encoding: "utf8", timeout: 60_000, stdio: ["ignore", "pipe", "ignore"] });
+    const out = exec("gh", ["pr", "list", "-R", `${owner}/${repo}`, "--state", "open", "--limit", "200", "--json", FIELDS], { encoding: "utf8", timeout: 60_000, maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"] });
     const data = JSON.parse(out);
     return Array.isArray(data) ? data : null;
   } catch { return null; }
@@ -106,7 +107,9 @@ const isMain = import.meta.url === `file://${process.argv[1]}`;
 if (isMain) {
   const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
   const repos = arg("--repos", "QuicksilverV1,Conduit,Resonance").split(",").filter((r) => /^[A-Za-z0-9._-]+$/.test(r));
-  const target = Number(arg("--target", "10")) || 10;
+  const rawTarget = arg("--target", "10");
+  const target = Number(rawTarget);
+  if (!/^\d+$/.test(String(rawTarget)) || !Number.isSafeInteger(target)) { console.error("--target must be a non-negative integer"); process.exit(2); }
   const report = {};
   for (const repo of repos) report[repo] = summarizeRepo(fetchOpenPrs(repo), { target });
   if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), target, report }, null, 2));
