@@ -36,3 +36,11 @@ Tags: **[passed]** · **[in progress]** · **[blocked]** (owner).
 - Phase 3/4: #317 adds a fail-closed terminal JSON error handler. Before it, body-parser and route errors fell through to Express's HTML finalhandler, which shows stacks whenever NODE_ENV != production.
 - Phase 1: 23 open PRs and 2 open issues (#201 and #202, both owner decisions, kept). That is still far above the ≤10 target. The keep list blocks most closures.
 - Open: `MAX_JSON_BODY` is env-controlled with no upper bound. `/mcp` route wiring is duplicated in `index.ts` and `app-factory.ts`, so they can drift.
+## Innovation ideas (practical, no lock-in)
+1. **Skills over MCP (SDK 2.4)**: expose the runbook and probe skills as read-only MCP skills, so any client can discover how to operate Conduit.
+2. **Grant receipts + offline verifier** (#257): tamper-evident audit (for key holders) without a paid log service. Ed25519 is the upgrade path if third-party attribution is needed.
+3. **Squash-aware safe-delete report** (#298): branch pruning backed by evidence, kept report-only.
+4. **Deploy-parity probe**: compare the commitSha in `/ready` with main HEAD every 6h, using a free Actions cron.
+
+## Late 2026-10-24 status
+See [AUDIT-2026-10-24-LATE.md](AUDIT-2026-10-24-LATE.md). `/ready` is ready on 0.8.0 with postgres, main CI is green, and open PRs dropped from 25 to 14. The entropy-trend gate is in #309.
