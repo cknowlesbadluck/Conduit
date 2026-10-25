@@ -56,3 +56,17 @@ test("fetchOpenPrs is read-only and fail-closed", () => {
   assert.equal(fetchOpenPrs("Conduit", { exec: () => { throw new Error("no auth"); } }), null);
   assert.equal(fetchOpenPrs("Conduit", { exec: () => "{\"x\":1}" }), null);
 });
+
+test("review fixes: rerun ordering by start time, ERROR status is red, truncated file lists are not docs-only", () => {
+  // older completed success + newer in-progress rerun with gh zero-time completedAt => pending, not green
+  assert.equal(ciState([
+    { name: "verify", status: "COMPLETED", conclusion: "SUCCESS", startedAt: "2026-10-24T00:00:00Z", completedAt: "2026-10-24T00:05:00Z" },
+    { name: "verify", status: "IN_PROGRESS", conclusion: "", startedAt: "2026-10-24T01:00:00Z", completedAt: "0001-01-01T00:00:00Z" },
+  ]), "pending");
+  // legacy StatusContext with state ERROR
+  assert.equal(ciState([{ __typename: "StatusContext", context: "ci/legacy", state: "ERROR" }]), "red");
+  // 150 changed files but only 100 docs files returned => not docs-only
+  const hundred = Array.from({ length: 100 }, (_, i) => ({ path: `docs/f${i}.md` }));
+  assert.equal(isDocsOnly(hundred, 150), false);
+  assert.equal(isDocsOnly(hundred, 100), true);
+});

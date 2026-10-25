@@ -10,13 +10,23 @@ import { execFileSync } from "node:child_process";
 export const IGNORED_CHECKS = new Set(["Workers Builds: conduit"]);
 const DAY = 86_400_000;
 const GREEN = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"]);
-const RED = new Set(["FAILURE", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE"]);
+const RED = new Set(["FAILURE", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "ERROR"]);
 export const NOISE = /(^|\b)(bolt|jules)(\b|\/)|⚡/i;
 export const STALE_DAYS = 7;
 
-/** Docs-only = every changed file is markdown or under docs/. Empty file lists are NOT docs-only (fail-closed). */
-export function isDocsOnly(files) {
+/**
+ * Docs-only = every changed file is markdown or under docs/. Empty file lists are NOT docs-only (fail-closed).
+ * gh returns at most 100 files; when `changedFiles` is known and exceeds the list, the list is incomplete -> not docs-only.
+ */
+export function isDocsOnly(files, changedFiles) {
+  if (Number.isInteger(changedFiles) && Array.isArray(files) && changedFiles !== files.length) return false;
   return Array.isArray(files) && files.length > 0 && files.every((f) => /^docs\//.test(f?.path ?? "") || /\.md$/i.test(f?.path ?? ""));
+}
+
+/** ms since epoch, or 0 for missing / gh zero-time ("0001-01-01T00:00:00Z") values. */
+export function runTime(v) {
+  const t = Date.parse(v ?? "");
+  return Number.isFinite(t) && t > 0 ? t : 0;
 }
 
 /** Latest conclusion per check name; ignored checks dropped. Returns "green" | "red" | "pending" | "none". */
@@ -26,7 +36,7 @@ export function ciState(rollup) {
   for (const c of rollup) {
     const name = c?.name ?? c?.context ?? "?";
     if (IGNORED_CHECKS.has(name)) continue;
-    const at = Date.parse(c?.completedAt ?? c?.startedAt ?? "") || 0;
+    const at = runTime(c?.startedAt) || runTime(c?.completedAt); // order reruns by start time; gh zero-times count as missing
     const prev = latest.get(name);
     if (!prev || at >= prev.at) latest.set(name, { at, c });
   }
@@ -43,7 +53,7 @@ export function ciState(rollup) {
 export function classifyPr(pr, now = Date.now()) {
   const ageDays = Math.floor((now - Date.parse(pr?.createdAt ?? "")) / DAY);
   const idleDays = Math.floor((now - Date.parse(pr?.updatedAt ?? pr?.createdAt ?? "")) / DAY);
-  const docsOnly = isDocsOnly(pr?.files);
+  const docsOnly = isDocsOnly(pr?.files, pr?.changedFiles);
   const conflicting = pr?.mergeable === "CONFLICTING";
   const ci = ciState(pr?.statusCheckRollup);
   const changesRequested = pr?.reviewDecision === "CHANGES_REQUESTED";
@@ -83,7 +93,7 @@ export function hygieneMarkdown(report) {
   return out.join("\n");
 }
 
-const FIELDS = "number,title,headRefName,baseRefName,isDraft,mergeable,reviewDecision,createdAt,updatedAt,files,statusCheckRollup";
+const FIELDS = "number,title,headRefName,baseRefName,isDraft,mergeable,reviewDecision,createdAt,updatedAt,files,changedFiles,statusCheckRollup";
 export function fetchOpenPrs(repo, { owner = "cknowlesbadluck", exec = execFileSync } = {}) {
   try {
     const out = exec("gh", ["pr", "list", "-R", `${owner}/${repo}`, "--state", "open", "--limit", "200", "--json", FIELDS], { encoding: "utf8", timeout: 60_000, stdio: ["ignore", "pipe", "ignore"] });
