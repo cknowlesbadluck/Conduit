@@ -22,3 +22,18 @@ test("empty / garbage input fails closed", () => {
   assert.equal(isTransient(null), false);
 });
 test("200 with error flag is not ready", () => assert.equal(classifyAttempts([{ status: 200, error: "timeout" }]).ok, false));
+
+test("hard status wins over a reported error (CodeRabbit #314)", () => {
+  assert.equal(isTransient({ status: 500, error: "timeout" }), false);
+  assert.equal(classifyAttempts([{ status: 500, error: "timeout" }]).classification, "error");
+  assert.equal(classifyAttempts([{ status: 500, error: "timeout" }, { status: 200 }]).classification, "error");
+  assert.equal(isTransient({ error: "timeout" }), true);
+  assert.equal(isTransient({ error: "unreachable" }), true);
+  assert.equal(isTransient({ error: "weird" }), false);
+});
+
+test("a hard status after the first 200 is never healthy (CodeRabbit #314)", () => {
+  assert.equal(classifyAttempts([{ status: 503 }, { status: 200 }, { status: 500 }]).classification, "error");
+  assert.equal(classifyAttempts([{ status: 200 }, { status: 500 }]).classification, "error");
+  assert.equal(classifyAttempts([{ status: 200 }, { status: 503 }]).classification, "ready");
+});

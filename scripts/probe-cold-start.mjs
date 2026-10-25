@@ -12,16 +12,29 @@
  *   unknown     - no attempts
  */
 const TRANSIENT_STATUS = new Set([502, 503, 504]);
+const TRANSIENT_ERRORS = new Set(["timeout", "unreachable"]);
+
+function isHard(a) {
+  return !!a && typeof a === "object" && !isTransient(a) && !(a.status === 200 && !a.error);
+}
 
 export function isTransient(a) {
   if (!a || typeof a !== "object") return false;
-  if (a.error) return true;
-  return TRANSIENT_STATUS.has(a.status);
+  // A hard HTTP status wins over any reported error (e.g. { status: 500, error: "timeout" }).
+  if (typeof a.status === "number" && a.status !== 0 && !TRANSIENT_STATUS.has(a.status)) return false;
+  if (TRANSIENT_STATUS.has(a.status)) return true;
+  return typeof a.error === "string" && TRANSIENT_ERRORS.has(a.error);
 }
 
 export function classifyAttempts(attempts) {
   const list = Array.isArray(attempts) ? attempts : [];
   if (list.length === 0) return { classification: "unknown", ok: false, attempts: 0, firstOkAttempt: null };
+  // Fail closed: any hard (non-transient, non-200) attempt anywhere in the sequence is an error,
+  // even after a 200 (e.g. 200 then 500 must never read as healthy).
+  if (list.some(isHard)) {
+    const okIdx = list.findIndex((a) => a && !a.error && a.status === 200);
+    return { classification: "error", ok: false, attempts: list.length, firstOkAttempt: okIdx >= 0 ? okIdx + 1 : null };
+  }
   const idx = list.findIndex((a) => a && !a.error && a.status === 200);
   if (idx === 0) return { classification: "ready", ok: true, attempts: list.length, firstOkAttempt: 1 };
   if (idx > 0) {
