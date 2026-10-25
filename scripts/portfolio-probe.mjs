@@ -256,13 +256,13 @@ function targetFactor(r) {
   return [`other_not_ok:${r?.outcome ?? "unknown"}`, SCORE_POINTS.other_not_ok];
 }
 
-/** Per-target contributions; contributions sum to the score (before rounding). */
+/** Per-target contributions (unrounded; round only for display) sum exactly to the score. */
 export function portfolioScoreBreakdown(results) {
   if (!Array.isArray(results) || results.length === 0) return { score: 0, targets: 0, rows: [], byFactor: {} };
   const n = results.length;
   const rows = results.map((r) => {
     const [factor, points] = targetFactor(r);
-    return { name: r?.name ?? "?", outcome: r?.outcome ?? "unknown", factor, points, weight: Math.round((1 / n) * 1000) / 1000, contribution: Math.round((points / n) * 100) / 100 };
+    return { name: r?.name ?? "?", outcome: r?.outcome ?? "unknown", factor, points, weight: Math.round((1 / n) * 1000) / 1000, contribution: points / n };
   });
   const byFactor = {};
   for (const row of rows) {
