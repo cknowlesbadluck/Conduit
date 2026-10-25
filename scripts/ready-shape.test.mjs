@@ -65,3 +65,10 @@ test("inherited property names are extra fields, not schema hits (CodeRabbit #24
   // A required name that only exists on Object.prototype is still missing.
   assert.ok(validate({ type: "object", required: ["toString"] }, {}).some((e) => e.includes("missing required")));
 });
+
+test("conduit-ready accepts the additive production boolean from #311 (live 2026-10-25)", () => {
+  const live = JSON.stringify({ status: "ready", service: "conduit", version: "0.8.0", contractRevision: "2026-10-03-ready-surface", persistence: "postgres", production: true });
+  assert.equal(checkShape("conduit-ready", live).ok, true);
+  const bad = JSON.stringify({ status: "ready", service: "conduit", version: "0.8.0", contractRevision: "2026-10-03-ready-surface", persistence: "postgres", production: "yes" });
+  assert.equal(checkShape("conduit-ready", bad).ok, false);
+});
