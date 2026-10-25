@@ -4,14 +4,14 @@
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
-export const JOURNAL_PATTERNS = [/^\.jules\/[^/]+\.md$/, /^\.jules\/journal\//, /^\.bolt\/[^/]+\.md$/];
+const JOURNAL_PATTERNS = [/^\.jules\/[^/]+\.md$/, /^\.jules\/journal\//, /^\.bolt\/[^/]+\.md$/];
 
 export function isJournalPath(path) {
   return typeof path === "string" && JOURNAL_PATTERNS.some((re) => re.test(path));
 }
 
 // gh returns at most 100 files per PR; a list that long may be truncated, so never flag it.
-export const FILE_LIST_CAP = 100;
+const FILE_LIST_CAP = 100;
 
 export function isJournalOnly(files) {
   return Array.isArray(files) && files.length > 0 && files.length < FILE_LIST_CAP && files.every((f) => isJournalPath(f?.path ?? f));
