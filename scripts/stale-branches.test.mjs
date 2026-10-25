@@ -169,3 +169,18 @@ test("contentInMain: branch removing a submodule that main still has is not a ma
     [{ path: "vendor/lib", type: "commit", mode: "160000", sha: "c0ffee" }]);
   assert.equal(await contentInMain({ ...args, fetchImpl }), false);
 });
+
+test("restoreCommand emits a push-to-recreate command only for safe names and full SHAs", async () => {
+  const { restoreCommand, staleBranches } = await import("./stale-branches.mjs");
+  const sha = "a".repeat(40);
+  assert.equal(restoreCommand("feat/x-1", sha), `git push origin ${sha}:refs/heads/feat/x-1`);
+  for (const bad of ["a;rm -rf /", "-x", "a..b", "x y", "$(id)", "/x", "x/", "x.lock"]) assert.equal(restoreCommand(bad, sha), null, bad);
+  assert.equal(restoreCommand("ok", "abc123"), null);
+  assert.equal(restoreCommand("ok", undefined), null);
+  const now = Date.parse("2026-10-25T00:00:00Z");
+  const [e] = staleBranches([{ name: "old", committedAt: "2026-09-01T00:00:00Z", oid: sha }], [], { now });
+  assert.equal(e.tipSha, sha);
+  assert.equal(e.restore, `git push origin ${sha}:refs/heads/old`);
+  const [f] = staleBranches([{ name: "old", committedAt: "2026-09-01T00:00:00Z" }], [], { now });
+  assert.equal("restore" in f, false);
+});
