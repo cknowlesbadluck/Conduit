@@ -1,0 +1,4 @@
+{ "schema": "pr-entropy-snapshot/v1", "at": "2026-10-25T15:00:00.000Z", "repos": {
+  "Conduit": { "open": 17, "drafts": 1, "docsOnly": 2, "conflicting": 3, "ciRed": 0, "changesRequested": 1, "oldestDays": 40,
+    "ageBuckets": { "0-1d": 3, "2-7d": 4, "8-30d": 6, "31d+": 4 }, "closeCandidates": [204, 275] },
+  "Resonance": null } }
