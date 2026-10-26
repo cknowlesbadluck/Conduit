@@ -49,3 +49,8 @@ test("runAuthGate: 401 with valid challenge is gated; 403 needs no challenge", a
   const forbid = await runAuthGate([{ name: "m", method: "POST", url: "https://x", requireBearerChallenge: true }], { fetchImpl: async () => ({ status: 403, headers: new Headers() }) });
   assert.equal(forbid.ok, true);
 });
+test("checkBearerChallenge: exact param name inside the Bearer challenge only (review)", () => {
+  assert.equal(checkBearerChallenge('Bearer not_resource_metadata="https://x/m"').reason, "missing_resource_metadata");
+  assert.equal(checkBearerChallenge('Bearer realm="proxy", Basic resource_metadata="https://x/m"').reason, "missing_resource_metadata");
+  assert.equal(checkBearerChallenge('Basic realm="x", Bearer error="invalid_token", resource_metadata="https://x/m"').ok, true);
+});

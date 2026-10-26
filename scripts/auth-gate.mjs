@@ -30,11 +30,20 @@ export function classifyAuthGate(status) {
  * missing/malformed header => not gated.
  */
 export function checkBearerChallenge(header) {
-  if (typeof header !== "string" || !/^\s*Bearer\b/i.test(header)) return { ok: false, reason: "missing_bearer_challenge" };
-  const m = /resource_metadata="([^"]+)"/i.exec(header);
-  if (!m) return { ok: false, reason: "missing_resource_metadata" };
+  if (typeof header !== "string") return { ok: false, reason: "missing_bearer_challenge" };
+  // Take only the Bearer challenge: from "Bearer" up to the next "<scheme> <token>=" challenge start.
+  const start = /(?:^|,)\s*Bearer(?=\s|$)/i.exec(header);
+  if (!start) return { ok: false, reason: "missing_bearer_challenge" };
+  let rest = header.slice(start.index + start[0].length);
+  const next = /,\s*[A-Za-z][\w-]*\s+[\w-]+=/.exec(rest);
+  if (next) rest = rest.slice(0, next.index);
+  // Exact auth-param names only (param = token "=" quoted-string), comma separated.
+  const params = new Map();
+  for (const m of rest.matchAll(/(?:^|,)\s*([A-Za-z][\w-]*)\s*=\s*"([^"]*)"/g)) params.set(m[1].toLowerCase(), m[2]);
+  const meta = params.get("resource_metadata");
+  if (meta === undefined) return { ok: false, reason: "missing_resource_metadata" };
   let url;
-  try { url = new URL(m[1]); } catch { return { ok: false, reason: "invalid_resource_metadata" }; }
+  try { url = new URL(meta); } catch { return { ok: false, reason: "invalid_resource_metadata" }; }
   if (url.protocol !== "https:") return { ok: false, reason: "insecure_resource_metadata" };
   return { ok: true, reason: "bearer_challenge" };
 }
