@@ -100,3 +100,13 @@ test("entropy extras: age buckets, overlap pairs, owner-only count (fail-closed)
   assert.equal(await loadOwnerOnly(async () => { throw new Error("missing"); }), null);
   assert.equal(typeof (await loadOwnerOnly(async () => ({ isOwnerOnlyPath: () => true }))), "function");
 });
+
+test("review round: commit statuses ordered by createdAt; a list at the limit is unavailable", () => {
+  const older = { __typename: "StatusContext", context: "ci/x", state: "SUCCESS", createdAt: "2026-10-25T01:00:00Z" };
+  const newer = { __typename: "StatusContext", context: "ci/x", state: "FAILURE", createdAt: "2026-10-25T02:00:00Z" };
+  assert.equal(ciState([newer, older]), "red"); // reversed order: newer failure still wins
+  assert.equal(ciState([older, newer]), "red");
+  const exec = (_c, args) => JSON.stringify(Array.from({ length: Number(args[args.indexOf("--limit") + 1]) }, (_, i) => ({ number: i })));
+  assert.equal(fetchOpenPrs("R", { exec, limit: 3 }), null);
+  assert.equal(fetchOpenPrs("R", { exec: () => "[{\"number\":1}]", limit: 3 }).length, 1);
+});

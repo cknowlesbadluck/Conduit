@@ -6,6 +6,8 @@
 // Usage: node scripts/pr-hygiene.mjs [--json] [--repos QuicksilverV1,Conduit,Resonance] [--target 10]
 // Auth:  the local `gh` CLI session or GH_TOKEN, used only by `gh` itself (never read or printed).
 import { execFileSync } from "node:child_process";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export const IGNORED_CHECKS = new Set(["Workers Builds: conduit"]);
 const DAY = 86_400_000;
@@ -36,7 +38,7 @@ export function ciState(rollup) {
   for (const c of rollup) {
     const name = c?.name ?? c?.context ?? "?";
     if (IGNORED_CHECKS.has(name)) continue;
-    const at = runTime(c?.startedAt) || runTime(c?.completedAt); // order reruns by start time; gh zero-times count as missing
+    const at = runTime(c?.startedAt) || runTime(c?.completedAt) || runTime(c?.createdAt); // reruns by start time; commit statuses by createdAt; gh zero-times count as missing
     const key = `${c?.__typename ?? (c?.context !== undefined ? "StatusContext" : "CheckRun")}:${name}`; // check runs and statuses are separate gates
     const prev = latest.get(key);
     if (!prev || at >= prev.at) latest.set(key, { at, c });
@@ -144,15 +146,17 @@ export async function loadOwnerOnly(load = () => import("./owner-only-paths.mjs"
 }
 
 const FIELDS = "number,title,headRefName,baseRefName,isDraft,mergeable,reviewDecision,createdAt,updatedAt,files,changedFiles,statusCheckRollup";
-export function fetchOpenPrs(repo, { owner = "cknowlesbadluck", exec = execFileSync } = {}) {
+export const FETCH_LIMIT = 500;
+/** null (unavailable) on any error, and when the list reaches FETCH_LIMIT (possibly truncated): never a partial total. */
+export function fetchOpenPrs(repo, { owner = "cknowlesbadluck", exec = execFileSync, limit = FETCH_LIMIT } = {}) {
   try {
-    const out = exec("gh", ["pr", "list", "-R", `${owner}/${repo}`, "--state", "open", "--limit", "200", "--json", FIELDS], { encoding: "utf8", timeout: 60_000, maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"] });
+    const out = exec("gh", ["pr", "list", "-R", `${owner}/${repo}`, "--state", "open", "--limit", String(limit), "--json", FIELDS], { encoding: "utf8", timeout: 60_000, maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"] });
     const data = JSON.parse(out);
-    return Array.isArray(data) ? data : null;
+    return Array.isArray(data) && data.length < limit ? data : null;
   } catch { return null; }
 }
 
-const isMain = import.meta.url === `file://${process.argv[1]}`;
+const isMain = Boolean(process.argv[1]) && fileURLToPath(import.meta.url) === resolve(process.argv[1]);
 if (isMain) {
   const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
   const repos = arg("--repos", "QuicksilverV1,Conduit,Resonance").split(",").filter((r) => /^[A-Za-z0-9._-]+$/.test(r));
