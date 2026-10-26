@@ -7,12 +7,12 @@
 // assertion is a way to weaken the guard.
 export const OWNER_ONLY_PATHS = Object.freeze([
   /(^|\/)auth/i, // token verification, scopes, auth tests
-  /^src\/(index|app-factory)\.ts$/, // production boot and /mcp wiring
+  /^src\/(index|app-factory)(\.test)?\.ts$/, // production boot and /mcp wiring
   /grant/i, /capabilit/i, /tool-gates/i, // capability grants and enforcement
   /bridge/i, /external-policy/i, /receipt/i, // MCP bridge, outbound policy, receipts
   /migrat/i, // schema migrations
   /secret/i, /(^|\/)\.env/i, // secrets and env files
-  /tls/i, /^src\/(store|db-ready|binding-subjects|capability-store)\.ts$/, // DB TLS / pool SSL config
+  /tls/i, /^src\/(store|db-ready|binding-subjects|capability-store)(\.test)?\.ts$/, // DB TLS / pool SSL config
   /proxy/i, /trust/i, // proxy trust / client IP keying
   /(^|\/)render\.yaml$/i, /^\.github\/workflows\//i, // deploy and CI config
 ]);

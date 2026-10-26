@@ -19,3 +19,8 @@ test("fails closed on missing paths; accepts gh file shapes; list is frozen", ()
   assert.deepEqual(ownerOnlyPaths(["a.md", { filename: "src/auth.ts" }, { path: "src/grant-tools.ts" }, { filename: "b.md" }]), ["src/auth.ts", "src/grant-tools.ts"]);
   assert.ok(Object.isFrozen(OWNER_ONLY_PATHS));
 });
+
+test("tests of exact-match owner-only sources are owner-only too (review)", () => {
+  for (const f of ["src/index.test.ts", "src/app-factory.test.ts", "src/store.test.ts", "src/db-ready.test.ts", "src/binding-subjects.test.ts"]) assert.equal(isOwnerOnlyPath(f), true, f);
+  assert.equal(isOwnerOnlyPath("src/storefront.ts"), false);
+});
