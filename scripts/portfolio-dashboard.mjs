@@ -6,11 +6,14 @@
 // the exit code nonzero. Never writes, closes, merges, or prints credentials.
 //
 // Usage: node scripts/portfolio-dashboard.mjs [--json] [--repos QuicksilverV1,Conduit,Resonance]
+//          [--consistency [--roadmap-ref main]]   (adds scripts/portfolio-consistency.mjs; an inconsistency fails the run)
 // Auth:  the local `gh` session or GH_TOKEN, used only by `gh` itself.
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { TARGETS, observe, classify } from "./portfolio-probe.mjs";
 import { summarizeRepo, fetchOpenPrs, loadOwnerOnly } from "./pr-hygiene.mjs";
+import { checkConsistency, consistencyMarkdown } from "./portfolio-consistency.mjs";
+import { execFileSync } from "node:child_process";
 
 /** Planes the portfolio owns: these must be ready. Everything else is an alias owner check (informational). */
 const OWNED = new Set(["conduit", "resonance-netlify"]);
@@ -76,9 +79,24 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     const isOwnerOnly = await loadOwnerOnly();
     const repos = Object.fromEntries(names.map((r) => [r, summarizeRepo(fetchOpenPrs(r), { isOwnerOnly })]));
     d = buildDashboard({ planes, repos });
+    if (process.argv.includes("--consistency")) {
+      const j = process.argv.indexOf("--roadmap-ref");
+      const ref = j > 0 && /^[A-Za-z0-9._\/-]+$/.test(process.argv[j + 1] ?? "") ? process.argv[j + 1] : "main";
+      const body = async (u) => { try { const res = await fetch(u, { signal: AbortSignal.timeout(20_000) }); return res.ok ? await res.json() : null; } catch { return null; } };
+      let unauthPostStatus = null; // unauthenticated, empty body: must be rejected; nothing is created
+      try { unauthPostStatus = (await fetch("https://resonancenexus.netlify.app/api/nexus/executions", { method: "POST", headers: { "content-type": "application/json" }, body: "{}", signal: AbortSignal.timeout(20_000) })).status; } catch {}
+      let roadmap = null;
+      try { roadmap = execFileSync("gh", ["api", "-H", "Accept: application/vnd.github.raw", `repos/cknowlesbadluck/Resonance/contents/docs/PORTFOLIO-ROADMAP-10-PHASE.md?ref=${ref}`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); } catch {}
+      const k = checkConsistency({ roadmap, live: {
+        conduit: await body(TARGETS.find((t) => t.name === "conduit").url),
+        resonance: await body(TARGETS.find((t) => t.name === "resonance-netlify").url),
+        unauthPostStatus, openPrs: Object.fromEntries(d.repos.map((r) => [r.repo, r.open])) } });
+      d = { ...d, ready: d.ready && k.consistent, problems: [...d.problems, ...k.problems], consistency: { ref, ...k } };
+    }
   } catch (e) {
     d = { ready: false, problems: [`dashboard_error:${String(e?.message ?? e).slice(0, 120)}`], planes: [], aliasOwnerCheck: [], repos: [] };
   }
-  console.log(process.argv.includes("--json") ? JSON.stringify({ at: new Date().toISOString(), ...d }, null, 2) : dashboardMarkdown(d));
+  console.log(process.argv.includes("--json") ? JSON.stringify({ at: new Date().toISOString(), ...d }, null, 2)
+    : dashboardMarkdown(d) + (d.consistency ? `\n\n_Roadmap ref: ${d.consistency.ref}_\n` + consistencyMarkdown(d.consistency) : ""));
   process.exitCode = d.ready ? 0 : 1;
 }
