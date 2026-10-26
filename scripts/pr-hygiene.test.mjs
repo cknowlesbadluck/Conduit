@@ -82,3 +82,21 @@ test("fetchOpenPrs passes a large maxBuffer", () => {
   let opts; fetchOpenPrs("Conduit", { exec: (_c, _a, o) => { opts = o; return "[]"; } });
   assert.ok(opts.maxBuffer >= 16 * 1024 * 1024);
 });
+
+test("entropy extras: age buckets, overlap pairs, owner-only count (fail-closed)", async () => {
+  const { ageBuckets, overlapPairs, ownerOnlyCount, loadOwnerOnly } = await import("./pr-hygiene.mjs");
+  assert.deepEqual(ageBuckets([{ ageDays: 0 }, { ageDays: 3 }, { ageDays: 9 }, { ageDays: 30 }, { ageDays: null }]), { "0-1d": 1, "2-7d": 1, "8-14d": 1, "15d+": 1, unknown: 1 });
+  const prs = [
+    { number: 1, files: [{ path: "src/a.ts" }, { path: "README.md" }], changedFiles: 2 },
+    { number: 2, files: [{ path: "src/a.ts" }], changedFiles: 1 },
+    { number: 3, files: [{ path: "docs/x.md" }], changedFiles: 1 },
+    { number: 4, files: [], changedFiles: 0 },
+    { number: 5, files: [{ path: "docs/y.md" }], changedFiles: 150 },
+  ];
+  assert.deepEqual(overlapPairs(prs), [{ a: 1, b: 2, files: ["src/a.ts"] }]);
+  const owner = (f) => f.startsWith("src/");
+  assert.equal(ownerOnlyCount(prs, owner), 4); // #1, #2 by path; #4 empty and #5 incomplete fail closed
+  assert.equal(ownerOnlyCount(prs, undefined), null); // unknown, never 0
+  assert.equal(await loadOwnerOnly(async () => { throw new Error("missing"); }), null);
+  assert.equal(typeof (await loadOwnerOnly(async () => ({ isOwnerOnlyPath: () => true }))), "function");
+});

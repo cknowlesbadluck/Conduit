@@ -71,8 +71,44 @@ export function classifyPr(pr, now = Date.now()) {
   };
 }
 
+export const AGE_BUCKETS = [["0-1d", 1], ["2-7d", 7], ["8-14d", 14], ["15d+", Infinity]];
+/** Pure. Counts per age bucket; unknown ages go to "unknown". */
+export function ageBuckets(rows) {
+  const out = Object.fromEntries([...AGE_BUCKETS.map(([k]) => [k, 0]), ["unknown", 0]]);
+  for (const r of rows) {
+    const b = Number.isFinite(r?.ageDays) ? AGE_BUCKETS.find(([, max]) => r.ageDays <= max) : null;
+    out[b ? b[0] : "unknown"]++;
+  }
+  return out;
+}
+
+const pathsOf = (pr) => (Array.isArray(pr?.files) ? pr.files.map((f) => f?.path).filter((x) => typeof x === "string" && x) : []);
+/** Pure. PR pairs that touch the same file, with the shared paths. */
+export function overlapPairs(prs) {
+  const list = (prs ?? []).map((p) => ({ n: p?.number, f: new Set(pathsOf(p)) }));
+  const out = [];
+  for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+    const shared = [...list[i].f].filter((x) => list[j].f.has(x));
+    if (shared.length) out.push({ a: list[i].n, b: list[j].n, files: shared.sort() });
+  }
+  return out;
+}
+
+/**
+ * Pure. PRs touching an owner-only path. `isOwnerOnly` comes from the shared owner-only-paths module (#332);
+ * without it the count is null ("unknown"), never 0. An empty or incomplete file list counts as owner-only (fail-closed).
+ */
+export function ownerOnlyCount(prs, isOwnerOnly) {
+  if (typeof isOwnerOnly !== "function") return null;
+  return (prs ?? []).filter((p) => {
+    const files = pathsOf(p);
+    if (!files.length || (Number.isInteger(p?.changedFiles) && p.changedFiles !== files.length)) return true;
+    return files.some((f) => isOwnerOnly(f));
+  }).length;
+}
+
 /** Pure repo summary. */
-export function summarizeRepo(prs, { now = Date.now(), target = 10 } = {}) {
+export function summarizeRepo(prs, { now = Date.now(), target = 10, isOwnerOnly } = {}) {
   if (!Array.isArray(prs)) return null;
   const rows = prs.map((p) => classifyPr(p, now)).sort((a, b) => (b.idleDays ?? 0) - (a.idleDays ?? 0));
   const count = (f) => rows.filter(f).length;
@@ -80,6 +116,7 @@ export function summarizeRepo(prs, { now = Date.now(), target = 10 } = {}) {
     open: rows.length, overTarget: Math.max(0, rows.length - target), drafts: count((r) => r.draft), stacked: count((r) => r.stacked),
     docsOnly: count((r) => r.docsOnly), conflicting: count((r) => r.conflicting), ciRed: count((r) => r.ci === "red"), ciGreen: count((r) => r.ci === "green"),
     changesRequested: count((r) => r.changesRequested), oldestDays: rows.reduce((m, r) => Math.max(m, r.ageDays ?? 0), 0),
+    ageBuckets: ageBuckets(rows), overlaps: overlapPairs(prs), ownerOnly: ownerOnlyCount(prs, isOwnerOnly),
     closeCandidates: rows.filter((r) => r.closeCandidate).map((r) => ({ number: r.number, reasons: r.reasons, title: r.title })), rows,
   };
 }
@@ -91,7 +128,19 @@ export function hygieneMarkdown(report) {
     if (!s) { out.push(`| ${name} | unavailable | | | | | | | |`); continue; }
     out.push(`| ${name} | ${s.open} | ${s.overTarget} | ${s.docsOnly} | ${s.conflicting} | ${s.ciRed} | ${s.changesRequested} | ${s.oldestDays} | ${s.closeCandidates.map((c) => `#${c.number}`).join(" ") || "-"} |`);
   }
+  out.push("", "| Repo | Age buckets (0-1d / 2-7d / 8-14d / 15d+) | Overlap pairs | Owner-only |", "|---|---|---|---|");
+  for (const [repo, s] of Object.entries(report ?? {})) {
+    const name = String(repo).replace(/[^A-Za-z0-9._-]/g, "");
+    if (!s) { out.push(`| ${name} | unavailable | | |`); continue; }
+    const b = s.ageBuckets ?? {};
+    out.push(`| ${name} | ${b["0-1d"]} / ${b["2-7d"]} / ${b["8-14d"]} / ${b["15d+"]} | ${(s.overlaps ?? []).map((o) => `#${o.a}×#${o.b}`).join(" ") || "-"} | ${s.ownerOnly ?? "unknown"} |`);
+  }
   return out.join("\n");
+}
+
+/** Loads the shared owner-only predicate (#332) if present; null otherwise (counts render as "unknown"). */
+export async function loadOwnerOnly(load = () => import("./owner-only-paths.mjs")) {
+  try { const m = await load(); return typeof m?.isOwnerOnlyPath === "function" ? m.isOwnerOnlyPath : null; } catch { return null; }
 }
 
 const FIELDS = "number,title,headRefName,baseRefName,isDraft,mergeable,reviewDecision,createdAt,updatedAt,files,changedFiles,statusCheckRollup";
@@ -111,7 +160,8 @@ if (isMain) {
   const target = Number(rawTarget);
   if (!/^\d+$/.test(String(rawTarget)) || !Number.isSafeInteger(target)) { console.error("--target must be a non-negative integer"); process.exit(2); }
   const report = {};
-  for (const repo of repos) report[repo] = summarizeRepo(fetchOpenPrs(repo), { target });
+  const isOwnerOnly = await loadOwnerOnly();
+  for (const repo of repos) report[repo] = summarizeRepo(fetchOpenPrs(repo), { target, isOwnerOnly });
   if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), target, report }, null, 2));
   else {
     console.log(hygieneMarkdown(report));
