@@ -35,10 +35,13 @@ export function runTime(v) {
 export function ciState(rollup) {
   if (!Array.isArray(rollup) || rollup.length === 0) return "none";
   const latest = new Map();
+  let undatedPending = false; // a queued rerun with no timestamps can't be ordered: never let an older success read as green
   for (const c of rollup) {
     const name = c?.name ?? c?.context ?? "?";
     if (IGNORED_CHECKS.has(name)) continue;
     const at = runTime(c?.startedAt) || runTime(c?.completedAt) || runTime(c?.createdAt); // reruns by start time; commit statuses by createdAt; gh zero-times count as missing
+    const raw = String(c?.conclusion || c?.state || c?.status || "").toUpperCase();
+    if (!at && !GREEN.has(raw) && !RED.has(raw)) undatedPending = true;
     const key = `${c?.__typename ?? (c?.context !== undefined ? "StatusContext" : "CheckRun")}:${name}`; // check runs and statuses are separate gates
     const prev = latest.get(key);
     if (!prev || at >= prev.at) latest.set(key, { at, c });
@@ -49,7 +52,7 @@ export function ciState(rollup) {
     if (RED.has(concl)) return "red";
     if (!GREEN.has(concl)) pending = true; // in progress, empty, or cancelled: not green yet
   }
-  return latest.size === 0 ? "none" : pending ? "pending" : "green";
+  return latest.size === 0 ? "none" : pending || undatedPending ? "pending" : "green";
 }
 
 /** Pure per-PR classification. `now` is ms since epoch. */

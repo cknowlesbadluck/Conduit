@@ -110,3 +110,11 @@ test("review round: commit statuses ordered by createdAt; a list at the limit is
   assert.equal(fetchOpenPrs("R", { exec, limit: 3 }), null);
   assert.equal(fetchOpenPrs("R", { exec: () => "[{\"number\":1}]", limit: 3 }).length, 1);
 });
+
+test("an undated queued rerun keeps an older success from reading green (review)", () => {
+  const done = { __typename: "CheckRun", name: "verify", conclusion: "SUCCESS", status: "COMPLETED", startedAt: "2026-10-25T01:00:00Z", completedAt: "2026-10-25T01:05:00Z" };
+  const queued = { __typename: "CheckRun", name: "verify", conclusion: "", status: "QUEUED", startedAt: "0001-01-01T00:00:00Z", completedAt: "0001-01-01T00:00:00Z" };
+  assert.equal(ciState([done, queued]), "pending");
+  assert.equal(ciState([queued, done]), "pending");
+  assert.equal(ciState([done]), "green");
+});
