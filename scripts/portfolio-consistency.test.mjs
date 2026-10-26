@@ -60,3 +60,13 @@ test("only the first current phases table is read; later historical tables are i
   const doc = md("passed", "in progress", "in progress") + "\n\nold:\n\n| # | Phase | Exit | Status |\n|---|---|---|---|\n| 1 | Old | x | [blocked] |";
   assert.deepEqual(parsePhases(doc).map((p) => p.n), [1, 2, 3, 10]);
 });
+
+test("1.0 passed with prerequisite rows missing is a contradiction (review)", () => {
+  const doc = "| # | Phase | Exit | Status |\n|---|---|---|---|\n| 10 | 1.0 | all | [passed] |";
+  assert.ok(checkConsistency({ live: live(), roadmap: doc }).problems.includes("phase_claim_contradicted:10"));
+});
+
+test("a malformed row inside the phases table fails closed (review)", () => {
+  const doc = md("passed", "in progress", "in progress").replace("| 2 | Fail-closed edges | 401 | [in progress] |", "| two | broken row");
+  assert.ok(checkConsistency({ live: live(), roadmap: doc }).problems.includes("phase_row_unparseable"));
+});

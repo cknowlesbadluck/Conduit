@@ -39,3 +39,9 @@ test("Conduit cold start: retries on the 10/20/30/45 s schedule until ready; err
   const once = await probeTarget(conduit, { observeImpl: async () => ({ error: "timeout" }), sleep: async () => assert.fail("no retry"), coldStart: false });
   assert.equal(once.attempts, 1);
 });
+
+test("probeTarget applies the pinned schema: a ready status with a wrong-shaped body is not ready (review)", async () => {
+  const res = TARGETS.find((t) => t.name === "resonance-netlify");
+  const r = await probeTarget(res, { observeImpl: async () => ({ status: 200, body: JSON.stringify({ status: "ready", service: "resonance-nexus" }) }) });
+  assert.equal(r.ok, false);
+});

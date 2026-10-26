@@ -22,7 +22,7 @@ export function parsePhases(md) {
   for (let i = h + 2; i < lines.length && lines[i].startsWith("|"); i++) {
     const line = lines[i];
     const m = /^\|\s*(\d+)\s*\|\s*([^|]+?)\s*\|.*\|\s*([^|]*)\|\s*$/.exec(line);
-    if (!m) continue;
+    if (!m) { out.push({ n: null, name: line.slice(0, 60), status: "unparseable" }); continue; } // fail closed, never skip
     const s = STATUS.exec(m[3]);
     out.push({ n: Number(m[1]), name: m[2], status: s ? s[1].toLowerCase() : "unknown" });
   }
@@ -62,8 +62,10 @@ export function checkConsistency({ live, roadmap }) {
     3: counts.length > 0 && counts.every((n) => Number.isInteger(n) && n < PR_TARGET), // one snapshot: necessary, not sufficient (7 days)
   };
   for (const p of phases) {
+    if (p.status === "unparseable") { problems.push("phase_row_unparseable"); continue; }
     if (p.status === "unknown") { problems.push(`phase_status_unknown:${p.n}`); continue; }
-    const ev = p.n === 10 ? phases.filter((q) => q.n !== 10).every((q) => q.status === "passed") : evidence[p.n];
+    // 1.0 needs every prerequisite phase 1..9 present and passed; a missing row is not a pass.
+    const ev = p.n === 10 ? [1, 2, 3, 4, 5, 6, 7, 8, 9].every((n) => phases.some((q) => q.n === n && q.status === "passed")) : evidence[p.n];
     const row = { phase: p.n, name: p.name, claimed: p.status, evidence: ev === undefined ? "unchecked" : ev ? "pass" : "fail" };
     checks.push(row);
     if (ev === undefined) continue;

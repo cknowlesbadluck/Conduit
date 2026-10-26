@@ -10,7 +10,7 @@
 // Auth:  the local `gh` session or GH_TOKEN, used only by `gh` itself.
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { TARGETS, observe, classify } from "./portfolio-probe.mjs";
+import { TARGETS, observe, classify, attachShape, attachParity } from "./portfolio-probe.mjs";
 import { summarizeRepo, fetchOpenPrs, loadOwnerOnly } from "./pr-hygiene.mjs";
 import { checkConsistency, consistencyMarkdown } from "./portfolio-consistency.mjs";
 import { execFileSync } from "node:child_process";
@@ -24,12 +24,14 @@ const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Probe one target; for `coldStart` targets retry on the fixed schedule until ready. Errors -> classified non-ready. */
 export async function probeTarget(target, { observeImpl = observe, sleep = sleepMs, coldStart = false, delays = COLD_START_DELAYS_S } = {}) {
-  let r = classify(target, await observeImpl(target.url).catch(() => ({ error: "unreachable" })));
+  // Same pipeline as probeAll: a ready status with a body that fails the pinned schema is shape_changed, not ready.
+  const once = async () => { const o = await observeImpl(target.url).catch(() => ({ error: "unreachable" })); return attachShape(target, o, attachParity(target, o, classify(target, o))); };
+  let r = await once();
   let attempts = 1;
   for (const s of coldStart ? delays : []) {
     if (r.ok) break;
     await sleep(s * 1000);
-    r = classify(target, await observeImpl(target.url).catch(() => ({ error: "unreachable" })));
+    r = await once();
     attempts++;
   }
   return { ...r, attempts };
@@ -86,7 +88,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
       let unauthPostStatus = null; // unauthenticated, empty body: must be rejected; nothing is created
       try { unauthPostStatus = (await fetch("https://resonancenexus.netlify.app/api/nexus/executions", { method: "POST", headers: { "content-type": "application/json" }, body: "{}", signal: AbortSignal.timeout(20_000) })).status; } catch {}
       let roadmap = null;
-      try { roadmap = execFileSync("gh", ["api", "-H", "Accept: application/vnd.github.raw", `repos/cknowlesbadluck/Resonance/contents/docs/PORTFOLIO-ROADMAP-10-PHASE.md?ref=${ref}`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); } catch {}
+      try { roadmap = execFileSync("gh", ["api", "-H", "Accept: application/vnd.github.raw", `repos/cknowlesbadluck/Resonance/contents/docs/PORTFOLIO-ROADMAP-10-PHASE.md?ref=${ref}`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 20_000 }); } catch {}
       const k = checkConsistency({ roadmap, live: {
         conduit: await body(TARGETS.find((t) => t.name === "conduit").url),
         resonance: await body(TARGETS.find((t) => t.name === "resonance-netlify").url),
