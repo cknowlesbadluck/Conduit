@@ -17,6 +17,7 @@ import { createEventStreamHandler } from "./sse.js";
 import { getPublicConduitStatus } from "./status.js";
 import { createDiagnosticsHandler } from "./diagnostics-route.js";
 import { conduitUiHtml, CONDUIT_UI_CSS, CONDUIT_UI_JS } from "./ui.js";
+import { assertPersistenceConfig } from "./persistence-guard.js";
 
 const app = express();
 app.disable("x-powered-by");
@@ -66,6 +67,7 @@ app.get("/ready", async (_req, res) => {
 });
 
 async function boot() {
+  assertPersistenceConfig();
   await init();
   await initCapabilityStore();
   const authConfig = await loadAuthConfig();
