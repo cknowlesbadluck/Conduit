@@ -150,3 +150,14 @@ test("openPrCounts: counts per repo, null (fail-closed) on HTTP error, throw, or
   const counts = await openPrCounts({ repos: ["A", "B", "C", "D", "E"], fetchImpl });
   assert.deepEqual(counts, { A: 7, B: null, C: null, D: null, E: null });
 });
+
+test("exit gate ignores unowned Vercel aliases and fails closed without owned results", async () => {
+  const { probeExitPass } = await import("./portfolio-probe.mjs");
+  const ok = [{ name: "conduit", ok: true }, { name: "resonance-netlify", ok: true }];
+  const aliases = [{ name: "resonance-vercel", ok: false, outcome: "stranger_occupant" }, { name: "quicksilverv1-vercel", ok: false, outcome: "alias_absent" }];
+  assert.equal(probeExitPass([...ok, ...aliases]), true);
+  assert.equal(probeExitPass([{ name: "conduit", ok: false }, ...ok.slice(1), ...aliases]), false);
+  assert.equal(probeExitPass(aliases), false);
+  assert.equal(probeExitPass([]), false);
+  assert.equal(probeExitPass(undefined), false);
+});

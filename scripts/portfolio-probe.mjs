@@ -239,7 +239,7 @@ if (isMain) {
   if (prEntropyReport && process.argv.includes("--markdown")) console.log(entropyMarkdown(prEntropyReport));
   else if (process.argv.includes("--json")) console.log(JSON.stringify({ at: new Date().toISOString(), score, scoreScope: "owned", legacyScore, scoreBreakdown, prCounts, prEntropy: prEntropyReport, consistency, authGate, decisions, staleBranches, results }, null, 2));
   else { console.log("Portfolio maturity score (owned targets):", score, "/10; legacy all-target:", legacyScore); console.log(scoreBreakdownTable(scoreBreakdown)); results.forEach(r => console.log(r.name, r.outcome, r.ok ? "OK" : "FAIL", r.drift ? "DRIFT" : "")); console.log("Open PR entropy:", JSON.stringify(prCounts)); if (prEntropyReport) console.log("PR age/stack:", JSON.stringify(prEntropyReport)); if (decisions) for (const [repo, q] of Object.entries(decisions)) console.log("Decisions", repo, q ? JSON.stringify(q.byCategory) : "unavailable"); if (staleBranches) for (const [repo, l] of Object.entries(staleBranches)) console.log("Stale branches", repo, l ? JSON.stringify(l.map((b) => `${b.name} (${b.ageDays}d)`)) : "unavailable"); }
-  const pass = process.argv.includes("--drift-only") ? results.every((r) => !r.drift || !TARGETS.find((t) => t.name === r.name)?.expect) : results.every((r) => r.ok);
+  const pass = probeExitPass(results, { driftOnly: process.argv.includes("--drift-only") });
   process.exitCode = pass && (!authGate || authGate.ok) ? 0 : 1;
 }
 
@@ -374,4 +374,14 @@ export function entropyMarkdown(report) {
     rows.push(`| ${name} | ${n(e.open)} | ${n(b.lt1d)} | ${n(b.d1to7)} | ${n(b.d7to30)} | ${n(b.gt30d)} | ${n(e.oldestDays)} | ${n(e.stacked)} | ${n(e.maxStackDepth)} | ${n(e.drafts)} |`);
   }
   return rows.join("\n");
+}
+
+/**
+ * Exit gate over owned targets only. Unowned Vercel aliases are informational and never fail the run.
+ * Fail-closed: no owned result at all (e.g. every probe missing) is a failure, not a pass.
+ */
+export function probeExitPass(results, { driftOnly = false, unowned = UNOWNED_TARGETS, targets = TARGETS } = {}) {
+  const owned = (Array.isArray(results) ? results : []).filter((r) => !unowned.has(r?.name));
+  if (owned.length === 0) return false;
+  return driftOnly ? owned.every((r) => !r.drift || !targets.find((t) => t.name === r.name)?.expect) : owned.every((r) => r.ok);
 }
