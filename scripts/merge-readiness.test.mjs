@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { evaluate, fetchPr, envVarMentioned, declaredConstants } from "./merge-readiness.mjs";
+import { evaluate, fetchPr, envVarMentioned, declaredConstants, SENSITIVE } from "./merge-readiness.mjs";
 
 const ok = () => ({ number: 400, state: "OPEN", isDraft: false, baseRefName: "main", mergeable: "MERGEABLE", behindBy: 0, unresolvedThreads: 0, body: "No env vars.",
   files: ["scripts/x.mjs"], reviews: [{ author: "coderabbitai", state: "COMMENTED" }],
@@ -124,4 +124,14 @@ test("external-call grant enforcement and owner-only tests are sensitive (aligne
 
 test("variant test files of owner-only sources are sensitive", () => {
   for (const f of ["src/store.pagination.postgres.test.ts", "src/db-ready-timeout.test.ts"]) assert.deepEqual(evaluate({ ...ok(), files: [f] }).blockers, [`sensitive_path:${f}`]);
+});
+
+test("merge-readiness and merge-train share one owner-only path list (no drift)", async () => {
+  const { OWNER_ONLY_PATHS } = await import("./owner-only-paths.mjs");
+  const train = await import("./merge-train.mjs");
+  assert.equal(SENSITIVE, OWNER_ONLY_PATHS);
+  assert.equal(train.SENSITIVE, OWNER_ONLY_PATHS);
+});
+test("non-string file entries fail closed as owner-only", () => {
+  assert.ok(evaluate({ ...ok(), files: [""] }).blockers.some((b) => b.startsWith("sensitive_path")));
 });

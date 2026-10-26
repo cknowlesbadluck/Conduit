@@ -1,5 +1,5 @@
 // Single source of truth for Conduit paths that only the owner may merge.
-// Used by scripts/merge-train.mjs (and by the merge-readiness checker when it lands) so the
+// Used by scripts/merge-train.mjs and scripts/merge-readiness.mjs so the
 // two gates cannot drift: before this module they disagreed (merge-train missed migrations,
 // secrets, .env, DB TLS, proxy trust, render.yaml and workflows; the readiness draft missed
 // bridge, external-policy and receipt).

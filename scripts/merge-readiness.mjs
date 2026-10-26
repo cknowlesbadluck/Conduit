@@ -4,16 +4,12 @@
 // Usage: node scripts/merge-readiness.mjs <pr> [<pr> ...] [--repo owner/name] [--json]
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
+import { OWNER_ONLY_PATHS, isOwnerOnlyPath } from "./owner-only-paths.mjs";
 
 export const IGNORED_CHECKS = new Set(["Workers Builds: conduit"]);
 export const NEVER_MERGE = new Set([206, 212, 234, 238, 243, 209, 155, 120, 321]);
-// auth/grants/migrations/secrets/DB TLS/proxy trust and env surfaces are owner-only.
-export const SENSITIVE = [/(^|\/)auth/i, /^src\/(index|app-factory)(([.-][A-Za-z0-9.-]*)?\.test)?\.ts$/, /bridge/i, /external-policy/i, /receipt/i, // external-call grant enforcement + bridge receipts (aligned with #332)
-  // token verification + scope enforcement wiring
-  /grant/i, /capabilit/i, /tool-gates/i, /migrat/i, // capability grant enforcement (src/capabilities.ts) and tool gating are grants surfaces
-  /secret/i, /(^|\/)\.env/i, /tls/i, /proxy/i, /trust/i, /render\.yaml$/i, /\.github\/workflows\//i,
-  // DB TLS / pool SSL config lives in these files (DATABASE_SSL_REJECT_UNAUTHORIZED, sslOption).
-  /^src\/(store|db-ready|binding-subjects|capability-store)(([.-][A-Za-z0-9.-]*)?\.test)?\.ts$/];
+// Owner-only surfaces: single shared source with merge-train (scripts/owner-only-paths.mjs) so the gates cannot drift.
+export const SENSITIVE = OWNER_ONLY_PATHS;
 const GREEN = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"]);
 
 const SNAKE = /\b[A-Z][A-Z0-9]*_[A-Z0-9_]*[A-Z0-9]\b/g;
@@ -58,7 +54,7 @@ export function evaluate(pr) {
     if (!GREEN.has(s)) blockers.push(`check_${s.toLowerCase()}:${c.name}`);
   }
   if (!Array.isArray(pr.files) || pr.files.length === 0) blockers.push("files_unknown");
-  else for (const f of pr.files) if (SENSITIVE.some((re) => re.test(f))) { blockers.push(`sensitive_path:${f}`); }
+  else for (const f of pr.files) if (isOwnerOnlyPath(f)) { blockers.push(`sensitive_path:${f}`); }
   if (envVarMentioned(pr.body, pr.codeConstants)) blockers.push("mentions_env_vars");
   if (Number.isInteger(pr.changedFiles) && Array.isArray(pr.files) && pr.files.length < pr.changedFiles) blockers.push("files_incomplete");
   return { ready: blockers.length === 0, blockers };
