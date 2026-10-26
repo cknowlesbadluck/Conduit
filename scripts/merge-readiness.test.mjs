@@ -121,3 +121,7 @@ test("external-call grant enforcement and owner-only tests are sensitive (aligne
   for (const f of ["src/external-policy.ts", "src/bridge.ts", "src/receipts.ts", "src/index.test.ts", "src/store.test.ts"])
     assert.ok(evaluate({ ...ok(), files: [f] }).blockers.includes(`sensitive_path:${f}`), f);
 });
+
+test("variant test files of owner-only sources are sensitive", () => {
+  for (const f of ["src/store.pagination.postgres.test.ts", "src/db-ready-timeout.test.ts"]) assert.deepEqual(evaluate({ ...ok(), files: [f] }).blockers, [`sensitive_path:${f}`]);
+});

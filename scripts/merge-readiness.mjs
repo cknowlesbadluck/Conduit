@@ -8,12 +8,12 @@ import { pathToFileURL } from "node:url";
 export const IGNORED_CHECKS = new Set(["Workers Builds: conduit"]);
 export const NEVER_MERGE = new Set([206, 212, 234, 238, 243, 209, 155, 120, 321]);
 // auth/grants/migrations/secrets/DB TLS/proxy trust and env surfaces are owner-only.
-export const SENSITIVE = [/(^|\/)auth/i, /^src\/(index|app-factory)(\.test)?\.ts$/, /bridge/i, /external-policy/i, /receipt/i, // external-call grant enforcement + bridge receipts (aligned with #332)
+export const SENSITIVE = [/(^|\/)auth/i, /^src\/(index|app-factory)(([.-][A-Za-z0-9.-]*)?\.test)?\.ts$/, /bridge/i, /external-policy/i, /receipt/i, // external-call grant enforcement + bridge receipts (aligned with #332)
   // token verification + scope enforcement wiring
   /grant/i, /capabilit/i, /tool-gates/i, /migrat/i, // capability grant enforcement (src/capabilities.ts) and tool gating are grants surfaces
   /secret/i, /(^|\/)\.env/i, /tls/i, /proxy/i, /trust/i, /render\.yaml$/i, /\.github\/workflows\//i,
   // DB TLS / pool SSL config lives in these files (DATABASE_SSL_REJECT_UNAUTHORIZED, sslOption).
-  /^src\/(store|db-ready|binding-subjects|capability-store)(\.test)?\.ts$/];
+  /^src\/(store|db-ready|binding-subjects|capability-store)(([.-][A-Za-z0-9.-]*)?\.test)?\.ts$/];
 const GREEN = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"]);
 
 const SNAKE = /\b[A-Z][A-Z0-9]*_[A-Z0-9_]*[A-Z0-9]\b/g;
