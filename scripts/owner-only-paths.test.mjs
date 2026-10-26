@@ -24,3 +24,8 @@ test("tests of exact-match owner-only sources are owner-only too (review)", () =
   for (const f of ["src/index.test.ts", "src/app-factory.test.ts", "src/store.test.ts", "src/db-ready.test.ts", "src/binding-subjects.test.ts"]) assert.equal(isOwnerOnlyPath(f), true, f);
   assert.equal(isOwnerOnlyPath("src/storefront.ts"), false);
 });
+
+test("variant test files of exact-match owner-only sources are owner-only (review)", () => {
+  for (const f of ["src/store.coverage.test.ts", "src/store.pagination.postgres.test.ts", "src/db-ready-timeout.test.ts", "src/index.boot.test.ts", "src/app-factory-mcp.test.ts"]) assert.equal(isOwnerOnlyPath(f), true, f);
+  for (const f of ["src/storefront.ts", "src/store-helpers.ts", "src/indexer.ts"]) assert.equal(isOwnerOnlyPath(f), false, f);
+});
