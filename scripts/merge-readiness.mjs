@@ -8,17 +8,30 @@ import { pathToFileURL } from "node:url";
 export const IGNORED_CHECKS = new Set(["Workers Builds: conduit"]);
 export const NEVER_MERGE = new Set([206, 212, 234, 238, 243, 209, 155, 120, 321]);
 // auth/grants/migrations/secrets/DB TLS/proxy trust and env surfaces are owner-only.
-export const SENSITIVE = [/(^|\/)auth/i, /^src\/(index|app-factory)\.ts$/, // token verification + scope enforcement wiring
+export const SENSITIVE = [/(^|\/)auth/i, /^src\/(index|app-factory)(\.test)?\.ts$/, /bridge/i, /external-policy/i, /receipt/i, // external-call grant enforcement + bridge receipts (aligned with #332)
+  // token verification + scope enforcement wiring
   /grant/i, /capabilit/i, /tool-gates/i, /migrat/i, // capability grant enforcement (src/capabilities.ts) and tool gating are grants surfaces
   /secret/i, /(^|\/)\.env/i, /tls/i, /proxy/i, /trust/i, /render\.yaml$/i, /\.github\/workflows\//i,
   // DB TLS / pool SSL config lives in these files (DATABASE_SSL_REJECT_UNAUTHORIZED, sslOption).
-  /^src\/(store|db-ready|binding-subjects|capability-store)\.ts$/];
+  /^src\/(store|db-ready|binding-subjects|capability-store)(\.test)?\.ts$/];
 const GREEN = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"]);
 
-/** Per line: a concrete VAR=value or a standalone SCREAMING_SNAKE name (e.g. DATABASE_SSL_REJECT_UNAUTHORIZED) always counts; a generic env-var phrase counts unless that same line is a "no env vars" disclaimer. */
-export function envVarMentioned(body) {
+const SNAKE = /\b[A-Z][A-Z0-9]*_[A-Z0-9_]*[A-Z0-9]\b/g;
+/** Per line: a concrete VAR=value always counts; a generic env-var phrase counts unless that line is a "no env vars" disclaimer;
+ * a standalone SCREAMING_SNAKE name counts unless the PR's own diff declares it as a code constant (codeConstants). Fail-closed:
+ * with no diff evidence (empty set) every such name counts. */
+export function envVarMentioned(body, codeConstants = new Set()) {
   return String(body ?? "").split(/\r?\n/).some((line) =>
-    /\b[A-Z][A-Z0-9_]*=/.test(line) || /\b[A-Z][A-Z0-9]*_[A-Z0-9_]*[A-Z0-9]\b/.test(line) || (/new env var|environment variable|env vars?\b/i.test(line) && !/\bno (new )?env(ironment)? var(iable)?s?\b/i.test(line)));
+    /\b[A-Z][A-Z0-9_]*=/.test(line) || (line.match(SNAKE) ?? []).some((n) => !codeConstants.has(n)) ||
+    (/new env var|environment variable|env vars?\b/i.test(line) && !/\bno (new )?env(ironment)? var(iable)?s?\b/i.test(line)));
+}
+
+/** Pure. SCREAMING_SNAKE names the diff declares as `const NAME =` on an added line, minus any name the diff also reads from env. */
+export function declaredConstants(diff) {
+  const text = String(diff ?? ""), out = new Set();
+  for (const m of text.matchAll(/^\+(?!\+\+).*?\bconst\s+([A-Z][A-Z0-9]*_[A-Z0-9_]*[A-Z0-9])\s*=/gm)) out.add(m[1]);
+  for (const n of [...out]) if (new RegExp(`env(\\.|\\[["'\`])${n}\\b`).test(text)) out.delete(n);
+  return out;
 }
 
 /** Pure. pr = { number, isDraft, mergeable, reviews:[{author,state}], checks:[{name,conclusion|state}], files:[path], behindBy, unresolvedThreads, body } */
@@ -46,7 +59,7 @@ export function evaluate(pr) {
   }
   if (!Array.isArray(pr.files) || pr.files.length === 0) blockers.push("files_unknown");
   else for (const f of pr.files) if (SENSITIVE.some((re) => re.test(f))) { blockers.push(`sensitive_path:${f}`); }
-  if (envVarMentioned(pr.body)) blockers.push("mentions_env_vars");
+  if (envVarMentioned(pr.body, pr.codeConstants)) blockers.push("mentions_env_vars");
   if (Number.isInteger(pr.changedFiles) && Array.isArray(pr.files) && pr.files.length < pr.changedFiles) blockers.push("files_incomplete");
   return { ready: blockers.length === 0, blockers };
 }
@@ -72,7 +85,10 @@ export function fetchPr(repo, number, run = gh) {
       cursor = rt.pageInfo.endCursor;
     }
     if (cursor) throw new Error("too many review thread pages");
+    let codeConstants = new Set();
+    try { codeConstants = declaredConstants(run(["pr", "diff", String(number), "-R", repo])); } catch { /* fail-closed: no exemptions */ }
     return {
+      codeConstants,
       number: v.number, state: v.state, baseRefName: v.baseRefName, changedFiles: v.changedFiles, isDraft: v.isDraft, mergeable: v.mergeable, body: v.body, behindBy,
       files,
       reviews: (v.reviews ?? []).map((r) => ({ author: r.author?.login, state: r.state })),

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { evaluate, fetchPr, envVarMentioned } from "./merge-readiness.mjs";
+import { evaluate, fetchPr, envVarMentioned, declaredConstants } from "./merge-readiness.mjs";
 
 const ok = () => ({ number: 400, state: "OPEN", isDraft: false, baseRefName: "main", mergeable: "MERGEABLE", behindBy: 0, unresolvedThreads: 0, body: "No env vars.",
   files: ["scripts/x.mjs"], reviews: [{ author: "coderabbitai", state: "COMMENTED" }],
@@ -49,7 +49,7 @@ test("fetchPr maps gh output (read-only commands only)", () => {
   assert.equal(pr.unresolvedThreads, 2); // paginated
   assert.equal(pr.behindBy, 0);
   assert.deepEqual(pr.files, ["a.md"]);
-  assert.ok(calls.every((a) => (a[0] === "pr" && a[1] === "view") || (a[0] === "api" && !a.includes("-X"))));
+  assert.ok(calls.every((a) => (a[0] === "pr" && (a[1] === "view" || a[1] === "diff")) || (a[0] === "api" && !a.includes("-X"))));
 });
 
 test("review fixes: env-var lines, DB TLS files, incomplete file lists, head SHA compare", () => {
@@ -104,4 +104,20 @@ test("fifth review round: standalone env-var names and non-open PRs block", () =
   assert.deepEqual(evaluate({ ...ok(), state: "CLOSED" }).blockers, ["state_closed"]);
   assert.deepEqual(evaluate({ ...ok(), state: "MERGED" }).blockers, ["state_merged"]);
   assert.deepEqual(evaluate({ ...ok(), state: undefined }).blockers, ["state_unknown"]);
+});
+
+test("code constants declared in the PR diff are not env vars; fail-closed otherwise", () => {
+  const diff = "+++ b/scripts/x.mjs\n+export const OWNER_ONLY_PATHS = Object.freeze([]);\n+const RETRY_MS = 5;\n+const DB_URL = process.env.DB_URL;\n";
+  const c = declaredConstants(diff);
+  assert.deepEqual([...c].sort(), ["OWNER_ONLY_PATHS", "RETRY_MS"]);
+  assert.equal(c.has("DB_URL"), false); // read from env -> never exempt
+  assert.deepEqual(evaluate({ ...ok(), body: "SENSITIVE re-exports OWNER_ONLY_PATHS", codeConstants: c }).blockers, []);
+  assert.deepEqual(evaluate({ ...ok(), body: "SENSITIVE re-exports OWNER_ONLY_PATHS" }).blockers, ["mentions_env_vars"]);
+  assert.deepEqual(evaluate({ ...ok(), body: "Uses OWNER_ONLY_PATHS and NODE_ENV", codeConstants: c }).blockers, ["mentions_env_vars"]);
+  assert.equal(declaredConstants("-const OLD_NAME = 1;\n").size, 0); // removed lines don't count
+});
+
+test("external-call grant enforcement and owner-only tests are sensitive (aligned with #332)", () => {
+  for (const f of ["src/external-policy.ts", "src/bridge.ts", "src/receipts.ts", "src/index.test.ts", "src/store.test.ts"])
+    assert.ok(evaluate({ ...ok(), files: [f] }).blockers.includes(`sensitive_path:${f}`), f);
 });
