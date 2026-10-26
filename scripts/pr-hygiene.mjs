@@ -9,12 +9,12 @@ import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const IGNORED_CHECKS = new Set(["Workers Builds: conduit"]);
+const IGNORED_CHECKS = new Set(["Workers Builds: conduit"]);
 const DAY = 86_400_000;
 const GREEN = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"]);
 const RED = new Set(["FAILURE", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "ERROR"]);
-export const NOISE = /(^|\b)(bolt|jules)(\b|\/)|⚡/i;
-export const STALE_DAYS = 7;
+const NOISE = /(^|\b)(bolt|jules)(\b|\/)|⚡/i;
+const STALE_DAYS = 7;
 
 /**
  * Docs-only = every changed file is markdown or under docs/. Empty file lists are NOT docs-only (fail-closed).
@@ -26,7 +26,7 @@ export function isDocsOnly(files, changedFiles) {
 }
 
 /** ms since epoch, or 0 for missing / gh zero-time ("0001-01-01T00:00:00Z") values. */
-export function runTime(v) {
+function runTime(v) {
   const t = Date.parse(v ?? "");
   return Number.isFinite(t) && t > 0 ? t : 0;
 }
@@ -73,7 +73,7 @@ export function classifyPr(pr, now = Date.now()) {
   };
 }
 
-export const AGE_BUCKETS = [["0-1d", 1], ["2-7d", 7], ["8-14d", 14], ["15d+", Infinity]];
+const AGE_BUCKETS = [["0-1d", 1], ["2-7d", 7], ["8-14d", 14], ["15d+", Infinity]];
 /** Pure. Counts per age bucket; unknown ages go to "unknown". */
 export function ageBuckets(rows) {
   const out = Object.fromEntries([...AGE_BUCKETS.map(([k]) => [k, 0]), ["unknown", 0]]);
@@ -146,7 +146,7 @@ export async function loadOwnerOnly(load = () => import("./owner-only-paths.mjs"
 }
 
 const FIELDS = "number,title,headRefName,baseRefName,isDraft,mergeable,reviewDecision,createdAt,updatedAt,files,changedFiles,statusCheckRollup";
-export const FETCH_LIMIT = 500;
+const FETCH_LIMIT = 500;
 /** null (unavailable) on any error, and when the list reaches FETCH_LIMIT (possibly truncated): never a partial total. */
 export function fetchOpenPrs(repo, { owner = "cknowlesbadluck", exec = execFileSync, limit = FETCH_LIMIT } = {}) {
   try {
