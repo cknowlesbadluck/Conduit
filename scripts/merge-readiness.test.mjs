@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { evaluate, fetchPr, envVarMentioned } from "./merge-readiness.mjs";
 
-const ok = () => ({ number: 400, isDraft: false, baseRefName: "main", mergeable: "MERGEABLE", behindBy: 0, unresolvedThreads: 0, body: "No env vars.",
+const ok = () => ({ number: 400, state: "OPEN", isDraft: false, baseRefName: "main", mergeable: "MERGEABLE", behindBy: 0, unresolvedThreads: 0, body: "No env vars.",
   files: ["scripts/x.mjs"], reviews: [{ author: "coderabbitai", state: "COMMENTED" }],
   checks: [{ name: "verify", conclusion: "SUCCESS" }, { name: "Workers Builds: conduit", conclusion: "FAILURE" }] });
 
@@ -38,7 +38,7 @@ test("invalid input and fetch failure are fail-closed", () => {
 test("fetchPr maps gh output (read-only commands only)", () => {
   const calls = [];
   const run = (a) => { calls.push(a);
-    if (a[0] === "pr") return JSON.stringify({ number: 5, isDraft: false, mergeable: "MERGEABLE", headRefName: "h", body: "", files: [{ path: "a.md" }], reviews: [{ author: { login: "x" }, state: "APPROVED" }], statusCheckRollup: [{ name: "verify", conclusion: "SUCCESS" }] });
+    if (a[0] === "pr") return JSON.stringify({ number: 5, state: "OPEN", isDraft: false, mergeable: "MERGEABLE", headRefName: "h", body: "", files: [{ path: "a.md" }], reviews: [{ author: { login: "x" }, state: "APPROVED" }], statusCheckRollup: [{ name: "verify", conclusion: "SUCCESS" }] });
     if (a[1] === "--paginate") return "a.md\n";
     if (a[1].startsWith("repos/")) return JSON.stringify({ b: 0 });
     const second = a.includes("c=CUR");
@@ -82,7 +82,7 @@ test("second review round: short env assignment, auth wiring, renames, error dia
 
 test("third review round: hasNextPage without endCursor fails closed (no silent restart at page 1)", () => {
   const run = (a) => {
-    if (a[0] === "pr") return JSON.stringify({ number: 6, isDraft: false, mergeable: "MERGEABLE", headRefName: "h", headRefOid: "abc", baseRefName: "main", changedFiles: 1, body: "", reviews: [], statusCheckRollup: [] });
+    if (a[0] === "pr") return JSON.stringify({ number: 6, state: "OPEN", isDraft: false, mergeable: "MERGEABLE", headRefName: "h", headRefOid: "abc", baseRefName: "main", changedFiles: 1, body: "", reviews: [], statusCheckRollup: [] });
     if (a[1] === "--paginate") return "a.md\n";
     if (a[1].startsWith("repos/")) return JSON.stringify({ b: 0 });
     return JSON.stringify({ data: { repository: { pullRequest: { reviewThreads: { nodes: [], pageInfo: { hasNextPage: true, endCursor: null } } } } } });
@@ -95,4 +95,13 @@ test("fourth review round: capability grant enforcement is owner-only", () => {
   for (const f of ["src/capabilities.ts", "src/tool-gates.test.ts"]) {
     assert.deepEqual(evaluate({ ...ok(), files: [f] }).blockers, [`sensitive_path:${f}`], f);
   }
+});
+
+test("fifth review round: standalone env-var names and non-open PRs block", () => {
+  assert.deepEqual(evaluate({ ...ok(), body: "Update `DATABASE_SSL_REJECT_UNAUTHORIZED` handling" }).blockers, ["mentions_env_vars"]);
+  assert.deepEqual(evaluate({ ...ok(), body: "Reads NODE_ENV now" }).blockers, ["mentions_env_vars"]);
+  assert.deepEqual(evaluate({ ...ok(), body: "No env vars. Fixes the README and CI." }).blockers, []);
+  assert.deepEqual(evaluate({ ...ok(), state: "CLOSED" }).blockers, ["state_closed"]);
+  assert.deepEqual(evaluate({ ...ok(), state: "MERGED" }).blockers, ["state_merged"]);
+  assert.deepEqual(evaluate({ ...ok(), state: undefined }).blockers, ["state_unknown"]);
 });

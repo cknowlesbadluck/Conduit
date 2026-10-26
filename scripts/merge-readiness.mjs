@@ -15,16 +15,17 @@ export const SENSITIVE = [/(^|\/)auth/i, /^src\/(index|app-factory)\.ts$/, // to
   /^src\/(store|db-ready|binding-subjects|capability-store)\.ts$/];
 const GREEN = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"]);
 
-/** Per line: a concrete VAR=value always counts; a generic env-var phrase counts unless that same line is a "no env vars" disclaimer. */
+/** Per line: a concrete VAR=value or a standalone SCREAMING_SNAKE name (e.g. DATABASE_SSL_REJECT_UNAUTHORIZED) always counts; a generic env-var phrase counts unless that same line is a "no env vars" disclaimer. */
 export function envVarMentioned(body) {
   return String(body ?? "").split(/\r?\n/).some((line) =>
-    /\b[A-Z][A-Z0-9_]*=/.test(line) || (/new env var|environment variable|env vars?\b/i.test(line) && !/\bno (new )?env(ironment)? var(iable)?s?\b/i.test(line)));
+    /\b[A-Z][A-Z0-9_]*=/.test(line) || /\b[A-Z][A-Z0-9]*_[A-Z0-9_]*[A-Z0-9]\b/.test(line) || (/new env var|environment variable|env vars?\b/i.test(line) && !/\bno (new )?env(ironment)? var(iable)?s?\b/i.test(line)));
 }
 
 /** Pure. pr = { number, isDraft, mergeable, reviews:[{author,state}], checks:[{name,conclusion|state}], files:[path], behindBy, unresolvedThreads, body } */
 export function evaluate(pr) {
   const blockers = [];
   if (!pr || !Number.isInteger(pr.number)) return { ready: false, blockers: ["invalid_input"] };
+  if (pr.state !== "OPEN") blockers.push(`state_${String(pr.state ?? "unknown").toLowerCase()}`); // closed/merged PRs can still report MERGEABLE
   if (NEVER_MERGE.has(pr.number)) blockers.push("never_merge_list");
   if (pr.isDraft) blockers.push("draft");
   if (pr.baseRefName !== "main") blockers.push(`base_not_main:${pr.baseRefName ?? "unknown"}`);
@@ -55,7 +56,7 @@ function gh(args) { return execFileSync("gh", args, { encoding: "utf8", timeout:
 export function fetchPr(repo, number, run = gh) {
   try {
     const [owner, name] = repo.split("/");
-    const v = JSON.parse(run(["pr", "view", String(number), "-R", repo, "--json", "number,isDraft,mergeable,headRefName,headRefOid,baseRefName,changedFiles,body,reviews,statusCheckRollup"]));
+    const v = JSON.parse(run(["pr", "view", String(number), "-R", repo, "--json", "number,state,isDraft,mergeable,headRefName,headRefOid,baseRefName,changedFiles,body,reviews,statusCheckRollup"]));
     const behindBy = JSON.parse(run(["api", `repos/${repo}/compare/main...${v.headRefOid}`, "--jq", "{b:.behind_by}"])).b;
     const q = `query($o:String!,$n:String!,$p:Int!,$c:String){repository(owner:$o,name:$n){pullRequest(number:$p){reviewThreads(first:100,after:$c){nodes{isResolved} pageInfo{hasNextPage endCursor}}}}}`;
     // REST files endpoint, paginated; include previous_filename so a rename out of a sensitive path is still gated.
@@ -72,7 +73,7 @@ export function fetchPr(repo, number, run = gh) {
     }
     if (cursor) throw new Error("too many review thread pages");
     return {
-      number: v.number, baseRefName: v.baseRefName, changedFiles: v.changedFiles, isDraft: v.isDraft, mergeable: v.mergeable, body: v.body, behindBy,
+      number: v.number, state: v.state, baseRefName: v.baseRefName, changedFiles: v.changedFiles, isDraft: v.isDraft, mergeable: v.mergeable, body: v.body, behindBy,
       files,
       reviews: (v.reviews ?? []).map((r) => ({ author: r.author?.login, state: r.state })),
       checks: (v.statusCheckRollup ?? []).map((c) => ({ name: c.name ?? c.context, conclusion: c.conclusion || c.state })),
