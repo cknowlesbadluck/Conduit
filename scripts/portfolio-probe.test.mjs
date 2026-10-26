@@ -161,3 +161,12 @@ test("exit gate ignores unowned Vercel aliases and fails closed without owned re
   assert.equal(probeExitPass([]), false);
   assert.equal(probeExitPass(undefined), false);
 });
+
+test("exit gate --drift-only: owned pinned drift fails, unowned alias drift and unpinned drift do not", async () => {
+  const { probeExitPass } = await import("./portfolio-probe.mjs");
+  const targets = [{ name: "conduit", expect: { contractRevision: "x" } }, { name: "resonance-netlify" }];
+  const alias = { name: "resonance-vercel", ok: false, drift: true };
+  assert.equal(probeExitPass([{ name: "conduit", drift: false }, { name: "resonance-netlify", drift: true }, alias], { driftOnly: true, targets }), true);
+  assert.equal(probeExitPass([{ name: "conduit", drift: true }, alias], { driftOnly: true, targets }), false);
+  assert.equal(probeExitPass([alias], { driftOnly: true, targets }), false);
+});
