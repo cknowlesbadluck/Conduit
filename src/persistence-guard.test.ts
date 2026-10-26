@@ -5,14 +5,17 @@ import { assertPersistenceConfig, persistenceConfigError } from "./persistence-g
 test("production + CONDUIT_TEST_MEMORY=true refuses to boot", () => {
   assert.throws(() => assertPersistenceConfig({ NODE_ENV: "production", CONDUIT_TEST_MEMORY: "true", DATABASE_URL: "postgres://x" }), /test-only/);
 });
-test("any non-empty CONDUIT_TEST_MEMORY value in production is refused (no truthiness guessing)", () => {
-  assert.match(persistenceConfigError({ NODE_ENV: "production", CONDUIT_TEST_MEMORY: "1" }) ?? "", /test-only/);
-  assert.match(persistenceConfigError({ NODE_ENV: "production", CONDUIT_TEST_MEMORY: "false" }) ?? "", /test-only/);
+test("unset or development NODE_ENV with the switch is refused (explicit test mode only)", () => {
+  assert.match(persistenceConfigError({ CONDUIT_TEST_MEMORY: "true" }) ?? "", /NODE_ENV=test/);
+  assert.match(persistenceConfigError({ NODE_ENV: "development", CONDUIT_TEST_MEMORY: "true" }) ?? "", /NODE_ENV=test/);
 });
-test("production without DATABASE_URL is still allowed (Postgres optional)", () => {
+test("any non-empty value is refused outside test (no truthiness guessing)", () => {
+  assert.ok(persistenceConfigError({ NODE_ENV: "production", CONDUIT_TEST_MEMORY: "false" }));
+});
+test("no switch is always allowed (Postgres optional)", () => {
   assert.equal(persistenceConfigError({ NODE_ENV: "production" }), null);
+  assert.equal(persistenceConfigError({}), null);
 });
-test("non-production may use test memory", () => {
+test("NODE_ENV=test may use test memory", () => {
   assert.equal(persistenceConfigError({ NODE_ENV: "test", CONDUIT_TEST_MEMORY: "true" }), null);
-  assert.equal(persistenceConfigError({ CONDUIT_TEST_MEMORY: "true" }), null);
 });
