@@ -44,6 +44,10 @@ Production external calls are deny-by-default. A grant binds an agent to a provi
 
 Project creators or subjects listed in `CONDUIT_GRANT_ADMIN_SUBJECTS` govern project grants. Global grants require a configured grant administrator. Grant records are auditable and revocable; expired or revoked grants never authorize calls.
 
+`CONDUIT_GRANT_ADMIN_SUBJECTS` is a comma-separated list. Each entry is one of: `clientId::sub` (one user of one OAuth client), a bare `sub` (matches the token subject; for client-credentials tokens with no distinct sub the client id is the subject), or `client:<clientId>` (explicitly every subject of that client). Creators revoke their own grants; grant admins can revoke any grant.
+
+> **Behaviour change / migration (grant admins):** a bare OAuth client id used to make every user of that client a grant admin (and archive admin). It now matches only client-credentials tokens of that client. If you relied on the old behaviour, change the entry to `client:<clientId>`, or better, list `clientId::sub` per admin. No database migration is needed; `grant_revoke` now also lets grant admins revoke grants created by project owners (audit log records `asAdmin: true`).
+
 A registered resource or tool is never an authorization grant. The existing MCP bridge SSRF protections remain authoritative even when a capability grant exists.
 
 ### Rate limiting
