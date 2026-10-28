@@ -51,38 +51,39 @@ export function setMcpBridgeTransportForTests(fn?: BridgeTransport) {
   bridgeTransport = fn ?? pinnedHttpsTransport;
 }
 
-function parseIpv4Octets(value: string): number[] | null {
-  const parts = value.split(".");
-  if (parts.length !== 4) return null;
-  const octets = parts.map((part) => Number.parseInt(part, 10));
-  if (octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) return null;
-  return octets;
-}
-
 // Performance Optimization: Direct character-code extraction of IPv4 octets in a single pass.
 // Avoids string splitting (.split(".")) and array allocations (.map, .some) on every SSRF address check.
-function isDisallowedIpv4(value: string): boolean {
-  let a = 0, b = 0;
+function parseIpv4Octets(value: string): number[] | null {
+  let a = 0, b = 0, c = 0, d = 0;
   let count = 0, cur = 0, digits = 0;
   for (let i = 0; i < value.length; i++) {
     const code = value.charCodeAt(i);
     if (code >= 48 && code <= 57) {
       cur = cur * 10 + (code - 48);
       digits++;
-      if (cur > 255 || digits > 3) return true;
+      if (cur > 255 || digits > 3) return null;
     } else if (code === 46) {
-      if (digits === 0) return true;
+      if (digits === 0) return null;
       if (count === 0) a = cur;
       else if (count === 1) b = cur;
-      else if (count >= 3) return true;
+      else if (count === 2) c = cur;
+      else return null;
       count++;
       cur = 0;
       digits = 0;
     } else {
-      return true;
+      return null;
     }
   }
-  if (count !== 3 || digits === 0) return true;
+  if (count !== 3 || digits === 0) return null;
+  d = cur;
+  return [a, b, c, d];
+}
+
+function isDisallowedIpv4(value: string): boolean {
+  const octets = parseIpv4Octets(value);
+  if (!octets) return true;
+  const [a, b] = octets;
 
   if (a === 0) return true; // 0.0.0.0/8
   if (a === 10) return true; // 10.0.0.0/8
@@ -96,25 +97,92 @@ function isDisallowedIpv4(value: string): boolean {
   return false;
 }
 
+// Performance Optimization: Direct single-pass character code parsing for IPv6 expansion.
+// Avoids string splitting (.split("::"), .split(":")), array mappings (.map), array spreading
+// ([...left, ...right]), and dynamic allocations on every IPv6 check.
 function expandIpv6(value: string): number[] | null {
   const lower = value.toLowerCase();
+  let s = lower;
   if (lower.includes(".")) {
     const lastColon = lower.lastIndexOf(":");
     const ipv4 = parseIpv4Octets(lower.slice(lastColon + 1));
     if (!ipv4) return null;
     const head = lower.slice(0, lastColon);
     const embedded = `${((ipv4[0] << 8) | ipv4[1]).toString(16)}:${((ipv4[2] << 8) | ipv4[3]).toString(16)}`;
-    return expandIpv6(`${head}:${embedded}`);
+    s = `${head}:${embedded}`;
   }
-  const halves = lower.split("::");
-  if (halves.length > 2) return null;
-  const parseHalf = (half: string) => (half ? half.split(":").map((hextet) => Number.parseInt(hextet, 16)) : []);
-  const left = parseHalf(halves[0]);
-  const right = halves.length === 2 ? parseHalf(halves[1]) : [];
-  if ([...left, ...right].some((hextet) => !Number.isInteger(hextet) || hextet < 0 || hextet > 0xffff)) return null;
-  const missing = 8 - left.length - right.length;
-  if (missing < 0 || (halves.length === 1 && missing !== 0)) return null;
-  return [...left, ...Array(missing).fill(0), ...right];
+
+  const doubleColon = s.indexOf("::");
+  if (doubleColon !== -1 && s.indexOf("::", doubleColon + 1) !== -1) return null;
+
+  let leftCount = 0;
+  let rightCount = 0;
+
+  const leftStr = doubleColon === -1 ? s : s.slice(0, doubleColon);
+  const rightStr = doubleColon === -1 ? "" : s.slice(doubleColon + 2);
+
+  const res = [0, 0, 0, 0, 0, 0, 0, 0];
+
+  if (leftStr.length > 0) {
+    let cur = 0;
+    let digits = 0;
+    for (let i = 0; i < leftStr.length; i++) {
+      const code = leftStr.charCodeAt(i);
+      let val = -1;
+      if (code >= 48 && code <= 57) val = code - 48;
+      else if (code >= 97 && code <= 102) val = code - 87;
+      else if (code === 58) {
+        if (digits === 0 || leftCount >= 8) return null;
+        res[leftCount++] = cur;
+        cur = 0;
+        digits = 0;
+        continue;
+      } else return null;
+
+      cur = (cur << 4) | val;
+      digits++;
+      if (digits > 4) return null;
+    }
+    if (digits === 0 || leftCount >= 8) return null;
+    res[leftCount++] = cur;
+  }
+
+  if (rightStr.length > 0) {
+    const rightHextets = [0, 0, 0, 0, 0, 0, 0, 0];
+    let cur = 0;
+    let digits = 0;
+    for (let i = 0; i < rightStr.length; i++) {
+      const code = rightStr.charCodeAt(i);
+      let val = -1;
+      if (code >= 48 && code <= 57) val = code - 48;
+      else if (code >= 97 && code <= 102) val = code - 87;
+      else if (code === 58) {
+        if (digits === 0 || rightCount >= 8) return null;
+        rightHextets[rightCount++] = cur;
+        cur = 0;
+        digits = 0;
+        continue;
+      } else return null;
+
+      cur = (cur << 4) | val;
+      digits++;
+      if (digits > 4) return null;
+    }
+    if (digits === 0 || rightCount >= 8) return null;
+    rightHextets[rightCount++] = cur;
+
+    if (leftCount + rightCount > 7) return null;
+    const rightStart = 8 - rightCount;
+    for (let i = 0; i < rightCount; i++) {
+      res[rightStart + i] = rightHextets[i];
+    }
+  } else if (doubleColon === -1) {
+    if (leftCount !== 8) return null;
+  } else {
+    if (leftCount > 7) return null;
+  }
+
+  return res;
 }
 
 function hextetsToIpv4(high: number, low: number): string {
