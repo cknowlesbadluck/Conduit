@@ -20,7 +20,9 @@ test("ignores the known-red Workers check but not real failures", () => {
 
 test("auth/grant/bridge source changes are owner-gated; their tests alone are not", () => {
   assert.equal(isSensitive([{ filename: "src/grant-tools.ts" }]), true);
-  assert.equal(isSensitive([{ filename: "src/auth.verifier.test.ts" }]), false);
+  assert.equal(isSensitive([{ filename: "src/auth.verifier.test.ts" }]), true); // auth tests are owner-only (fail closed)
+  assert.equal(isSensitive([{ filename: "migrations/002.sql" }]), true); // previously missed by merge-train
+  assert.equal(isSensitive([{ filename: "docs/ROADMAP.md" }]), false);
   const r = analyze([pr(3, ["src/auth.ts"]), pr(4, ["README.md"], { title: "DRAFT KEEP RED: x" }), pr(5, ["README.md"], { mergeable: "CONFLICTING" })]);
   assert.deepEqual(r.mergeOrder, []);
 });
