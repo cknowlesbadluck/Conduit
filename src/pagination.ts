@@ -21,10 +21,17 @@ const orders: Record<CursorCollection, CursorOrder> = {
   activity: { field: "at", direction: "desc", tieBreaker: "id" },
 };
 
+// Performance Optimization: Direct property iteration avoids 2 array allocations (Object.keys)
+// and 2 O(K log K) sorting passes on every cursor decode.
 const sameRecord = (a: Record<string, string>, b: Record<string, string>) => {
-  const ak = Object.keys(a).sort();
-  const bk = Object.keys(b).sort();
-  return ak.length === bk.length && ak.every((key, index) => key === bk[index] && a[key] === b[key]);
+  let aCount = 0;
+  for (const k in a) {
+    if (a[k] !== b[k]) return false;
+    aCount++;
+  }
+  let bCount = 0;
+  for (const _ in b) bCount++;
+  return aCount === bCount;
 };
 
 /** Opaque, versioned keyset cursor codec. Decode validates that a cursor belongs to this exact query. */

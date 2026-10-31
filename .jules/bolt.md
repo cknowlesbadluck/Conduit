@@ -21,3 +21,7 @@
 ## 2025-03-10 - Single-pass character code IPv4 octet extraction for SSRF checks
 **Learning:** `isDisallowedIpv4` in `src/mcp-bridge.ts` was calling `parseIpv4Octets` which allocated string arrays via `.split(".")` and temporary octet arrays via `.map()`. Replacing string splitting and array creation with a single-pass character-code loop reduced IPv4 address validation latency by >10x (from ~1.75s to ~0.17s per 2M checks) with zero garbage collection allocations.
 **Action:** Avoid `.split(".")` and `.map(Number)` in high-frequency network/SSRF address validation functions; use direct character code parsing over input strings in $O(N)$ single pass.
+
+## 2025-03-10 - Single-pass direct property comparison for cursor filter records
+**Learning:** Keyset cursor decoding (`cursorCodec.decode`) was calling `sameRecord` which allocated 2 arrays via `Object.keys()` and ran `.sort()` on both to compare filter objects. Replacing array allocation and sorting with a single-pass direct property equality check reduced comparison time by ~8x (from ~693ms down to ~84ms per 1M operations) without heap allocations.
+**Action:** When validating record equality on hot lookup/codec paths (like pagination cursor decoding), iterate properties directly and count keys rather than allocating and sorting `Object.keys()`.
