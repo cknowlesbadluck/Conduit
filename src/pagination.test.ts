@@ -19,6 +19,32 @@ test("cursor codec rejects collection, project, filter, ordering, and version ch
   }
 });
 
+test("cursor codec validates multi-key filters regardless of key insertion order", () => {
+  const payload = {
+    version: 1 as const,
+    collection: "tasks" as const,
+    projectId: "p1",
+    filters: { status: "open", createdBy: "agent_a", claimedBy: "agent_b" },
+    order: cursorOrder("tasks"),
+    sort: { time: "2026-01-01T00:00:00.000Z", id: "task_1" },
+  };
+  const cursor = cursorCodec.encode(payload);
+
+  // Different key insertion order in expected filters
+  const reorderedFilters = { claimedBy: "agent_b", status: "open", createdBy: "agent_a" };
+  const decoded = cursorCodec.decode(cursor, { collection: "tasks", projectId: "p1", filters: reorderedFilters });
+  assert.deepEqual(decoded, payload);
+
+  // Extra filter in expected rejects
+  assert.throws(() => cursorCodec.decode(cursor, { collection: "tasks", projectId: "p1", filters: { ...reorderedFilters, extra: "true" } }), /invalid_cursor/);
+
+  // Missing filter in expected rejects
+  assert.throws(() => cursorCodec.decode(cursor, { collection: "tasks", projectId: "p1", filters: { status: "open", createdBy: "agent_a" } }), /invalid_cursor/);
+
+  // Mismatched value in expected rejects
+  assert.throws(() => cursorCodec.decode(cursor, { collection: "tasks", projectId: "p1", filters: { ...reorderedFilters, status: "closed" } }), /invalid_cursor/);
+});
+
 test("page limits are bounded", () => {
   assert.equal(pageLimit(9999, 2), 2);
   assert.equal(pageLimit(0), 1);
