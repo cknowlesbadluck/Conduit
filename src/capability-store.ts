@@ -203,7 +203,8 @@ export async function listCapabilityGrants(
         (!filter.provider || grant.provider === filter.provider) &&
         (filter.includeRevoked || !grant.revokedAt),
     )
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    // Performance Optimization: Direct string comparison for ISO 8601 timestamps avoids Intl/collation overhead.
+    .sort((a, b) => (b.createdAt > a.createdAt ? 1 : b.createdAt < a.createdAt ? -1 : 0));
 }
 
 export async function getCapabilityGrantsForAgent(agentId: string, projectId?: string) {
