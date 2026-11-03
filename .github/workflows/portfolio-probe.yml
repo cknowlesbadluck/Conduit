@@ -4,7 +4,8 @@ name: portfolio-probe (report-only)
 # - schedule/workflow_dispatch only: no pull_request/push trigger, so it can never gate a PR or main
 # - continue-on-error + `|| true`: an outage shows up in the job summary, not as a failed check
 # - read-only token, no secrets, persist-credentials: false, SHA-pinned actions
-# - runs the existing scripts/portfolio-probe.mjs unchanged (6 unauthenticated GETs per run)
+# - runs the existing scripts/portfolio-probe.mjs unchanged (6 unauthenticated GETs per run), then
+#   scripts/portfolio-dashboard.mjs --consistency (gh reads with the default token; no secrets)
 on:
   schedule:
     - cron: "17 */6 * * *"
@@ -51,3 +52,11 @@ jobs:
             }
             fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, out.join("\n") + "\n");
           ' || true
+      - name: Dashboard + consistency (report-only)
+        # Read-only: gh reads public PR lists and the Resonance roadmap with the default token (contents: read).
+        # No secrets. NOT READY / INCONSISTENT shows in the summary; it never fails the job.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/portfolio-dashboard.mjs --consistency > dashboard.md 2>&1 && v=0 || v=$?
+          { echo "## Portfolio dashboard (exit $v; nonzero = NOT READY or INCONSISTENT)"; echo; echo '```text'; sed 's/```/` ` `/g' dashboard.md | head -c 60000; echo; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
