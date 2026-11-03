@@ -19,9 +19,10 @@
 // Usage:  node scripts/merge-train.mjs [owner/repo] [--json]
 // Auth:   GITHUB_TOKEN (Actions) or, if unset, the local `gh` CLI session.
 import { execFileSync } from "node:child_process";
+import { OWNER_ONLY_PATHS, isOwnerOnlyPath } from "./owner-only-paths.mjs";
 
 export const IGNORED_CHECKS = new Set(["Workers Builds: conduit"]); // fails on main too (see ROADMAP)
-export const SENSITIVE = [/^src\/auth/, /grant/, /capabilit/, /bridge/, /external-policy/, /receipt/, /^src\/index\.ts$/, /^src\/app-factory/];
+export const SENSITIVE = OWNER_ONLY_PATHS; // shared source: scripts/owner-only-paths.mjs
 const OK = new Set(["success", "neutral", "skipped"]);
 const RERUN = new Set(["cancelled", "stale"]);
 
@@ -36,7 +37,8 @@ export function latestChecks(checks) {
 }
 
 export function isSensitive(files) {
-  return files.some((f) => SENSITIVE.some((re) => re.test(f.filename)) && !/\.test\.ts$/.test(f.filename));
+  // Tests of owner-only surfaces are owner-only too (fail closed); see owner-only-paths.mjs.
+  return files.some((f) => isOwnerOnlyPath(f?.filename));
 }
 
 function jaccard(a, b) {
