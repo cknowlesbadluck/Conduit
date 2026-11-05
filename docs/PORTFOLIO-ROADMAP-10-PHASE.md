@@ -1,15 +1,10 @@
-# Portfolio 10-phase roadmap — refreshed 2026-11-03 04:00 UTC (mirror)
+> Mirror of canonical Resonance docs/PORTFOLIO-ROADMAP-10-PHASE.md (refreshed 2026-11-05 01Z).
+> See https://github.com/cknowlesbadluck/Resonance/blob/main/docs/PORTFOLIO-ROADMAP-10-PHASE.md for full living document.
+> Companion audit: https://github.com/cknowlesbadluck/Resonance/blob/main/docs/AUDIT-2026-11-05-01Z.md
 
-**Canonical source:** Resonance docs/PORTFOLIO-ROADMAP-10-PHASE.md
+**Live probe evidence (2026-11-05 ~01:00Z):**
+- Conduit 503 cold (recoverable); Resonance ready OK. Open PRs: QS 17 / Conduit 17 / Resonance 23. Target <10.
+- CHR-55 sole critical path for QS. deviceAcceptance=not_recorded.
+- Portfolio maturity ~7.5/10. Entropy is the current killer.
 
-**Live probe evidence (2026-11-03 ~04:00Z):**
-- Conduit ready OK (0.8.0, postgres). Warm after cold recovery.
-- Resonance ready OK (missingRequired=[], githubAdapterConfigured=false, posture=contract_passed).
-- Vercel aliases: resonance.vercel.app 200 (stranger); resonancenexus.vercel.app 404.
-- Open PRs residual high. Target <10.
-- CHR-55 device gate open.
-- Portfolio ~7.5/10 when warm.
-
-Phases 1-10 as in canonical. Stabilization holds. Entropy is the current killer. Do not invent owner evidence.
-
-Highest-value next: merge green non-overlapping hardens, configure githubAdapter, record CHR-55 device IPA.
+Phases 1-10 as in canonical. Highest-value next: prune entropy (Bolt/Jules close-candidates), merge green hardens, record CHR-55 on real device.
