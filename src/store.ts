@@ -591,7 +591,17 @@ type PageSpec<T extends KeysetRow> = {
 };
 
 const rowTime = (row: KeysetRow) => row.createdAt ?? row.at!;
-const descending = (a: KeysetRow, b: KeysetRow) => rowTime(b).localeCompare(rowTime(a)) || b.id.localeCompare(a.id);
+// Performance Optimization: Direct string comparison for ISO 8601 timestamps and alphanumeric IDs
+// avoids Intl/collation overhead of localeCompare during in-memory keyset pagination.
+const descending = (a: KeysetRow, b: KeysetRow) => {
+  const timeA = rowTime(a);
+  const timeB = rowTime(b);
+  if (timeB > timeA) return 1;
+  if (timeB < timeA) return -1;
+  if (b.id > a.id) return 1;
+  if (b.id < a.id) return -1;
+  return 0;
+};
 const isAfterCursor = (row: KeysetRow, time: string, cursorId: string) => rowTime(row) < time || (rowTime(row) === time && row.id < cursorId);
 
 async function keysetPage<T extends KeysetRow>(spec: PageSpec<T>): Promise<Page<T>> {
