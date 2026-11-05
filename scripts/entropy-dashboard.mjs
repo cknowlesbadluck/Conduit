@@ -5,6 +5,7 @@
  * Usage:
  *   GITHUB_TOKEN=... node scripts/entropy-dashboard.mjs
  *   or: node scripts/entropy-dashboard.mjs   (uses `gh` auth if available)
+ *   node scripts/entropy-dashboard.mjs --json   (machine-readable for CI)
  *
  * Outputs ranked close/merge candidates. Does not modify anything.
  * Scores: age (days), docs-only, Jules origin, title keywords.
@@ -53,6 +54,7 @@ function score(pr) {
 }
 
 async function main() {
+  const jsonMode = process.argv.includes('--json');
   const all = [];
   for (const repo of REPOS) {
     const raw = await gh(`pr list --repo ${repo} --state open --limit 100 --json number,title,body,createdAt,author,comments,draft,url,labels`);
@@ -64,6 +66,27 @@ async function main() {
   }
 
   all.sort((a, b) => b.score - a.score);
+
+  if (jsonMode) {
+    const summary = {
+      total: all.length,
+      byRepo: {},
+      topCloseCandidates: all.slice(0, 25).map(p => ({
+        score: p.score,
+        repo: p.repo,
+        number: p.number,
+        ageDays: p.ageDays,
+        title: p.title,
+        url: p.url,
+        tags: [p.isJules && 'JULES', p.isDocs && 'DOCS', p.draft && 'DRAFT'].filter(Boolean)
+      }))
+    };
+    for (const p of all) {
+      summary.byRepo[p.repo] = (summary.byRepo[p.repo] || 0) + 1;
+    }
+    console.log(JSON.stringify(summary, null, 2));
+    return;
+  }
 
   console.log('\n=== Portfolio Entropy Dashboard ===');
   console.log(`Total open PRs: ${all.length}`);
