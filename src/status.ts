@@ -1,4 +1,4 @@
-import { countActivity, countAgents, countTasks, countTools, listActivity, listAgents, listTasks, listTools } from "./store.js";
+import { countActivity, countActiveAgents, countAgents, countTasks, countTools, listActivity, listAgents, listTasks, listTools } from "./store.js";
 import { SERVICE_NAME, VERSION } from "./version.js";
 
 type ConduitConnectionStatus = "connected" | "registered";
@@ -119,17 +119,15 @@ export async function getConduitStatus(): Promise<ConduitStatus> {
 
 /** Unauthenticated public projection. Counts only — no agent IDs, task titles, or activity payloads. */
 export async function getPublicConduitStatus(): Promise<ConduitPublicStatus> {
-  const [agents, tasks, tools, activity, agentList, recent] = await Promise.all([
+  const [agents, tasks, tools, activity, recent] = await Promise.all([
     countAgents(),
     countTasks(),
     countTools(),
     countActivity(),
-    listAgents(),
     listActivity(200),
   ]);
 
-  // Performance Optimization: Extract all active agent IDs into a Set in O(M) single pass.
-  // Replaces O(N * M) nested .some() scan with O(1) Set lookup per agent (O(N + M) total).
+  // Performance Optimization: Extract active agent IDs into a Set in O(M) single pass.
   const activeAgentIds = new Set<string>();
   for (const event of recent) {
     if (event.type === "agent.register") continue;
@@ -138,11 +136,10 @@ export async function getPublicConduitStatus(): Promise<ConduitPublicStatus> {
       if (actorId && typeof actorId === "string") activeAgentIds.add(actorId);
     }
   }
-  // Performance Optimization: Count connected agents in single loop without allocating filtered array.
-  let connected = 0;
-  for (const agent of agentList) {
-    if (activeAgentIds.has(agent.id)) connected++;
-  }
+
+  // Performance Optimization: Count connected agents via countActiveAgents instead of fetching,
+  // mapping, and sorting the entire agents table via listAgents(). Skips agent query entirely when empty.
+  const connected = activeAgentIds.size > 0 ? await countActiveAgents(activeAgentIds) : 0;
   return {
     service: SERVICE_NAME,
     version: VERSION,
