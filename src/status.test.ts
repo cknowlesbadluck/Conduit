@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createTask, registerAgent, registerTool } from "./store.js";
+import { countActiveAgents, createTask, registerAgent, registerTool } from "./store.js";
 import { getConduitStatus, getPublicConduitStatus } from "./status.js";
 
 test("status projection reports service data and registered/active agents", async () => {
@@ -63,4 +63,18 @@ test("public status counts are not capped by the detailed projection slice", asy
   assert.ok(published.counts.activity >= 30);
   assert.ok(published.counts.connected >= 1);
   assert.doesNotMatch(JSON.stringify(published), /count-cap-task-/);
+});
+
+test("countActiveAgents returns 0 on empty input and correctly tallies matching registered agents", async () => {
+  assert.equal(await countActiveAgents([]), 0);
+  assert.equal(await countActiveAgents(new Set()), 0);
+  assert.equal(await countActiveAgents(["unknown-agent-never-registered"]), 0);
+
+  const registeredId = "active-test-agent";
+  await registerAgent({ id: registeredId, name: "Active Test Agent" });
+
+  assert.equal(await countActiveAgents([registeredId]), 1);
+  assert.equal(await countActiveAgents([registeredId, registeredId]), 1);
+  assert.equal(await countActiveAgents([registeredId, "unknown-agent-never-registered"]), 1);
+  assert.equal(await countActiveAgents(new Set([registeredId, "count-cap-agent"])), 2);
 });

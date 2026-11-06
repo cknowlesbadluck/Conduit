@@ -667,6 +667,21 @@ export async function countAgents() {
   return agents.size;
 }
 
+/** Count how many of the specified agent IDs are currently registered agents. */
+export async function countActiveAgents(agentIds: Iterable<string>): Promise<number> {
+  const ids = agentIds instanceof Set ? [...agentIds] : [...new Set(agentIds)];
+  if (ids.length === 0) return 0;
+  if (pool) {
+    const res = await pool.query("SELECT COUNT(*)::int AS n FROM agents WHERE id = ANY($1)", [ids]);
+    return Number(res.rows[0].n);
+  }
+  let count = 0;
+  for (const agentId of ids) {
+    if (agents.has(agentId)) count++;
+  }
+  return count;
+}
+
 export async function countTasks() {
   if (pool) return Number((await pool.query("SELECT COUNT(*)::int AS n FROM tasks")).rows[0].n);
   return tasks.size;
