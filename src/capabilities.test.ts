@@ -224,3 +224,9 @@ test("regex-style trailing .* still does not match (documented non-glob)", () =>
     false,
   );
 });
+
+test("capability matcher fails closed on unparseable expiry (was: never expires)", () => {
+  assert.equal(matchesCapability(grant({ expiresAt: "not-a-date" }), request()), false);
+  assert.equal(matchesCapability(grant({ expiresAt: "" }), request()), false);
+  assert.equal(matchesCapability(grant({ expiresAt: new Date(Date.now() + 60_000).toISOString() }), request()), true);
+});

@@ -84,6 +84,10 @@ export async function createCapabilityGrant(input: {
   if (input.expiresAt && !Number.isFinite(Date.parse(input.expiresAt))) {
     throw new Error("invalid_expiry");
   }
+  if (input.expiresAt && Date.parse(input.expiresAt) <= Date.now()) {
+    // A grant that is dead on arrival is almost always a caller mistake; refuse it loudly.
+    throw new Error("expiry_in_past");
+  }
 
   const grant: CapabilityGrant = {
     id: id(),
