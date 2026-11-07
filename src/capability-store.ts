@@ -123,20 +123,21 @@ export async function createCapabilityGrant(input: {
   return grant;
 }
 
-export async function revokeCapabilityGrant(idValue: string, actor: string): Promise<boolean> {
+export async function revokeCapabilityGrant(idValue: string, actor: string, options: { asAdmin?: boolean } = {}): Promise<boolean> {
+  const asAdmin = options.asAdmin === true;
   await initCapabilityStore();
   let revokedGrant: CapabilityGrant | undefined;
 
   if (pool) {
     const result = await pool.query(
-      "UPDATE capability_grants SET revoked_at=COALESCE(revoked_at, now()) WHERE id=$1 AND created_by=$2 RETURNING id, project_id AS \"projectId\", agent_id AS \"agentId\", provider",
-      [idValue, actor],
+      "UPDATE capability_grants SET revoked_at=COALESCE(revoked_at, now()) WHERE id=$1 AND ($3::boolean OR created_by=$2) RETURNING id, project_id AS \"projectId\", agent_id AS \"agentId\", provider",
+      [idValue, actor, asAdmin],
     );
     if (result.rowCount !== 1) return false;
     revokedGrant = result.rows[0] as CapabilityGrant;
   } else {
     const grant = memory.get(idValue);
-    if (!grant || grant.createdBy !== actor) return false;
+    if (!grant || (!asAdmin && grant.createdBy !== actor)) return false;
     grant.revokedAt ??= now();
     revokedGrant = grant;
   }
@@ -145,6 +146,7 @@ export async function revokeCapabilityGrant(idValue: string, actor: string): Pro
     grantId: idValue,
     agentId: revokedGrant.agentId,
     revokedBy: actor,
+    ...(asAdmin ? { asAdmin: true } : {}),
     ...(revokedGrant.projectId ? { projectId: revokedGrant.projectId } : {}),
   });
 
