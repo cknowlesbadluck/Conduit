@@ -51,12 +51,33 @@ export function setMcpBridgeTransportForTests(fn?: BridgeTransport) {
   bridgeTransport = fn ?? pinnedHttpsTransport;
 }
 
-function parseIpv4Octets(value: string): number[] | null {
-  const parts = value.split(".");
-  if (parts.length !== 4) return null;
-  const octets = parts.map((part) => Number.parseInt(part, 10));
-  if (octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) return null;
-  return octets;
+// Performance Optimization: Direct character-code extraction of IPv4 octets in a single pass.
+// Avoids string splitting (.split(".")) and array allocations (.map, .some).
+function parseIpv4Octets(value: string): [number, number, number, number] | null {
+  let a = 0, b = 0, c = 0, d = 0;
+  let count = 0, cur = 0, digits = 0;
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    if (code >= 48 && code <= 57) {
+      cur = cur * 10 + (code - 48);
+      digits++;
+      if (cur > 255 || digits > 3) return null;
+    } else if (code === 46) {
+      if (digits === 0) return null;
+      if (count === 0) a = cur;
+      else if (count === 1) b = cur;
+      else if (count === 2) c = cur;
+      else return null;
+      count++;
+      cur = 0;
+      digits = 0;
+    } else {
+      return null;
+    }
+  }
+  if (count !== 3 || digits === 0) return null;
+  d = cur;
+  return [a, b, c, d];
 }
 
 // Performance Optimization: Direct character-code extraction of IPv4 octets in a single pass.
@@ -96,6 +117,8 @@ function isDisallowedIpv4(value: string): boolean {
   return false;
 }
 
+// Performance Optimization: Fixed-size 8-element array population avoids intermediate array
+// allocations from spread copying [...left, ...Array(missing).fill(0), ...right] and [...left, ...right].some().
 function expandIpv6(value: string): number[] | null {
   const lower = value.toLowerCase();
   if (lower.includes(".")) {
@@ -108,13 +131,34 @@ function expandIpv6(value: string): number[] | null {
   }
   const halves = lower.split("::");
   if (halves.length > 2) return null;
-  const parseHalf = (half: string) => (half ? half.split(":").map((hextet) => Number.parseInt(hextet, 16)) : []);
-  const left = parseHalf(halves[0]);
-  const right = halves.length === 2 ? parseHalf(halves[1]) : [];
-  if ([...left, ...right].some((hextet) => !Number.isInteger(hextet) || hextet < 0 || hextet > 0xffff)) return null;
-  const missing = 8 - left.length - right.length;
+
+  const leftParts = halves[0] ? halves[0].split(":") : [];
+  const rightParts = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
+
+  const leftLen = leftParts.length;
+  const rightLen = rightParts.length;
+  const missing = 8 - leftLen - rightLen;
   if (missing < 0 || (halves.length === 1 && missing !== 0)) return null;
-  return [...left, ...Array(missing).fill(0), ...right];
+
+  const result = new Array<number>(8);
+  for (let i = 0; i < leftLen; i++) {
+    const part = leftParts[i];
+    if (!part || part.length > 4) return null;
+    const num = Number.parseInt(part, 16);
+    if (!Number.isInteger(num) || num < 0 || num > 0xffff) return null;
+    result[i] = num;
+  }
+  for (let i = 0; i < missing; i++) {
+    result[leftLen + i] = 0;
+  }
+  for (let i = 0; i < rightLen; i++) {
+    const part = rightParts[i];
+    if (!part || part.length > 4) return null;
+    const num = Number.parseInt(part, 16);
+    if (!Number.isInteger(num) || num < 0 || num > 0xffff) return null;
+    result[leftLen + missing + i] = num;
+  }
+  return result;
 }
 
 function hextetsToIpv4(high: number, low: number): string {
