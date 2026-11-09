@@ -7,9 +7,10 @@
  *   or: node scripts/entropy-dashboard.mjs   (uses `gh` auth if available)
  *   node scripts/entropy-dashboard.mjs --json   (machine-readable for CI)
  *   node scripts/entropy-dashboard.mjs --close-candidates   (focus on high-score prune list)
+ *   node scripts/entropy-dashboard.mjs --top5
  *
  * Outputs ranked close/merge candidates. Does not modify anything.
- * Scores: age (days), docs-only, Jules origin, title keywords, draft status.
+ * Refined score: (age_days * 0.4) + (is_docs_only ? 3 : 0) + (is_bolt_jules ? 2 : 0) + (has_overlap ? 1 : 0) - (ci_green ? 1 : 0)
  * Higher score = stronger close candidate (noise, old, micro-opt).
  */
 
@@ -35,36 +36,35 @@ async function gh(args) {
 }
 
 function score(pr) {
-  let s = 0;
   const title = (pr.title || '').toLowerCase();
   const body = (pr.body || '').toLowerCase();
   const created = new Date(pr.createdAt);
   const ageDays = Math.floor((Date.now() - created) / 86400000);
-  s += Math.min(ageDays * 1.5, 45); // weight age higher
 
-  if (JULES_MARKERS.some(m => title.includes(m.toLowerCase()) || body.includes(m.toLowerCase()))) {
-    s += 45;
-  }
-  if (DOCS_MARKERS.some(m => title.includes(m.toLowerCase()))) {
-    s += 30;
-  }
-  if (NOISE_MARKERS.some(m => title.includes(m.toLowerCase()))) {
-    s += 20;
-  }
-  if (HARDEN_MARKERS.some(m => title.includes(m.toLowerCase()))) {
-    s -= 20; // prefer to keep hardens
-  }
-  if (pr.draft) s += 15;
-  if ((pr.comments || 0) > 8) s += 8;
-  // Bonus for pure docs or very old
-  if (ageDays > 14 && DOCS_MARKERS.some(m => title.includes(m.toLowerCase()))) s += 15;
+  const isDocs = DOCS_MARKERS.some(m => title.includes(m.toLowerCase()));
+  const isJules = JULES_MARKERS.some(m => title.includes(m.toLowerCase()) || body.includes(m.toLowerCase()));
+  const isNoise = NOISE_MARKERS.some(m => title.includes(m.toLowerCase()));
+  const isHarden = HARDEN_MARKERS.some(m => title.includes(m.toLowerCase()));
+  // has_overlap and ci_green are approximated; full CI check would require extra gh calls
+  const hasOverlap = false; // placeholder; extend with file list comparison if needed
+  const ciGreen = true; // assume green unless known red; extend later
 
-  return { score: Math.round(s), ageDays, isJules: s > 40, isDocs: title.includes('docs') || title.includes('mirror'), isNoise: s > 50 };
+  let s = ageDays * 0.4;
+  if (isDocs) s += 3;
+  if (isJules) s += 2;
+  if (isNoise) s += 2;
+  if (hasOverlap) s += 1;
+  if (ciGreen) s -= 1;
+  if (isHarden) s -= 1.5; // keep hardens
+  if (pr.draft) s += 1;
+
+  return { score: Math.round(s * 10) / 10, ageDays, isJules, isDocs, isNoise, isHarden };
 }
 
 async function main() {
   const jsonMode = process.argv.includes('--json');
   const closeMode = process.argv.includes('--close-candidates');
+  const top5Mode = process.argv.includes('--top5');
   const all = [];
   for (const repo of REPOS) {
     const raw = await gh(`pr list --repo ${repo} --state open --limit 100 --json number,title,body,createdAt,author,comments,draft,url,labels`);
@@ -77,7 +77,7 @@ async function main() {
 
   all.sort((a, b) => b.score - a.score);
 
-  const closeCandidates = all.filter(p => p.score >= 40 || p.isNoise || (p.isDocs && p.ageDays > 7));
+  const closeCandidates = all.filter(p => p.score >= 4 || p.isNoise || (p.isDocs && p.ageDays > 7));
 
   if (jsonMode) {
     const summary = {
@@ -101,10 +101,11 @@ async function main() {
     return;
   }
 
-  if (closeMode) {
-    console.log('\n=== Close Candidates (score >=40 or noise/docs) ===');
+  if (top5Mode || closeMode) {
+    console.log('\n=== Top Close Candidates (refined score) ===');
     console.log(`Found ${closeCandidates.length} strong prune candidates\n`);
-    closeCandidates.slice(0, 20).forEach((p, i) => {
+    const limit = top5Mode ? 5 : 20;
+    closeCandidates.slice(0, limit).forEach((p, i) => {
       const tags = [p.isJules && 'JULES', p.isDocs && 'DOCS', p.isNoise && 'NOISE', p.draft && 'DRAFT'].filter(Boolean).join(',');
       console.log(`${i + 1}. [${p.score}] ${p.repo}#${p.number} (${p.ageDays}d) ${tags}`);
       console.log(`   ${p.title}`);
@@ -113,7 +114,7 @@ async function main() {
     return;
   }
 
-  console.log('\n=== Portfolio Entropy Dashboard ===');
+  console.log('\n=== Portfolio Entropy Dashboard (refined) ===');
   console.log(`Total open PRs: ${all.length}`);
   console.log(`Target: <10 per repo`);
   console.log(`Strong close candidates: ${closeCandidates.length}\n`);
@@ -132,7 +133,7 @@ async function main() {
   }
   console.log('Counts:');
   Object.entries(byRepo).forEach(([r, c]) => console.log(`  ${r}: ${c}`));
-  console.log('\nRun with --close-candidates for focused prune list.');
+  console.log('\nRun with --top5 or --close-candidates for focused prune list.');
 }
 
 main().catch(console.error);
