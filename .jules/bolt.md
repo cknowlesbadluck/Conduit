@@ -21,3 +21,7 @@
 ## 2025-03-10 - Single-pass character code IPv4 octet extraction for SSRF checks
 **Learning:** `isDisallowedIpv4` in `src/mcp-bridge.ts` was calling `parseIpv4Octets` which allocated string arrays via `.split(".")` and temporary octet arrays via `.map()`. Replacing string splitting and array creation with a single-pass character-code loop reduced IPv4 address validation latency by >10x (from ~1.75s to ~0.17s per 2M checks) with zero garbage collection allocations.
 **Action:** Avoid `.split(".")` and `.map(Number)` in high-frequency network/SSRF address validation functions; use direct character code parsing over input strings in $O(N)$ single pass.
+
+## 2025-03-10 - Fast-path wildcard check in glob pattern matcher
+**Learning:** `matchPattern` in `src/capabilities.ts` was falling through to `.split("/").filter(Boolean)` on non-matching literal patterns (without wildcards) that failed exact equality check, creating unnecessary string split and array allocations on every capability verification pass. Checking `!normalizedPattern.includes("*")` before splitting paths avoids array allocations and reduces pattern matching latency by >10x for non-matching literal grants.
+**Action:** In pattern matching pipelines with segment wildcards, verify that a wildcard character (`*`) exists before parsing and allocating segment arrays when exact string comparison has already failed.

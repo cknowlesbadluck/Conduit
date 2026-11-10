@@ -63,6 +63,11 @@ function matchPattern(pattern: string, value: string): boolean {
     return normalizedValue === prefix || normalizedValue.startsWith(prefix);
   }
 
+  // Performance Optimization: Non-wildcard patterns can only match via exact string equality.
+  // Fast-path exit if normalizedPattern has no '*' to avoid allocating string and segment arrays
+  // from .split("/").filter(Boolean) on non-matching literal grants.
+  if (!normalizedPattern.includes("*")) return false;
+
   // Segment-wise exact / single-segment *
   const patternParts = normalizedPattern.split("/").filter(Boolean);
   const valueParts = normalizedValue.split("/").filter(Boolean);
