@@ -5,7 +5,7 @@
 const SECRET_NAMES = new Set([
   "token", "secret", "key", "apikey", "apisecret", "apitoken",
   "password", "passwd", "pwd", "auth", "authorization", "authtoken",
-  "signature", "sig", "xamzsignature", "credential", "credentials",
+  "signature", "sig", "xamzsignature", "xamzsecuritytoken", "credential", "credentials",
   "session", "sessionid", "code", "jwt", "jwttoken",
   "accesstoken", "refreshtoken", "idtoken", "clientsecret",
 ]);
