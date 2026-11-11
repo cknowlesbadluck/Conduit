@@ -47,7 +47,7 @@ test("redactUrl preserves kept-param encoding and drops fragments", () => {
 });
 
 test("isSecretParamName catches acronym-prefixed credentials without matching compound business fields", () => {
-  for (const name of ["APIToken", "APISecret", "JWTToken", "api_token", "jwt_token"]) {
+  for (const name of ["APIToken", "APISecret", "JWTToken", "api_token", "jwt_token", "X-Amz-Security-Token"]) {
     assert.equal(isSecretParamName(name), true, name);
   }
   for (const name of ["countryCode", "postal_code", "statusCode", "projectKey"]) {
