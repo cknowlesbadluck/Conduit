@@ -49,8 +49,13 @@ export async function loadAuthConfig(): Promise<ConduitAuthConfig | null> {
   if (parsedResourceUrl.protocol !== "https:" && process.env.NODE_ENV === "production") {
     throw new Error("MCP_RESOURCE_URL must use HTTPS in production");
   }
-  // Never carry userinfo or token-like query params into the audience, metadata or logs.
-  parsedResourceUrl = new URL(redactUrl(parsedResourceUrl));
+  // The resource URL is also the exact JWT audience. Silently redacting it would
+  // make issued tokens fail verification. Reject unsafe config without echoing it;
+  // diagnostics and logs use redactUrl at their output boundaries.
+  const normalizedResourceUrl = parsedResourceUrl.toString();
+  if (redactUrl(parsedResourceUrl) !== normalizedResourceUrl) {
+    throw new Error("MCP_RESOURCE_URL must not contain userinfo, fragments, or credential-like query parameters");
+  }
 
   let parsedDiscoveryUrl: URL;
   try {
@@ -122,7 +127,7 @@ export async function loadAuthConfig(): Promise<ConduitAuthConfig | null> {
     enabled: true,
     issuer,
     discoveryUrl,
-    resourceUrl: parsedResourceUrl.toString(),
+    resourceUrl: normalizedResourceUrl,
     metadata,
     readScope: process.env.CONDUIT_READ_SCOPE?.trim() || "mcp:conduit.read",
     writeScope: process.env.CONDUIT_WRITE_SCOPE?.trim() || "mcp:conduit.write",
