@@ -45,3 +45,23 @@ test("isSecretParamName matches credential names by token, not substring", () =>
 test("redactUrl preserves kept-param encoding and drops fragments", () => {
   assert.equal(redactUrl("https://c.example.com/mcp?q=a%20b&token=x&r=c+d#access_token=frag"), "https://c.example.com/mcp?q=a%20b&r=c+d");
 });
+
+test("isSecretParamName catches acronym-prefixed credentials without matching compound business fields", () => {
+  for (const name of ["APIToken", "APISecret", "JWTToken", "api_token", "jwt_token"]) {
+    assert.equal(isSecretParamName(name), true, name);
+  }
+  for (const name of ["countryCode", "postal_code", "statusCode", "projectKey"]) {
+    assert.equal(isSecretParamName(name), false, name);
+  }
+});
+
+test("redactUrl preserves empty query components and separators", () => {
+  const trailing = "https://c.example.com/mcp?tenant=acme&";
+  const doubled = "https://c.example.com/mcp?tenant=acme&&region=us";
+  assert.equal(redactUrl(trailing), trailing);
+  assert.equal(redactUrl(doubled), doubled);
+  assert.equal(
+    redactUrl("https://c.example.com/mcp?tenant=acme&api_token=secret&"),
+    "https://c.example.com/mcp?tenant=acme&",
+  );
+});
