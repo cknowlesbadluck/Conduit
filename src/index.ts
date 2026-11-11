@@ -1,4 +1,5 @@
 import { jsonErrorHandler } from "./http-errors.js";
+import { redactUrl } from "./url-redact.js";
 import express from "express";
 import { getOAuthProtectedResourceMetadataUrl, hostHeaderValidation, mcpAuthMetadataRouter, originValidation, requireBearerAuth } from "@modelcontextprotocol/express";
 import { toNodeHandler } from "@modelcontextprotocol/node";
@@ -113,7 +114,7 @@ async function boot() {
     const handler = createMcpHandler(() => createConduitServer(authConfig));
     const nodeHandler = toNodeHandler(handler, { onerror: console.error });
     app.all("/mcp", requireBearerAuth({ verifier: tokenVerifier!, resourceMetadataUrl }), rateLimitMcp, (req, res) => nodeHandler(req, res, req.body));
-    console.log(`Conduit OAuth enabled for ${authConfig.resourceUrl}`);
+    console.log(`Conduit OAuth enabled for ${redactUrl(authConfig.resourceUrl)}`);
   } else if (process.env.CONDUIT_TOKEN && developmentAuthAllowed()) {
     const token = process.env.CONDUIT_TOKEN;
     const handler = createMcpHandler(() => createConduitServer());
