@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assertCapability, matchesCapability, type CapabilityGrant, type CapabilityRequest } from "./capabilities.js";
+import { assertCapability, capabilitiesRequired, isHostedProduction, assertNotTestMemoryInProduction, matchesCapability, type CapabilityGrant, type CapabilityRequest } from "./capabilities.js";
 
 const grant = (overrides: Partial<CapabilityGrant> = {}): CapabilityGrant => ({
   id: "grant_1",
@@ -35,6 +35,23 @@ test("capability matcher supports one-segment wildcard", () => {
 test("capability matcher denies expired grants", () => {
   const g = grant({ expiresAt: new Date(Date.now() - 1000).toISOString() });
   assert.equal(matchesCapability(g, request()), false);
+});
+
+test("capability matcher fails closed on unparseable expiry", () => {
+  assert.equal(matchesCapability(grant({ expiresAt: "not-a-date" }), request()), false);
+  assert.equal(matchesCapability(grant({ expiresAt: "" }), request()), false);
+  assert.equal(matchesCapability(grant({ expiresAt: new Date(Date.now() + 60_000).toISOString() }), request()), true);
+});
+
+test("capability grants are required on any hosted production runtime unless explicitly overridden", () => {
+  assert.equal(capabilitiesRequired({}), false);
+  assert.equal(capabilitiesRequired({ NODE_ENV: "production" }), true);
+  assert.equal(isHostedProduction({ RENDER: "true" }), true);
+  assert.equal(capabilitiesRequired({ RENDER: "true" }), true);
+  assert.equal(capabilitiesRequired({ RENDER: "true", CONDUIT_CAPABILITIES_REQUIRED: "false" }), false);
+  assert.equal(capabilitiesRequired({ CONDUIT_CAPABILITIES_REQUIRED: "true" }), true);
+  assert.throws(() => assertNotTestMemoryInProduction({ NODE_ENV: "production", CONDUIT_TEST_MEMORY: "true" }), /CONDUIT_TEST_MEMORY/);
+  assert.doesNotThrow(() => assertNotTestMemoryInProduction({ CONDUIT_TEST_MEMORY: "true" }));
 });
 
 test("capability matcher enforces agent and provider identity", () => {

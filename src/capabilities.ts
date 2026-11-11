@@ -76,7 +76,11 @@ export function matchesCapability(grant: CapabilityGrant, request: CapabilityReq
   if (grant.provider !== request.provider) return false;
   if (grant.projectId && grant.projectId !== request.projectId) return false;
   if (normalizeMethod(grant.method) !== "*" && normalizeMethod(grant.method) !== normalizeMethod(request.method)) return false;
-  if (grant.expiresAt && Date.parse(grant.expiresAt) <= Date.now()) return false;
+  if (grant.expiresAt !== undefined && grant.expiresAt !== null) {
+    // Fail closed: an unparseable expiry must not behave as "never expires".
+    const expiry = Date.parse(grant.expiresAt);
+    if (!Number.isFinite(expiry) || expiry <= Date.now()) return false;
+  }
   return matchPattern(grant.pathPattern, request.path);
 }
 
@@ -89,7 +93,28 @@ export function assertCapability(grants: CapabilityGrant[], request: CapabilityR
   }
 }
 
-export function capabilitiesRequired(): boolean {
-  if (process.env.CONDUIT_CAPABILITIES_REQUIRED !== undefined) return process.env.CONDUIT_CAPABILITIES_REQUIRED === "true";
-  return process.env.NODE_ENV === "production";
+/**
+ * Hosted production is not only NODE_ENV. Render sets RENDER; an explicit
+ * CONDUIT_PRODUCTION=true covers other hosts. An explicit
+ * CONDUIT_CAPABILITIES_REQUIRED=true|false always wins, including "false".
+ */
+export function isHostedProduction(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (env.NODE_ENV === "production") return true;
+  if (env.CONDUIT_PRODUCTION === "true") return true;
+  if (typeof env.RENDER === "string" && env.RENDER.length > 0) return true;
+  return false;
+}
+
+export function capabilitiesRequired(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (env.CONDUIT_CAPABILITIES_REQUIRED !== undefined && env.CONDUIT_CAPABILITIES_REQUIRED !== "") {
+    return env.CONDUIT_CAPABILITIES_REQUIRED === "true";
+  }
+  return isHostedProduction(env);
+}
+
+/** Test-memory mode must never boot a hosted production process. */
+export function assertNotTestMemoryInProduction(env: NodeJS.ProcessEnv = process.env): void {
+  if (isHostedProduction(env) && env.CONDUIT_TEST_MEMORY === "true") {
+    throw new Error("CONDUIT_TEST_MEMORY is refused on a production runtime");
+  }
 }

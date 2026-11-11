@@ -56,7 +56,11 @@ export function isGrantAdmin(extra: ToolExtra) {
   const clientId = typeof info?.clientId === "string" ? info.clientId : undefined;
   const keys = actorBindingLookupKeys(clientId, sub);
   const adminSet = getGrantAdminSet();
-  return keys.some((key) => adminSet.has(key)) || Boolean(sub && adminSet.has(sub)) || Boolean(clientId && adminSet.has(clientId));
+  if (keys.some((key) => adminSet.has(key))) return true;
+  // Client-credentials tokens have no distinct user subject. A bare client id
+  // must not admit every user `sub` of that OAuth client.
+  if (clientId && (!sub || sub === clientId) && adminSet.has(clientId)) return true;
+  return false;
 }
 
 async function canGovern(extra: ToolExtra, projectId?: string) {
@@ -86,7 +90,8 @@ export function registerGrantTools(server: McpServer, authConfig?: ConduitAuthCo
     const extraAuth = extra as ToolExtra;
     if (!(await canGovern(extraAuth, projectId))) return rejected("grant_admin_required", { projectId: projectId ?? null });
     const creator = await governingAgent(extraAuth);
-    return creator && (await revokeCapabilityGrant(grantId, creator)) ? json({ revoked: true, grantId }) : rejected("grant_not_found_or_not_owned", { grantId });
+    const revoked = creator ? await revokeCapabilityGrant(grantId, creator, { govern: isGrantAdmin(extraAuth) }) : false;
+    return revoked ? json({ revoked: true, grantId }) : rejected("grant_not_found_or_not_owned", { grantId });
   });
 
   server.registerTool("grants_list", { description: "List capability grants visible to the caller. Revoked grants are excluded unless explicitly requested by a project owner or administrator.", inputSchema: z.object({ agentId: z.string().min(1).max(200).optional(), projectId: z.string().min(1).max(200).optional(), provider: z.enum(["github", "render", "supabase", "mcp_bridge"] as const).optional(), includeRevoked: z.boolean().optional() }), annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } }, async ({ agentId, projectId, provider, includeRevoked }, extra) => {

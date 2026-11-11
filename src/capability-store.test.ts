@@ -24,6 +24,7 @@ test("createCapabilityGrant validates agents, project and expiry; uppercases met
   await assert.rejects(() => createCapabilityGrant({ agentId: a, provider: "github", method: "GET", pathPattern: "/", createdBy: `ghost-${sfx}` }), /agent_unregistered/);
   await assert.rejects(() => createCapabilityGrant({ agentId: a, projectId: `nope-${sfx}`, provider: "github", method: "GET", pathPattern: "/", createdBy: a }), /project_not_found/);
   await assert.rejects(() => createCapabilityGrant({ agentId: a, provider: "github", method: "GET", pathPattern: "/", expiresAt: "not-a-date", createdBy: a }), /invalid_expiry/);
+  await assert.rejects(() => createCapabilityGrant({ agentId: a, provider: "github", method: "GET", pathPattern: "/", expiresAt: new Date(Date.now() - 1000).toISOString(), createdBy: a }), /expiry_in_past/);
   const g = await createCapabilityGrant({ agentId: a, provider: "render", method: "post", pathPattern: "/services/*", expiresAt: "2099-01-01T00:00:00.000Z", createdBy: a });
   assert.equal(g.method, "POST");
   assert.match(g.id, /^grant_/);
