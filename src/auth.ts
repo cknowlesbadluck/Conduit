@@ -1,4 +1,5 @@
 import { AUTH_DISCOVERY_TIMEOUT_MS } from "./db-timeouts.js";
+import { isHostedProduction } from "./capabilities.js";
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import type { AuthInfo, OAuthTokenVerifier } from "@modelcontextprotocol/server";
 import { OAuthError, OAuthErrorCode } from "@modelcontextprotocol/server";
@@ -45,7 +46,7 @@ export async function loadAuthConfig(): Promise<ConduitAuthConfig | null> {
   } catch {
     throw new Error("MCP_RESOURCE_URL must be a valid absolute URL");
   }
-  if (parsedResourceUrl.protocol !== "https:" && process.env.NODE_ENV === "production") {
+  if (parsedResourceUrl.protocol !== "https:" && isHostedProduction()) {
     throw new Error("MCP_RESOURCE_URL must use HTTPS in production");
   }
 
@@ -55,7 +56,7 @@ export async function loadAuthConfig(): Promise<ConduitAuthConfig | null> {
   } catch {
     throw new Error("DESCOPE_MCP_SERVER_WELL_KNOWN_URL must be a valid absolute URL");
   }
-  if (parsedDiscoveryUrl.protocol !== "https:" && process.env.NODE_ENV === "production") {
+  if (parsedDiscoveryUrl.protocol !== "https:" && isHostedProduction()) {
     throw new Error("DESCOPE_MCP_SERVER_WELL_KNOWN_URL must use HTTPS in production");
   }
 
@@ -83,7 +84,7 @@ export async function loadAuthConfig(): Promise<ConduitAuthConfig | null> {
     } catch {
       throw new Error(`Descope discovery metadata has invalid URL for ${key}: ${endpointUrl}`);
     }
-    if (url.protocol !== "https:" && process.env.NODE_ENV === "production") {
+    if (url.protocol !== "https:" && isHostedProduction()) {
       throw new Error(`Descope discovery metadata ${key} must use HTTPS in production: ${endpointUrl}`);
     }
   }
@@ -96,7 +97,7 @@ export async function loadAuthConfig(): Promise<ConduitAuthConfig | null> {
     } catch {
       throw new Error("DESCOPE_MCP_SERVER_ISSUER must be a valid absolute URL");
     }
-    if (parsedConfiguredIssuer.protocol !== "https:" && process.env.NODE_ENV === "production") {
+    if (parsedConfiguredIssuer.protocol !== "https:" && isHostedProduction()) {
       throw new Error("DESCOPE_MCP_SERVER_ISSUER must use HTTPS in production");
     }
     if (configuredIssuer !== issuer) {

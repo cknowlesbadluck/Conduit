@@ -51,6 +51,25 @@ test('loadAuthConfig rejects HTTP discovery URL in production', async () => {
   }
 });
 
+test('loadAuthConfig rejects HTTP discovery when RENDER is set even if NODE_ENV is unset', async () => {
+  const origEnv = process.env.NODE_ENV;
+  const origRender = process.env.RENDER;
+  const origDiscovery = process.env.DESCOPE_MCP_SERVER_WELL_KNOWN_URL;
+  const origPublic = process.env.PUBLIC_URL;
+  try {
+    delete process.env.NODE_ENV;
+    process.env.RENDER = 'true';
+    process.env.PUBLIC_URL = 'https://conduit-feco.onrender.com';
+    process.env.DESCOPE_MCP_SERVER_WELL_KNOWN_URL = 'http://api.descope.com/.well-known/openid-configuration';
+    await assert.rejects(async () => loadAuthConfig(), (err: Error) => err.message.includes('must use HTTPS in production'));
+  } finally {
+    if (origEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = origEnv;
+    if (origRender === undefined) delete process.env.RENDER; else process.env.RENDER = origRender;
+    process.env.DESCOPE_MCP_SERVER_WELL_KNOWN_URL = origDiscovery;
+    process.env.PUBLIC_URL = origPublic;
+  }
+});
+
 test('loadAuthConfig rejects insecure discovered endpoints in production', async () => {
   const origEnv = process.env.NODE_ENV;
   const origDiscovery = process.env.DESCOPE_MCP_SERVER_WELL_KNOWN_URL;
