@@ -9,6 +9,7 @@ import { initCapabilityStore } from "./capability-store.js";
 import { buildProtectedResourceMetadata, createDevelopmentAuthInfo, createTokenVerifier, DEVELOPMENT_ANONYMOUS_SUBJECT, DEVELOPMENT_TOKEN_SUBJECT, loadAuthConfig, requireScope } from "./auth.js";
 import { createConduitServer } from "./mcp.js";
 import { VERSION, SERVICE_NAME } from "./version.js";
+import { assertNotTestMemoryInProduction } from "./capabilities.js";
 import { healthBody, readyBody } from "./health-contract.js";
 import { MCP_RATE_LIMITER, TOOL_RATE_LIMITER } from "./rate-limit.js";
 import { timingSafeEqual } from "node:crypto";
@@ -66,6 +67,7 @@ app.get("/ready", async (_req, res) => {
 });
 
 async function boot() {
+  assertNotTestMemoryInProduction();
   await init();
   await initCapabilityStore();
   const authConfig = await loadAuthConfig();

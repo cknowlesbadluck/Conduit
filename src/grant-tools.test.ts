@@ -34,7 +34,7 @@ async function setup() {
   return { tool, owner, other, target, projectId: project.id, ownerCtx: caller(`c-${owner}`, `s-${owner}`), otherCtx: caller(`c-${other}`, `s-${other}`) };
 }
 
-test("isGrantAdmin matches composite key, bare sub or bare clientId; empty env grants nobody", () => {
+test("isGrantAdmin matches composite key or bare sub; a bare client id does not admit other users", () => {
   const prev = process.env.CONDUIT_GRANT_ADMIN_SUBJECTS;
   try {
     delete process.env.CONDUIT_GRANT_ADMIN_SUBJECTS;
@@ -45,11 +45,9 @@ test("isGrantAdmin matches composite key, bare sub or bare clientId; empty env g
     assert.equal(isGrantAdmin(caller("c", "other")), false);
     process.env.CONDUIT_GRANT_ADMIN_SUBJECTS = "only-sub";
     assert.equal(isGrantAdmin(caller("x", "only-sub")), true);
-    // CURRENT BEHAVIOUR, flagged in review of #235: a bare clientId entry also admits every
-    // user `sub` of that OAuth client. Pinned here so a fix (restrict to client-credentials
-    // tokens without a distinct sub) is a deliberate, visible change to this assertion.
     process.env.CONDUIT_GRANT_ADMIN_SUBJECTS = "only-client";
-    assert.equal(isGrantAdmin(caller("only-client", "y")), true);
+    assert.equal(isGrantAdmin(caller("only-client", "y")), false);
+    assert.equal(isGrantAdmin(caller("only-client", "only-client")), true);
     assert.equal(isGrantAdmin({}), false, "unauthenticated caller is never admin");
   } finally {
     if (prev === undefined) delete process.env.CONDUIT_GRANT_ADMIN_SUBJECTS; else process.env.CONDUIT_GRANT_ADMIN_SUBJECTS = prev;
@@ -73,16 +71,22 @@ test("grant_create surfaces store errors (unregistered agent) as tool errors", a
   assert.match(errorOf(r), /agent_unregistered/);
 });
 
-// CURRENT BEHAVIOUR, flagged in review of #235: revocation filters on created_by, so a
-// grant admin cannot revoke a grant created by a project owner. Tracked as a runtime follow-up.
-test("grant_revoke: only the creator revokes; revoked grants hidden unless governor asks", async () => {
+// A configured grant admin can revoke a grant they did not create.
+test("grant_revoke: creator or grant admin; revoked grants hidden unless governor asks", async () => {
   const { tool, target, projectId, ownerCtx, otherCtx } = await setup();
   const created = await tool("grant_create")({ agentId: target, projectId, provider: "github", method: "GET", pathPattern: "/r" }, ownerCtx);
   const grantId = created.structuredContent?.id as string;
   assert.match(errorOf(await tool("grant_revoke")({ grantId, projectId }, otherCtx)), /grant_admin_required/);
   assert.match(errorOf(await tool("grant_revoke")({ grantId: "nope", projectId }, ownerCtx)), /grant_not_found_or_not_owned/);
-  const revoked = await tool("grant_revoke")({ grantId, projectId }, ownerCtx);
-  assert.deepEqual(revoked.structuredContent, { revoked: true, grantId });
+  const prev = process.env.CONDUIT_GRANT_ADMIN_SUBJECTS;
+  process.env.CONDUIT_GRANT_ADMIN_SUBJECTS = `c-${target}::s-admin`;
+  try {
+    const adminCtx = caller(`c-${target}`, "s-admin");
+    const revoked = await tool("grant_revoke")({ grantId, projectId }, adminCtx);
+    assert.deepEqual(revoked.structuredContent, { revoked: true, grantId });
+  } finally {
+    if (prev === undefined) delete process.env.CONDUIT_GRANT_ADMIN_SUBJECTS; else process.env.CONDUIT_GRANT_ADMIN_SUBJECTS = prev;
+  }
 
   const ids = (r: Result) => (r.structuredContent as unknown as Array<{ id: string }>).map((g) => g.id);
   assert.ok(!ids(await tool("grants_list")({ agentId: target, projectId }, ownerCtx)).includes(grantId));

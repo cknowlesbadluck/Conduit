@@ -81,8 +81,10 @@ export async function createCapabilityGrant(input: {
   if (input.projectId && !(await projectExists(input.projectId))) {
     throw new Error("project_not_found");
   }
-  if (input.expiresAt && !Number.isFinite(Date.parse(input.expiresAt))) {
-    throw new Error("invalid_expiry");
+  if (input.expiresAt !== undefined && input.expiresAt !== null) {
+    const expiry = Date.parse(input.expiresAt);
+    if (!input.expiresAt || !Number.isFinite(expiry)) throw new Error("invalid_expiry");
+    if (expiry <= Date.now()) throw new Error("expiry_in_past");
   }
 
   const grant: CapabilityGrant = {
@@ -123,20 +125,26 @@ export async function createCapabilityGrant(input: {
   return grant;
 }
 
-export async function revokeCapabilityGrant(idValue: string, actor: string): Promise<boolean> {
+export async function revokeCapabilityGrant(idValue: string, actor: string, options?: { govern?: boolean }): Promise<boolean> {
   await initCapabilityStore();
   let revokedGrant: CapabilityGrant | undefined;
+  const govern = options?.govern === true;
 
   if (pool) {
-    const result = await pool.query(
-      "UPDATE capability_grants SET revoked_at=COALESCE(revoked_at, now()) WHERE id=$1 AND created_by=$2 RETURNING id, project_id AS \"projectId\", agent_id AS \"agentId\", provider",
-      [idValue, actor],
-    );
+    const result = govern
+      ? await pool.query(
+          "UPDATE capability_grants SET revoked_at=COALESCE(revoked_at, now()) WHERE id=$1 RETURNING id, project_id AS \"projectId\", agent_id AS \"agentId\", provider",
+          [idValue],
+        )
+      : await pool.query(
+          "UPDATE capability_grants SET revoked_at=COALESCE(revoked_at, now()) WHERE id=$1 AND created_by=$2 RETURNING id, project_id AS \"projectId\", agent_id AS \"agentId\", provider",
+          [idValue, actor],
+        );
     if (result.rowCount !== 1) return false;
     revokedGrant = result.rows[0] as CapabilityGrant;
   } else {
     const grant = memory.get(idValue);
-    if (!grant || grant.createdBy !== actor) return false;
+    if (!grant || (!govern && grant.createdBy !== actor)) return false;
     grant.revokedAt ??= now();
     revokedGrant = grant;
   }
