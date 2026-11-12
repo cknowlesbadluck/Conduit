@@ -55,6 +55,8 @@ test("fetchPr maps gh output (read-only commands only)", () => {
 test("review fixes: env-var lines, DB TLS files, incomplete file lists, head SHA compare", () => {
   assert.equal(envVarMentioned("No env vars.\nSet FOO_TOKEN=1 on Render"), true);
   assert.equal(envVarMentioned("No env vars. This change requires a new env var for feature flags."), true);
+  assert.equal(envVarMentioned("No env vars are required, but this change adds a new env var for feature flags."), true);
+  assert.equal(envVarMentioned("No env vars are required."), false);
   assert.equal(envVarMentioned("No env vars. No auth changes."), false);
   assert.equal(envVarMentioned("Adds a new env var for timeouts"), true);
   assert.deepEqual(evaluate({ ...ok(), files: ["src/store.ts"] }).blockers, ["sensitive_path:src/store.ts"]);
