@@ -43,10 +43,6 @@ export const TARGETS = [
   { name: "conduit", url: "https://conduit-feco.onrender.com/ready", expectService: "conduit", schema: "conduit-ready", expect: { contractRevision: "2026-10-03-ready-surface" } },
   // Owner gate: the service role key is the ONLY thing Resonance prod may be missing.
   { name: "resonance-netlify", url: "https://resonancenexus.netlify.app/api/ready", expectService: "resonance-nexus", schema: "resonance-ready", expect: { missingRequired: [], authMode: "required" }, parity: RESONANCE_MAIN_READY },
-  { name: "resonance-vercel", url: "https://resonance.vercel.app/api/ready", expectService: "resonance-nexus" },
-  { name: "resonancenexus-vercel", url: "https://resonancenexus.vercel.app/api/ready", expectService: "resonance-nexus" },
-  { name: "quicksilver-vercel", url: "https://quicksilver.vercel.app/", expectService: "quicksilver" },
-  { name: "quicksilverv1-vercel", url: "https://quicksilverv1.vercel.app/", expectService: "quicksilver" },
 ];
 
 const ENV_NAME = /^[A-Z][A-Z0-9_]{0,63}$/;
@@ -102,11 +98,10 @@ function classifyRaw(target, observation) {
   if (observation.error === "timeout") return { ...base, outcome: "timeout", ok: false };
   if (observation.error) return { ...base, outcome: "unreachable", ok: false };
   const { status, headers = {}, body = "" } = observation;
-  const vercelError = String(headers["x-vercel-error"] ?? "");
   if (/challenge/i.test(String(headers["cf-mitigated"] ?? "")) || /challenges\.cloudflare\.com|<title>Just a moment\.\.\.<\/title>/i.test(body)) {
     return { ...base, outcome: "challenge", ok: false, status, reason: "cdn_bot_challenge" };
   }
-  if (status === 404 && (/DEPLOYMENT_NOT_FOUND|NOT_FOUND/.test(vercelError) || /DEPLOYMENT_NOT_FOUND/.test(body))) {
+  if (status === 404) {
     return { ...base, outcome: "alias_absent", ok: false, status };
   }
   let json;
