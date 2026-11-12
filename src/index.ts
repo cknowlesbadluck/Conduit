@@ -76,8 +76,10 @@ async function boot() {
   assertNotTestMemoryInProduction();
   // Free-tier Postgres may still be waking when Render starts this process. Retry
   // transient connection failures instead of exiting on the first timeout.
-  await retryStartup("PostgreSQL initialization", init, { attempts: 5, baseDelayMs: 1_000, maxDelayMs: 8_000 });
-  await initCapabilityStore();
+  await retryStartup("PostgreSQL initialization", async () => {
+    await init();
+    await initCapabilityStore();
+  }, { attempts: 5, baseDelayMs: 1_000, maxDelayMs: 8_000 });
   const authConfig = await loadAuthConfig();
   app.get("/diagnostics", createDiagnosticsHandler(authConfig ?? undefined));
   // Build the token verifier (and its cached remote JWKS) once and share it between
