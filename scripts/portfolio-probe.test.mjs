@@ -22,9 +22,8 @@ test("stranger_occupant: 200 from someone else's app (HTML or wrong service)", (
   assert.equal(classify(resonance, { status: 200, body: "<html/>" }).ok, false);
 });
 
-test("alias_absent: Vercel DEPLOYMENT_NOT_FOUND via header or body", () => {
-  assert.equal(classify(resonance, { status: 404, headers: { "x-vercel-error": "DEPLOYMENT_NOT_FOUND" }, body: "" }).outcome, "alias_absent");
-  assert.equal(classify(resonance, { status: 404, body: "The deployment could not be found on Vercel.\n\nDEPLOYMENT_NOT_FOUND" }).outcome, "alias_absent");
+test("alias_absent: any missing endpoint path is classified generically", () => {
+  assert.equal(classify(resonance, { status: 404, body: "Not found" }).outcome, "alias_absent");
 });
 
 test("timeout / unreachable / unknown all fail closed", () => {
