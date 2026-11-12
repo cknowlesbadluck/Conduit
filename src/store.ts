@@ -1,9 +1,7 @@
-import { DATABASE_CONNECT_TIMEOUT_MS } from "./db-timeouts.js";
-import pg from "pg";
+import type pg from "pg";
+import { getSharedPool } from "./db-pool.js";
 import { cursorCodec, cursorOrder, pageLimit, type CursorCollection, type Page } from "./pagination.js";
 import { redactRecord } from "./redact.js";
-
-const { Pool } = pg;
 
 export type TaskStatus = "open" | "claimed" | "blocked" | "completed";
 export type Agent = { id: string; name: string; description?: string; createdAt: string };
@@ -27,15 +25,7 @@ const tasks = new Map<string, Task>();
 const contacts = new Map<string, Contact>();
 const tools = new Map<string, Tool>();
 const activity: ActivityEvent[] = [];
-const useDatabase = Boolean(process.env.DATABASE_URL) && process.env.CONDUIT_TEST_MEMORY !== "true";
-const sslRejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === "true";
-const sslOption = process.env.DATABASE_SSL === "false"
-  ? false
-  : { rejectUnauthorized: sslRejectUnauthorized };
-
-const pool = useDatabase
-  ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: sslOption, max: 5, connectionTimeoutMillis: DATABASE_CONNECT_TIMEOUT_MS })
-  : null;
+const pool = getSharedPool();
 
 let ready = false;
 const now = () => new Date().toISOString();
