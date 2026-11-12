@@ -74,6 +74,10 @@ The service also exposes `/health`, `/ready`, unauthenticated rate-limited `/dia
 - `npm run merge-train [owner/repo]`: report-only health check of the open PR backlog. It lists green, mergeable PRs that do not need owner review, in a suggested order. It also flags PRs that add the same new file, PR pairs that overlap heavily (stacked or superseded), conflict hotspots, and PRs that touch auth, grants or bridge code (those need owner review). It uses `GITHUB_TOKEN` or the local `gh` session and makes no writes.
 - `scripts/portfolio-probe.mjs`: report-only cross-plane `/ready` probe, scheduled in CI.
 
+## Portfolio development
+
+The bounded, self-improving engineering loop for Resonance, QuicksilverV1, and Conduit is documented in [docs/THREE-PROJECT-DEVELOPMENT-LOOP.md](docs/THREE-PROJECT-DEVELOPMENT-LOOP.md). It coordinates planning and evidence while preserving three independent repositories, CI systems, release paths, and owner merge gates.
+
 ## Deployment
 
 Deployed on Render as a web service. See service `srv-dabgm3ks728c739rmt50` and endpoint `https://conduit-feco.onrender.com/mcp`.
