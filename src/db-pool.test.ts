@@ -36,10 +36,10 @@ test("a CA bundle can be supplied inline or by file", () => {
 });
 
 test("connection URL sslmode cannot override the explicit verified TLS policy", () => {
-  const pem = "-----BEGIN CERTIFICATE-----\\nABC\\n-----END CERTIFICATE-----";
+  const pem = "-----BEGIN CERTIFICATE-----\nABC\n-----END CERTIFICATE-----";
   const config = databaseConnectionConfig({
     DATABASE_URL: "postgres://localhost:5432/conduit?sslmode=disable&application_name=conduit",
-    DATABASE_SSL_CA: pem,
+    DATABASE_SSL_CA: pem.replace(/\n/g, "\\n"),
   });
   assert.equal(config.connectionString?.includes("sslmode"), false);
   assert.equal(config.connectionString?.includes("application_name=conduit"), true);
@@ -49,7 +49,7 @@ test("connection URL sslmode cannot override the explicit verified TLS policy", 
 test("connection URL sslrootcert is loaded before SSL parameters are stripped", () => {
   const dir = mkdtempSync(join(tmpdir(), "conduit-url-ca-"));
   const file = join(dir, "ca.pem");
-  const pem = "-----BEGIN CERTIFICATE-----\\nABC\\n-----END CERTIFICATE-----";
+  const pem = "-----BEGIN CERTIFICATE-----\nABC\n-----END CERTIFICATE-----";
   try {
     writeFileSync(file, pem);
     const config = databaseConnectionConfig({
