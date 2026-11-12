@@ -8,7 +8,7 @@ const SECRET_NAMES = new Set([
   "signature", "sig", "xamzsignature", "xamzsecuritytoken", "credential", "credentials",
   "session", "sessionid", "code", "jwt", "jwttoken",
   "accesstoken", "refreshtoken", "idtoken", "clientsecret",
-  "clientassertion", "xapikey", "xgooglesignature", "xamzcredential",
+  "clientassertion", "xapikey", "xgoogsignature", "xamzcredential",
 ]);
 
 export function isSecretParamName(name: string): boolean {
