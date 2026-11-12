@@ -100,3 +100,33 @@ test("portfolio markdown identifies blocked evidence and links known workflow ru
   assert.match(markdown, /\[CI\]\(https:\/\/github\.com\/cknowlesbadluck\/Conduit\/actions\/runs\/2\)/);
   assert.match(markdown, /3/);
 });
+
+
+test("portfolio scan treats malformed PR payloads as unknown, not zero open PRs", async () => {
+  const fetchImpl = async (url) => {
+    if (url.endsWith("/actions/workflows?per_page=100")) {
+      return response({ workflows: [{ id: 42, name: "CI", path: ".github/workflows/ci.yml" }] });
+    }
+    if (url.includes("/actions/workflows/42/runs?")) {
+      return response({ workflow_runs: [{ status: "completed", conclusion: "success" }] });
+    }
+    return response({ count: 0 });
+  };
+  const report = await collectPortfolio({ fetchImpl });
+  assert.ok(report.projects.every((project) => project.status === "unknown"));
+  assert.ok(report.projects.every((project) => project.openPullRequests === null));
+});
+
+test("portfolio scan treats incomplete workflow status as unknown, not in progress", async () => {
+  const fetchImpl = async (url) => {
+    if (url.endsWith("/actions/workflows?per_page=100")) {
+      return response({ workflows: [{ id: 42, name: "CI", path: ".github/workflows/ci.yml" }] });
+    }
+    if (url.includes("/actions/workflows/42/runs?")) {
+      return response({ workflow_runs: [{ conclusion: "success" }] });
+    }
+    return response([]);
+  };
+  const report = await collectPortfolio({ fetchImpl });
+  assert.ok(report.projects.every((project) => project.status === "unknown"));
+});
