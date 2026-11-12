@@ -13,7 +13,7 @@ export const SENSITIVE = OWNER_ONLY_PATHS;
 const GREEN = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"]);
 
 const SNAKE = /\b[A-Z][A-Z0-9]*_[A-Z0-9_]*[A-Z0-9]\b/g;
-/** Per line: a concrete VAR=value always counts; a generic env-var phrase counts unless that line is a "no env vars" disclaimer;
+/** Per statement: a concrete VAR=value always counts; a generic env-var phrase counts unless that statement is a "no env vars" disclaimer;
  * a standalone SCREAMING_SNAKE name counts unless the PR's own diff declares it as a code constant (codeConstants). Fail-closed:
  * with no diff evidence (empty set) every such name counts. */
 export function envVarMentioned(body, codeConstants = new Set()) {
