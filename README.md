@@ -72,11 +72,14 @@ The service also exposes `/health`, `/ready`, unauthenticated rate-limited `/dia
 - `npm run lint`: ESLint baseline (typescript-eslint recommended, `--max-warnings=0`). CI enforces it.
 - `npm run typecheck`: `tsc --noEmit`.
 - `npm run merge-train [owner/repo]`: report-only health check of the open PR backlog. It lists green, mergeable PRs that do not need owner review, in a suggested order. It also flags PRs that add the same new file, PR pairs that overlap heavily (stacked or superseded), conflict hotspots, and PRs that touch auth, grants or bridge code (those need owner review). It uses `GITHUB_TOKEN` or the local `gh` session and makes no writes.
+- `npm run portfolio:report`: read-only health snapshot for the three canonical repositories. It reports the latest main-branch workflow, open PR count, and inaccessible/missing evidence as unknown.
 - `scripts/portfolio-probe.mjs`: report-only cross-plane `/ready` probe, scheduled in CI.
+
+The portfolio health report is also scheduled every six hours by [Portfolio health](.github/workflows/portfolio-health.yml). It publishes an Actions summary and a downloadable report artifact. It uses only GitHub's read API and the workflow's read-only token; it does not dispatch code changes, create issues, approve reviews, or merge PRs.
 
 ## Portfolio development
 
-The bounded, self-improving engineering loop for Resonance, QuicksilverV1, and Conduit is documented in [docs/THREE-PROJECT-DEVELOPMENT-LOOP.md](docs/THREE-PROJECT-DEVELOPMENT-LOOP.md). It coordinates planning and evidence while preserving three independent repositories, CI systems, release paths, and owner merge gates.
+The bounded engineering loop for Resonance, QuicksilverV1, and Conduit is documented in [docs/THREE-PROJECT-DEVELOPMENT-LOOP.md](docs/THREE-PROJECT-DEVELOPMENT-LOOP.md). It coordinates planning and evidence while preserving three independent repositories, CI systems, release paths, and owner merge gates.
 
 ## Deployment
 
