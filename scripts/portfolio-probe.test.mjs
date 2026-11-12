@@ -29,7 +29,7 @@ test("alias_absent: Vercel DEPLOYMENT_NOT_FOUND via header or body", () => {
 
 test("timeout / unreachable / unknown all fail closed", () => {
   assert.deepEqual([classify(conduit, { error: "timeout" }).outcome, classify(conduit, { error: "unreachable" }).outcome], ["timeout", "unreachable"]);
-  for (const obs of [undefined, { status: 500, body: "" }, { status: 404, body: "plain 404" }, { status: 200, body: JSON.stringify({ service: "conduit", status: "degraded" }) }, { status: 302, body: "" }]) {
+  for (const obs of [undefined, { status: 500, body: "" }, { status: 400, body: "plain 400" }, { status: 200, body: JSON.stringify({ service: "conduit", status: "degraded" }) }, { status: 302, body: "" }]) {
     const r = classify(conduit, obs); assert.equal(r.ok, false); assert.equal(r.outcome, "unknown");
   }
 });
