@@ -5,6 +5,10 @@ import { attachParity, classify, observe, RESONANCE_MAIN_READY, TARGETS } from "
 const conduit = { name: "conduit", url: "https://x/ready", expectService: "conduit" };
 const resonance = { name: "resonance", url: "https://y/api/ready", expectService: "resonance-nexus" };
 
+test("portfolio probes only the owned production endpoints", () => {
+  assert.deepEqual(TARGETS.map((target) => target.name), ["conduit", "resonance-netlify"]);
+});
+
 test("ready: matching service stamp + status ready", () => {
   const r = classify(conduit, { status: 200, body: JSON.stringify({ status: "ready", service: "conduit", version: "0.8.0", contractRevision: "2026-10-03-ready-surface", persistence: "postgres" }) });
   assert.equal(r.outcome, "ready"); assert.equal(r.ok, true); assert.equal(r.contractRevision, "2026-10-03-ready-surface");
