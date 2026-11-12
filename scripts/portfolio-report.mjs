@@ -41,11 +41,24 @@ function safeRunUrl(value) {
 async function scanRepository(repository, { fetchImpl, token }) {
   const base = `${API_ROOT}/repos/${repository.repository}`;
   try {
-    const [runsPayload, pullsPayload] = await Promise.all([
-      apiGet(fetchImpl, `${base}/actions/runs?branch=main&per_page=5`, token),
+    const [workflowPayload, pullsPayload] = await Promise.all([
+      apiGet(fetchImpl, `${base}/actions/workflows?per_page=100`, token),
       apiGet(fetchImpl, `${base}/pulls?state=open&per_page=100`, token),
     ]);
 
+    const ciWorkflow = Array.isArray(workflowPayload.workflows)
+      ? workflowPayload.workflows.find((workflow) =>
+          typeof workflow.path === "string" && workflow.path.endsWith("/ci.yml"))
+      : null;
+    if (!ciWorkflow || !Number.isInteger(ciWorkflow.id)) {
+      throw new Error("Required CI workflow was not found.");
+    }
+
+    const runsPayload = await apiGet(
+      fetchImpl,
+      `${base}/actions/workflows/${ciWorkflow.id}/runs?branch=main&per_page=1`,
+      token,
+    );
     const latestRun = Array.isArray(runsPayload.workflow_runs)
       ? runsPayload.workflow_runs[0]
       : null;
@@ -54,12 +67,12 @@ async function scanRepository(repository, { fetchImpl, token }) {
     return {
       ...repository,
       status: classifyRun(latestRun),
-      workflowName: latestRun?.name ?? null,
+      workflowName: ciWorkflow.name ?? "CI",
       conclusion: latestRun?.conclusion ?? null,
       runUrl: safeRunUrl(latestRun?.html_url),
       runCreatedAt: latestRun?.created_at ?? null,
       openPullRequests,
-      error: latestRun ? null : "No workflow run found for the default branch.",
+      error: latestRun ? null : "No CI workflow run found for the default branch.",
     };
   } catch {
     return {
