@@ -1,19 +1,10 @@
 import { readFileSync } from "node:fs";
 import type { ConnectionOptions } from "node:tls";
 import pg from "pg";
-import { DATABASE_CONNECT_TIMEOUT_MS } from "./db-timeouts.js";
 
 /** One process-wide PostgreSQL pool shared by all persistence modules. */
-export const DEFAULT_POOL_MAX = 10;
-
 export function databaseConfigured(env: NodeJS.ProcessEnv = process.env): boolean {
   return Boolean(env.DATABASE_URL) && env.CONDUIT_TEST_MEMORY !== "true";
-}
-
-export function poolMax(env: NodeJS.ProcessEnv = process.env): number {
-  const raw = Number(env.DATABASE_POOL_MAX);
-  if (env.DATABASE_POOL_MAX === undefined || !Number.isFinite(raw)) return DEFAULT_POOL_MAX;
-  return Math.min(50, Math.max(1, Math.floor(raw)));
 }
 
 export type DatabaseSslOption = false | ConnectionOptions;
@@ -82,41 +73,10 @@ function warnIfInsecure(ssl: DatabaseSslOption): void {
   }
 }
 
-/** A dedicated pool with the shared TLS policy, e.g. the /ready probe. */
+/** Create a dedicated pool with the same verified TLS policy and caller-owned sizing. */
 export function createPgPool(options: Omit<pg.PoolConfig, "connectionString" | "ssl"> = {}): pg.Pool | null {
   if (!databaseConfigured()) return null;
   const connection = databaseConnectionConfig();
   warnIfInsecure(connection.ssl);
   return new pg.Pool({ ...options, ...connection });
-}
-
-export function poolConfig(env: NodeJS.ProcessEnv = process.env): pg.PoolConfig {
-  return {
-    ...databaseConnectionConfig(env),
-    max: poolMax(env),
-    connectionTimeoutMillis: DATABASE_CONNECT_TIMEOUT_MS,
-  };
-}
-
-let shared: pg.Pool | null | undefined;
-
-/** The shared pool, created on first use; null when persistence is not configured. */
-export function getSharedPool(): pg.Pool | null {
-  if (shared === undefined) {
-    if (databaseConfigured()) {
-      const config = poolConfig();
-      warnIfInsecure(config.ssl as DatabaseSslOption);
-      shared = new pg.Pool(config);
-    } else {
-      shared = null;
-    }
-  }
-  return shared;
-}
-
-/** Graceful shutdown hook; safe to call when no pool was ever created. */
-export async function closeSharedPool(): Promise<void> {
-  const pool = shared;
-  shared = undefined;
-  if (pool) await pool.end();
 }
