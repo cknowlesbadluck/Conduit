@@ -1,4 +1,4 @@
-import pg from "pg";
+import type pg from "pg";
 import { createPgPool, databaseConfigured } from "./db-pool.js";
 
 const PROBE_TIMEOUT_MS = 2000;
