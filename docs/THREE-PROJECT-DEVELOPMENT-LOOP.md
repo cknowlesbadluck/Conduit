@@ -1,6 +1,6 @@
 # Three-Project Self-Improving Development Loop
 
-**Status:** operating model and reviewable implementation plan  
+**Status:** bounded operating model with scheduled, read-only portfolio monitoring implemented; agent-driven source-code execution remains a separate integration gate  
 **Scope:** Resonance, QuicksilverV1, and Conduit remain three independent repositories.  
 **Cost policy:** free-tier resources only. Never start a billable agent run or paid build without explicit approval.
 
@@ -139,6 +139,10 @@ Use a stable task identifier and GitHub PR/issue as the durable state. Do not tr
 The accompanying MagicPath canvas is the visual overview of the portfolio loop. tldraw shapes are explanatory architecture artifacts, not executable workflow definitions. The source of truth for execution remains each repository's GitHub Actions and code.
 
 ## Current implementation baseline
+
+The scheduled portfolio monitor is implemented in Conduit as `scripts/portfolio-report.mjs` and `.github/workflows/portfolio-health.yml`. It runs every six hours and on manual dispatch, reads each repository's CI workflow and open PR count, writes an Actions summary, and uploads a 14-day report artifact. It has read-only GitHub permissions. Unit tests cover CI workflow selection, failing and inaccessible repositories, and report formatting.
+
+**Execution boundary:** GitHub Actions can schedule the scan and run repository-native verification, but it cannot invoke the Riqor/Superpowers skills as a code-writing agent by itself. No non-billable agent execution endpoint is currently configured for this pipeline. Under the free-tier-only constraint, do not start billable Brainbase runs or assume the unlinked Agent Swarm is available. Until a free, authenticated agent runner is connected, the loop can monitor and verify but must leave implementation to an explicitly invoked engineering session. This is not autonomous source-code completion.
 
 This loop deliberately reuses existing project automation rather than adding a second competing CI system:
 - Resonance already has web/native CI and an aggregate required check.
