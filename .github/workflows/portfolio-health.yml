@@ -17,7 +17,9 @@ on:
       - ".github/workflows/portfolio-health.yml"
 
 permissions:
+  actions: read
   contents: read
+  pull-requests: read
 
 concurrency:
   group: portfolio-health-${{ github.ref }}
