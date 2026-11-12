@@ -17,9 +17,14 @@ const SNAKE = /\b[A-Z][A-Z0-9]*_[A-Z0-9_]*[A-Z0-9]\b/g;
  * a standalone SCREAMING_SNAKE name counts unless the PR's own diff declares it as a code constant (codeConstants). Fail-closed:
  * with no diff evidence (empty set) every such name counts. */
 export function envVarMentioned(body, codeConstants = new Set()) {
-  return String(body ?? "").split(/\r?\n/).some((line) =>
-    /\b[A-Z][A-Z0-9_]*=/.test(line) || (line.match(SNAKE) ?? []).some((n) => !codeConstants.has(n)) ||
-    (/new env var|environment variable|env vars?\b/i.test(line) && !/\bno (new )?env(ironment)? var(iable)?s?\b/i.test(line)));
+  // A negative disclaimer only exempts its own sentence, never a later requirement
+  // on the same line (e.g. "No env vars. This change adds NEW_SECRET.").
+  const statements = String(body ?? "").split(/[\\r\\n;]+|[.!?]\\s+/).filter(Boolean);
+  return statements.some((statement) =>
+    /\\b[A-Z][A-Z0-9_]*=/.test(statement) ||
+    (statement.match(SNAKE) ?? []).some((n) => !codeConstants.has(n)) ||
+    (/new env var|environment variable|env vars?\\b/i.test(statement) &&
+      !/\\bno (new )?env(ironment)? var(iable)?s?\\b/i.test(statement)));
 }
 
 /** Pure. SCREAMING_SNAKE names the diff declares as `const NAME =` on an added line, minus any name the diff also reads from env. */
