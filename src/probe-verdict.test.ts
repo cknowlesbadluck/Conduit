@@ -2,10 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { classifyProbe } from "./probe-verdict.js";
 
-test("a 404 alias is not an owner gate", () => {
+test("a missing public path is not an owner gate", () => {
   const result = classifyProbe({
     httpStatus: 404,
-    body: "The deployment could not be found on Vercel. DEPLOYMENT_NOT_FOUND",
+    body: "Not found",
   });
   assert.equal(result.verdict, "alias_absent");
   assert.equal(result.productionProof, false);
