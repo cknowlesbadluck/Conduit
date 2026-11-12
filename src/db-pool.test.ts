@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { databaseSslOption, poolMax, databaseConfigured } from "./db-pool.js";
+import { databaseConnectionConfig, databaseSslOption, poolMax, databaseConfigured } from "./db-pool.js";
 
 test("Postgres TLS verifies certificates by default", () => {
   assert.deepEqual(databaseSslOption({}), { rejectUnauthorized: true });
@@ -30,6 +30,33 @@ test("a CA bundle can be supplied inline or by file", () => {
   try {
     writeFileSync(file, pem);
     assert.deepEqual(databaseSslOption({ DATABASE_SSL_CA_FILE: file }), { rejectUnauthorized: true, ca: pem });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("connection URL sslmode cannot override the explicit verified TLS policy", () => {
+  const pem = "-----BEGIN CERTIFICATE-----\\nABC\\n-----END CERTIFICATE-----";
+  const config = databaseConnectionConfig({
+    DATABASE_URL: "postgres://localhost:5432/conduit?sslmode=disable&application_name=conduit",
+    DATABASE_SSL_CA: pem,
+  });
+  assert.equal(config.connectionString?.includes("sslmode"), false);
+  assert.equal(config.connectionString?.includes("application_name=conduit"), true);
+  assert.deepEqual(config.ssl, { rejectUnauthorized: true, ca: pem });
+});
+
+test("connection URL sslrootcert is loaded before SSL parameters are stripped", () => {
+  const dir = mkdtempSync(join(tmpdir(), "conduit-url-ca-"));
+  const file = join(dir, "ca.pem");
+  const pem = "-----BEGIN CERTIFICATE-----\\nABC\\n-----END CERTIFICATE-----";
+  try {
+    writeFileSync(file, pem);
+    const config = databaseConnectionConfig({
+      DATABASE_URL: `postgres://localhost:5432/conduit?sslmode=require&sslrootcert=${encodeURIComponent(file)}`,
+    });
+    assert.equal(config.connectionString?.includes("sslrootcert"), false);
+    assert.deepEqual(config.ssl, { rejectUnauthorized: true, ca: pem });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
