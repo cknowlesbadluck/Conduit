@@ -7,6 +7,7 @@
 // assertion is a way to weaken the guard.
 export const OWNER_ONLY_PATHS = Object.freeze([
   /(^|\/)auth/i, // token verification, scopes, auth tests
+  /^src\/mcp\.ts$/i, // MCP tool scope and external-call grant enforcement
   /^src\/(index|app-factory)(([.-][A-Za-z0-9.-]*)?\.test)?\.ts$/, // production boot and /mcp wiring
   /grant/i, /capabilit/i, /tool-gates/i, // capability grants and enforcement
   /bridge/i, /external-policy/i, /receipt/i, // MCP bridge, outbound policy, receipts
