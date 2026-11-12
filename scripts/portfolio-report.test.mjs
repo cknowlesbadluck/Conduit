@@ -16,9 +16,15 @@ function response(body, status = 200) {
   };
 }
 
-test("portfolio scan reports latest workflow state and open PR counts", async () => {
+test("portfolio scan reports the latest CI workflow and open PR counts", async () => {
   const fetchImpl = async (url) => {
-    if (url.includes("/actions/runs?")) {
+    if (url.endsWith("/actions/workflows?per_page=100")) {
+      return response({ workflows: [
+        { id: 9, name: "Docs hygiene", path: ".github/workflows/docs.yml" },
+        { id: 42, name: "CI", path: ".github/workflows/ci.yml" },
+      ] });
+    }
+    if (url.includes("/actions/workflows/42/runs?")) {
       return response({
         workflow_runs: [{
           name: "CI",
@@ -38,19 +44,22 @@ test("portfolio scan reports latest workflow state and open PR counts", async ()
   assert.ok(report.projects.every((project) => project.conclusion === "success"));
   assert.ok(report.projects.every((project) => project.openPullRequests === 2));
   assert.ok(report.projects.every((project) => project.status === "healthy"));
+  assert.ok(report.projects.every((project) => project.workflowName === "CI"));
 });
 
 test("portfolio scan isolates an unavailable repository instead of hiding other results", async () => {
   const fetchImpl = async (url) => {
     if (url.includes("QuicksilverV1")) throw new Error("network details must not leak");
-    if (url.includes("/actions/runs?")) {
+    if (url.endsWith("/actions/workflows?per_page=100")) {
+      return response({ workflows: [{ id: 42, name: "CI", path: ".github/workflows/ci.yml" }] });
+    }
+    if (url.includes("/actions/workflows/42/runs?")) {
       return response({ workflow_runs: [{ status: "completed", conclusion: "failure" }] });
     }
     return response([]);
   };
 
   const report = await collectPortfolio({ fetchImpl });
-
   const quicksilver = report.projects.find((project) => project.name === "Quicksilver");
   const resonance = report.projects.find((project) => project.name === "Resonance");
   assert.equal(quicksilver.status, "unknown");
@@ -59,9 +68,21 @@ test("portfolio scan isolates an unavailable repository instead of hiding other 
   assert.equal(resonance.status, "failing");
 });
 
+test("portfolio scan treats a missing CI workflow as unknown, not healthy", async () => {
+  const fetchImpl = async (url) => {
+    if (url.endsWith("/actions/workflows?per_page=100")) {
+      return response({ workflows: [{ id: 9, name: "Docs hygiene", path: ".github/workflows/docs.yml" }] });
+    }
+    return response([]);
+  };
+  const report = await collectPortfolio({ fetchImpl });
+  assert.ok(report.projects.every((project) => project.status === "unknown"));
+});
+
 test("portfolio markdown identifies blocked evidence and links known workflow runs", () => {
   const markdown = formatPortfolioMarkdown({
     checkedAt: "2026-11-12T12:00:00.000Z",
+    overall: "healthy",
     projects: [{
       name: "Conduit",
       repository: "cknowlesbadluck/Conduit",
