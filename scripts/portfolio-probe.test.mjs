@@ -5,6 +5,10 @@ import { attachParity, classify, observe, RESONANCE_MAIN_READY, TARGETS } from "
 const conduit = { name: "conduit", url: "https://x/ready", expectService: "conduit" };
 const resonance = { name: "resonance", url: "https://y/api/ready", expectService: "resonance-nexus" };
 
+test("portfolio probes only the owned production endpoints", () => {
+  assert.deepEqual(TARGETS.map((target) => target.name), ["conduit", "resonance-netlify"]);
+});
+
 test("ready: matching service stamp + status ready", () => {
   const r = classify(conduit, { status: 200, body: JSON.stringify({ status: "ready", service: "conduit", version: "0.8.0", contractRevision: "2026-10-03-ready-surface", persistence: "postgres" }) });
   assert.equal(r.outcome, "ready"); assert.equal(r.ok, true); assert.equal(r.contractRevision, "2026-10-03-ready-surface");
@@ -22,14 +26,13 @@ test("stranger_occupant: 200 from someone else's app (HTML or wrong service)", (
   assert.equal(classify(resonance, { status: 200, body: "<html/>" }).ok, false);
 });
 
-test("alias_absent: Vercel DEPLOYMENT_NOT_FOUND via header or body", () => {
-  assert.equal(classify(resonance, { status: 404, headers: { "x-vercel-error": "DEPLOYMENT_NOT_FOUND" }, body: "" }).outcome, "alias_absent");
-  assert.equal(classify(resonance, { status: 404, body: "The deployment could not be found on Vercel.\n\nDEPLOYMENT_NOT_FOUND" }).outcome, "alias_absent");
+test("alias_absent: any missing endpoint path is classified generically", () => {
+  assert.equal(classify(resonance, { status: 404, body: "Not found" }).outcome, "alias_absent");
 });
 
 test("timeout / unreachable / unknown all fail closed", () => {
   assert.deepEqual([classify(conduit, { error: "timeout" }).outcome, classify(conduit, { error: "unreachable" }).outcome], ["timeout", "unreachable"]);
-  for (const obs of [undefined, { status: 500, body: "" }, { status: 404, body: "plain 404" }, { status: 200, body: JSON.stringify({ service: "conduit", status: "degraded" }) }, { status: 302, body: "" }]) {
+  for (const obs of [undefined, { status: 500, body: "" }, { status: 400, body: "plain 400" }, { status: 200, body: JSON.stringify({ service: "conduit", status: "degraded" }) }, { status: 302, body: "" }]) {
     const r = classify(conduit, obs); assert.equal(r.ok, false); assert.equal(r.outcome, "unknown");
   }
 });
