@@ -75,10 +75,12 @@ export function fetchPr(repo, number, run = gh) {
       const args = ["api", "graphql", "-f", `query=${q}`, "-f", `o=${owner}`, "-f", `n=${name}`, "-F", `p=${number}`];
       if (cursor) args.push("-f", `c=${cursor}`);
       const rt = JSON.parse(run(args)).data.repository.pullRequest.reviewThreads;
+      if (!rt.pageInfo) throw new Error("missing review thread pageInfo");
       unresolvedThreads += rt.nodes.filter((x) => !x.isResolved).length;
-      if (!rt.pageInfo?.hasNextPage) { cursor = null; break; }
-      if (!rt.pageInfo.endCursor) throw new Error("review thread pagination: hasNextPage without endCursor");
-      cursor = rt.pageInfo.endCursor;
+      if (!rt.pageInfo.hasNextPage) { cursor = null; break; }
+      const next = rt.pageInfo.endCursor;
+      if (!next || next === cursor) throw new Error("invalid review thread pagination cursor");
+      cursor = next;
     }
     if (cursor) throw new Error("too many review thread pages");
     let codeConstants = new Set();
