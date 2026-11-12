@@ -4,6 +4,7 @@ import { getOAuthProtectedResourceMetadataUrl, hostHeaderValidation, mcpAuthMeta
 import { toNodeHandler } from "@modelcontextprotocol/node";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { init, isReady } from "./store.js";
+import { retryStartup } from "./startup-retry.js";
 import { checkPersistence } from "./db-ready.js";
 import { initCapabilityStore } from "./capability-store.js";
 import { buildProtectedResourceMetadata, createDevelopmentAuthInfo, createTokenVerifier, DEVELOPMENT_ANONYMOUS_SUBJECT, DEVELOPMENT_TOKEN_SUBJECT, loadAuthConfig, requireScope } from "./auth.js";
@@ -73,7 +74,9 @@ app.get("/ready", async (_req, res) => {
 
 async function boot() {
   assertNotTestMemoryInProduction();
-  await init();
+  // Free-tier Postgres may still be waking when Render starts this process. Retry
+  // transient connection failures instead of exiting on the first timeout.
+  await retryStartup("PostgreSQL initialization", init, { attempts: 5, baseDelayMs: 1_000, maxDelayMs: 8_000 });
   await initCapabilityStore();
   const authConfig = await loadAuthConfig();
   app.get("/diagnostics", createDiagnosticsHandler(authConfig ?? undefined));
