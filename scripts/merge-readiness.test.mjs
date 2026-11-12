@@ -135,3 +135,29 @@ test("merge-readiness and merge-train share one owner-only path list (no drift)"
 test("non-string file entries fail closed as owner-only", () => {
   assert.ok(evaluate({ ...ok(), files: [""] }).blockers.some((b) => b.startsWith("sensitive_path")));
 });
+
+
+test("review-thread pagination fails closed on missing pageInfo and repeated cursors", () => {
+  const base = (page) => (a) => {
+    if (a[0] === "pr" && a[1] === "view") return JSON.stringify({ number: 7, state: "OPEN", isDraft: false, mergeable: "MERGEABLE", headRefName: "h", headRefOid: "abc", baseRefName: "main", changedFiles: 1, body: "", reviews: [], statusCheckRollup: [] });
+    if (a[1] === "--paginate") return "a.md\\n";
+    if (a[1].startsWith("repos/")) return JSON.stringify({ b: 0 });
+    if (a[0] === "pr" && a[1] === "diff") return "";
+    return JSON.stringify({ data: { repository: { pullRequest: { reviewThreads: { nodes: [], ...(typeof page === "function" ? page(a) : page) } } } } });
+  };
+  assert.equal(fetchPr("o/r", 7, base(undefined)), null);
+  assert.match(fetchPr.lastError, /pageInfo/);
+
+  let graphCalls = 0;
+  const repeated = base((a) => {
+    graphCalls++;
+    return { pageInfo: { hasNextPage: true, endCursor: "CUR" } };
+  });
+  assert.equal(fetchPr("o/r", 7, repeated), null);
+  assert.equal(graphCalls, 2, "must reject a repeated cursor immediately");
+  assert.match(fetchPr.lastError, /cursor/);
+});
+
+test("MCP tool authorization is an owner-only path", () => {
+  assert.deepEqual(evaluate({ ...ok(), files: ["src/mcp.ts"] }).blockers, ["sensitive_path:src/mcp.ts"]);
+});
