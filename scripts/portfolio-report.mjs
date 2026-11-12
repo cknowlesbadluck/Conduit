@@ -24,8 +24,13 @@ async function apiGet(fetchImpl, url, token) {
 }
 
 function classifyRun(run) {
-  if (!run) return "unknown";
-  if (run.status !== "completed") return "in_progress";
+  if (!run || typeof run.status !== "string") return "unknown";
+  if (run.status !== "completed") {
+    return ["queued", "in_progress", "requested", "waiting", "pending"].includes(run.status)
+      ? "in_progress"
+      : "unknown";
+  }
+  if (typeof run.conclusion !== "string") return "unknown";
   return run.conclusion === "success" ? "healthy" : "failing";
 }
 
@@ -62,17 +67,23 @@ async function scanRepository(repository, { fetchImpl, token }) {
     const latestRun = Array.isArray(runsPayload.workflow_runs)
       ? runsPayload.workflow_runs[0]
       : null;
-    const openPullRequests = Array.isArray(pullsPayload) ? pullsPayload.length : 0;
+    if (!Array.isArray(pullsPayload)) {
+      throw new Error("Open pull request response was malformed.");
+    }
+    const openPullRequests = pullsPayload.length;
+    const status = classifyRun(latestRun);
 
     return {
       ...repository,
-      status: classifyRun(latestRun),
+      status,
       workflowName: ciWorkflow.name ?? "CI",
       conclusion: latestRun?.conclusion ?? null,
       runUrl: safeRunUrl(latestRun?.html_url),
       runCreatedAt: latestRun?.created_at ?? null,
       openPullRequests,
-      error: latestRun ? null : "No CI workflow run found for the default branch.",
+      error: status === "unknown"
+        ? "CI workflow returned missing or incomplete status evidence."
+        : null,
     };
   } catch {
     return {
