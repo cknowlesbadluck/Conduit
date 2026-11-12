@@ -40,7 +40,7 @@ function readJson(body: string): Record<string, unknown> | null {
 
 export function classifyProbe(input: ProbeInput): ProbeClassification {
   const text = input.body ?? "";
-  if (input.httpStatus === 404 {
+  if (input.httpStatus === 404) {
     return { verdict: "alias_absent", productionProof: false, missingRequired: [], deployLag: false, aliasAbsent: true };
   }
   const json = readJson(text);
