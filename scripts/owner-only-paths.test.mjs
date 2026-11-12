@@ -4,7 +4,7 @@ import { OWNER_ONLY_PATHS, isOwnerOnlyPath, ownerOnlyPaths } from "./owner-only-
 
 test("owner-only surfaces from both former lists are gated", () => {
   for (const p of ["src/auth.ts", "src/auth.verifier.test.ts", "src/index.ts", "src/app-factory.ts", "src/grant-tools.ts", "src/capabilities.ts",
-    "src/tool-gates.test.ts", "src/mcp.ts", "src/mcp-bridge.ts", "src/external-policy.ts", "src/receipts/chain.ts", "migrations/001.sql", "src/secret-store.ts",
+    "src/tool-gates.test.ts", "src/mcp.ts", "src/mcp.test.ts", "src/mcp-bridge.ts", "src/external-policy.ts", "src/receipts/chain.ts", "migrations/001.sql", "src/secret-store.ts",
     ".env.example", "src/db-tls.ts", "src/store.ts", "src/db-ready.ts", "src/binding-subjects.ts", "src/capability-store.ts", "src/trust-proxy.ts",
     "render.yaml", ".github/workflows/ci.yml"]) assert.equal(isOwnerOnlyPath(p), true, p);
 });
