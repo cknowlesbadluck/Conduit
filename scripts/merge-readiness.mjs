@@ -17,14 +17,14 @@ const SNAKE = /\b[A-Z][A-Z0-9]*_[A-Z0-9_]*[A-Z0-9]\b/g;
  * a standalone SCREAMING_SNAKE name counts unless the PR's own diff declares it as a code constant (codeConstants). Fail-closed:
  * with no diff evidence (empty set) every such name counts. */
 export function envVarMentioned(body, codeConstants = new Set()) {
-  // A negative disclaimer only exempts its own sentence, never a later requirement
-  // on the same line (e.g. "No env vars. This change adds NEW_SECRET.").
+  // A negative disclaimer exempts only a standalone negative statement, never
+  // a sentence that also contains a new or changed environment-variable requirement.
   const statements = String(body ?? "").split(/[\r\n;]+|[.!?]\s+/).filter(Boolean);
+  const negativeDisclaimer = /^\s*(?:no|without)\s+(?:new\s+)?(?:env vars?|environment variables?)(?:\s+(?:are|were|will be))?(?:\s+(?:needed|required|set|configured|used|added|changed|introduced|involved))?[.!?]?\s*$/i;
   return statements.some((statement) =>
     /\b[A-Z][A-Z0-9_]*=/.test(statement) ||
     (statement.match(SNAKE) ?? []).some((n) => !codeConstants.has(n)) ||
-    (/new env var|environment variable|env vars?\b/i.test(statement) &&
-      !/\bno (new )?env(ironment)? var(iable)?s?\b/i.test(statement)));
+    ((/new env var|environment variable|env vars?\b/i.test(statement)) && !negativeDisclaimer.test(statement)));
 }
 
 /** Pure. SCREAMING_SNAKE names the diff declares as `const NAME =` on an added line, minus any name the diff also reads from env. */
