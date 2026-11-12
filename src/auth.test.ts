@@ -112,3 +112,89 @@ test('loadAuthConfig validates DESCOPE_MCP_SERVER_ISSUER match and scheme', asyn
     globalThis.fetch = origFetch;
   }
 });
+
+test('loadAuthConfig rejects credential-bearing resource URLs without echoing secrets', async () => {
+  const keys = ['DESCOPE_MCP_SERVER_WELL_KNOWN_URL', 'DESCOPE_MCP_SERVER_ISSUER', 'MCP_RESOURCE_URL', 'NODE_ENV', 'RENDER'] as const;
+  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  const origFetch = globalThis.fetch;
+  process.env.DESCOPE_MCP_SERVER_WELL_KNOWN_URL = 'https://api.descope.com/.well-known/openid-configuration';
+  process.env.MCP_RESOURCE_URL = 'https://bob:p4ssw0rd@conduit.example.com/mcp?token=zzz';
+  process.env.NODE_ENV = 'test';
+  delete process.env.RENDER;
+  process.env.DESCOPE_MCP_SERVER_ISSUER = 'https://api.descope.com';
+  try {
+    globalThis.fetch = (async () => ({ ok: true, json: async () => ({ issuer: 'https://api.descope.com', jwks_uri: 'https://api.descope.com/jwks', authorization_endpoint: 'https://api.descope.com/auth', token_endpoint: 'https://api.descope.com/token' }) })) as unknown as typeof fetch;
+    await assert.rejects(loadAuthConfig(), (err: Error) => {
+      assert.equal(err.message, 'MCP_RESOURCE_URL must not contain userinfo, fragments, or credential-like query parameters');
+      assert.ok(!err.message.includes('p4ssw0rd'));
+      assert.ok(!err.message.includes('zzz'));
+      return true;
+    });
+  } finally {
+    globalThis.fetch = origFetch;
+    for (const k of keys) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
+  }
+});
+
+test('loadAuthConfig preserves safe compound query parameters exactly for the JWT audience', async () => {
+  const keys = ['DESCOPE_MCP_SERVER_WELL_KNOWN_URL', 'DESCOPE_MCP_SERVER_ISSUER', 'MCP_RESOURCE_URL', 'NODE_ENV', 'RENDER'] as const;
+  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  const origFetch = globalThis.fetch;
+  const resourceUrl = 'https://conduit.example.com/mcp?countryCode=US&projectKey=alpha&tenant=acme&';
+  process.env.DESCOPE_MCP_SERVER_WELL_KNOWN_URL = 'https://api.descope.com/.well-known/openid-configuration';
+  process.env.MCP_RESOURCE_URL = resourceUrl;
+  process.env.NODE_ENV = 'test';
+  delete process.env.RENDER;
+  process.env.DESCOPE_MCP_SERVER_ISSUER = 'https://api.descope.com';
+  try {
+    globalThis.fetch = (async () => ({ ok: true, json: async () => ({ issuer: 'https://api.descope.com', jwks_uri: 'https://api.descope.com/jwks', authorization_endpoint: 'https://api.descope.com/auth', token_endpoint: 'https://api.descope.com/token' }) })) as unknown as typeof fetch;
+    const config = await loadAuthConfig();
+    assert.equal(config?.resourceUrl, resourceUrl);
+  } finally {
+    globalThis.fetch = origFetch;
+    for (const k of keys) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
+  }
+});
+
+
+test('loadAuthConfig rejects each credential-only query parameter independently', async () => {
+  const keys = ['DESCOPE_MCP_SERVER_WELL_KNOWN_URL', 'DESCOPE_MCP_SERVER_ISSUER', 'MCP_RESOURCE_URL', 'NODE_ENV', 'RENDER'] as const;
+  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  const origFetch = globalThis.fetch;
+  process.env.DESCOPE_MCP_SERVER_WELL_KNOWN_URL = 'https://api.descope.com/.well-known/openid-configuration';
+  process.env.NODE_ENV = 'test';
+  delete process.env.RENDER;
+  process.env.DESCOPE_MCP_SERVER_ISSUER = 'https://api.descope.com';
+  try {
+    globalThis.fetch = (async () => ({ ok: true, json: async () => ({ issuer: 'https://api.descope.com', jwks_uri: 'https://api.descope.com/jwks', authorization_endpoint: 'https://api.descope.com/auth', token_endpoint: 'https://api.descope.com/token' }) })) as unknown as typeof fetch;
+    for (const name of ['X-Amz-Security-Token', 'X-Amz-Credential', 'client_assertion', 'X-API-Key', 'X-Goog-Signature']) {
+      process.env.MCP_RESOURCE_URL = `https://conduit.example.com/mcp?${name}=secret-value`;
+      await assert.rejects(loadAuthConfig(), (err: Error) => {
+        assert.equal(err.message, 'MCP_RESOURCE_URL must not contain userinfo, fragments, or credential-like query parameters');
+        assert.ok(!err.message.includes('secret-value'));
+        return true;
+      }, `expected ${name} to be rejected`);
+    }
+  } finally {
+    globalThis.fetch = origFetch;
+    for (const k of keys) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
+  }
+});
+
+test('loadAuthConfig rejects a fragment without userinfo or query credentials', async () => {
+  const keys = ['DESCOPE_MCP_SERVER_WELL_KNOWN_URL', 'DESCOPE_MCP_SERVER_ISSUER', 'MCP_RESOURCE_URL', 'NODE_ENV', 'RENDER'] as const;
+  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  const origFetch = globalThis.fetch;
+  process.env.DESCOPE_MCP_SERVER_WELL_KNOWN_URL = 'https://api.descope.com/.well-known/openid-configuration';
+  process.env.MCP_RESOURCE_URL = 'https://conduit.example.com/mcp#private-fragment';
+  process.env.NODE_ENV = 'test';
+  delete process.env.RENDER;
+  process.env.DESCOPE_MCP_SERVER_ISSUER = 'https://api.descope.com';
+  try {
+    globalThis.fetch = (async () => ({ ok: true, json: async () => ({ issuer: 'https://api.descope.com', jwks_uri: 'https://api.descope.com/jwks', authorization_endpoint: 'https://api.descope.com/auth', token_endpoint: 'https://api.descope.com/token' }) })) as unknown as typeof fetch;
+    await assert.rejects(loadAuthConfig(), (err: Error) => err.message.includes('must not contain userinfo, fragments, or credential-like query parameters'));
+  } finally {
+    globalThis.fetch = origFetch;
+    for (const k of keys) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
+  }
+});
