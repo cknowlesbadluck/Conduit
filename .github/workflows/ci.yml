@@ -30,6 +30,8 @@ jobs:
       # Coverage gate pinned just under the current baseline (Node 22: lines 65.4, branches 75.2, functions 67.9).
       # Raise these when coverage improves; never lower them to make a PR pass.
       - run: npm run test:coverage
+      - name: Portfolio report unit tests
+        run: node --test scripts/portfolio-report.test.mjs
       - run: npm run build
 
   postgres-coordination:
