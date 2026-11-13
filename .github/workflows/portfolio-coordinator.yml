@@ -16,6 +16,7 @@ on:
       - "scripts/portfolio-coordinator.test.mjs"
       - ".github/workflows/portfolio-coordinator.yml"
 
+# Read-only issue metadata is required to build the bounded queue; no write scopes.
 permissions:
   contents: read
   issues: read
@@ -26,6 +27,7 @@ concurrency:
 
 jobs:
   queue:
+    name: Build read-only portfolio task queue
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
