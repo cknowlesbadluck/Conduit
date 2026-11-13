@@ -64,7 +64,7 @@ test("does not leak tasks across repositories and reports inaccessible repositor
   });
   assert.equal(result.tasks.length, 1);
   assert.equal(result.tasks[0].repository, "cknowlesbadluck/Resonance");
-  assert.deepEqual(result.unavailableRepositories, ["QuicksilverV1"]);
+  assert.deepEqual(result.unavailableRepositories, ["Quicksilver"]);
 });
 
 test("formats coordinator output with an explicit human execution gate", () => {
