@@ -61,7 +61,7 @@ async function scanRepository(repository, { fetchImpl, token }) {
 
     const runsPayload = await apiGet(
       fetchImpl,
-      `${base}/actions/workflows/${ciWorkflow.id}/runs?branch=main&per_page=1`,
+      `${base}/actions/workflows/${ciWorkflow.id}/runs?branch=main&event=push&per_page=1`,
       token,
     );
     const latestRun = Array.isArray(runsPayload.workflow_runs)
@@ -70,7 +70,7 @@ async function scanRepository(repository, { fetchImpl, token }) {
     if (!Array.isArray(pullsPayload)) {
       throw new Error("Open pull request response was malformed.");
     }
-    const openPullRequests = pullsPayload.length;
+    const openPullRequests = pullsPayload.length === 100 ? "100+" : pullsPayload.length;
     const status = classifyRun(latestRun);
 
     return {
@@ -139,7 +139,7 @@ export function formatPortfolioMarkdown(report) {
     "",
     `- Checked: ${report.checkedAt}`,
     `- Overall: **${report.overall}**`,
-    "- Scope: latest CI workflow run on each repository's main branch and open pull-request count.",
+    "- Scope: latest push-triggered CI workflow run on each repository's main branch and open pull-request count.",
     "- This is a read-only status report; it does not modify repositories, approve PRs, or merge code.",
     "",
     "| Project | Status | Latest CI run | Open PRs | Notes |",
