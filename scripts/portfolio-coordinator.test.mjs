@@ -9,7 +9,7 @@ const repositories = [
 ];
 
 function issue(number, title, labels, body = "## Acceptance criteria\n- [ ] Verified behavior") {
-  return { number, title, labels: labels.map((name) => ({ name })), body, html_url: `https://github.com/owner/repo/issues/${number}` };
+  return { number, state: "open", title, labels: labels.map((name) => ({ name })), body, html_url: `https://github.com/owner/repo/issues/${number}` };
 }
 
 test("selects only explicitly ready issues with acceptance criteria", () => {
