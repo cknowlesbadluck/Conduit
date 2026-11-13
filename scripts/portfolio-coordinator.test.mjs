@@ -119,7 +119,7 @@ test("escapes issue titles so Markdown link text cannot inject a second link", (
     unavailableRepositories: [],
   };
   const markdown = formatCoordinatorMarkdown(report);
-  assert.match(markdown, /Fix\\\]\\\(https:\/\/evil\.example\) \\\[details/);
+  assert.ok(markdown.includes("[#9 — Fix\\](https://evil.example) \\[details](https://github.com/cknowlesbadluck/Conduit/issues/9)"));
   assert.equal((markdown.match(/\]\(https:\/\/evil\.example/g) ?? []).length, 0);
 });
 
