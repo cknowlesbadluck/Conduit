@@ -1,6 +1,7 @@
 import { REPOSITORIES } from "./portfolio-report.mjs";
 
 const API_ROOT = "https://api.github.com";
+const MAX_ISSUE_PAGES = 3;
 const PRIORITY = Object.freeze({
   security: 0,
   "release-blocker": 1,
@@ -21,7 +22,7 @@ function hasAcceptanceCriteria(body) {
   const match = body.match(heading);
   if (!match || match.index === undefined) return false;
   const section = body.slice(match.index + match[0].length).split(/^#{1,3}\s+/m)[0];
-  return /^\s*(?:[-*+]\s+|\d+\.\s+).+/m.test(section);
+  return section.trim().length > 0;
 }
 
 function safeIssueUrl(value) {
@@ -31,6 +32,15 @@ function safeIssueUrl(value) {
   } catch {
     return null;
   }
+}
+
+function escapeMarkdownLinkText(value) {
+  return String(value)
+    .replaceAll("\\", "\\\\")
+    .replaceAll("[", "\\[")
+    .replaceAll("]", "\\]")
+    .replaceAll("|", "\\|")
+    .replaceAll("\n", " ");
 }
 
 function priorityOf(labels) {
@@ -91,14 +101,27 @@ async function getOpenReadyIssues(repository, { fetchImpl, token }) {
     "User-Agent": "conduit-portfolio-coordinator",
   };
   if (token) headers.Authorization = `Bearer ${token}`;
-  const response = await fetchImpl(url, {
-    headers,
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!response.ok) throw new Error(`GitHub API returned HTTP ${response.status}`);
-  const payload = await response.json();
-  if (!Array.isArray(payload)) throw new Error("GitHub issue response was malformed.");
-  return payload;
+
+  const issues = [];
+  for (let page = 1; page <= MAX_ISSUE_PAGES; page += 1) {
+    url.searchParams.set("page", String(page));
+    const response = await fetchImpl(url, {
+      headers,
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) throw new Error(`GitHub API returned HTTP ${response.status}`);
+    const payload = await response.json();
+    if (!Array.isArray(payload)) throw new Error("GitHub issue response was malformed.");
+    issues.push(...payload);
+
+    const linkHeader = response.headers?.get?.("link") ?? "";
+    const hasNextPage = /rel="?next"?/.test(linkHeader);
+    if (!hasNextPage) return issues;
+    if (page === MAX_ISSUE_PAGES) {
+      throw new Error(`GitHub issue results exceed the bounded ${MAX_ISSUE_PAGES}-page scan.`);
+    }
+  }
+  throw new Error("GitHub issue pagination did not complete.");
 }
 
 export async function collectReadyTasks({
@@ -136,7 +159,7 @@ export async function collectReadyTasks({
 export function formatCoordinatorMarkdown(report) {
   const rows = report.tasks.length
     ? report.tasks.map((task, index) =>
-        `| ${index + 1} | ${task.project} | [#${task.issueNumber} — ${task.title.replaceAll("|", "\\|").replaceAll("\n", " ")}](${task.url}) | ${task.priority} |`)
+        `| ${index + 1} | ${task.project} | [#${task.issueNumber} — ${escapeMarkdownLinkText(task.title)}](${task.url}) | ${task.priority} |`)
     : ["| — | — | No eligible tasks | — |"];
   const unavailable = report.unavailableRepositories.length
     ? report.unavailableRepositories.join(", ")
