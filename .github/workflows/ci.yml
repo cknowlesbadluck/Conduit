@@ -31,7 +31,7 @@ jobs:
       # Raise these when coverage improves; never lower them to make a PR pass.
       - run: npm run test:coverage
       - name: Portfolio report unit tests
-        run: node --test scripts/portfolio-report.test.mjs
+        run: node --test scripts/portfolio-*.test.mjs
       - run: npm run build
 
   postgres-coordination:
