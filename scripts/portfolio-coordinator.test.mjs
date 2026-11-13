@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { selectReadyTasks, formatCoordinatorMarkdown } from "./portfolio-coordinator.mjs";
+import { collectReadyTasks, selectReadyTasks, formatCoordinatorMarkdown } from "./portfolio-coordinator.mjs";
 
 const repositories = [
   { name: "Resonance", repository: "cknowlesbadluck/Resonance" },
@@ -12,7 +12,16 @@ function issue(number, title, labels, body = "## Acceptance criteria\n- [ ] Veri
   return { number, state: "open", title, labels: labels.map((name) => ({ name })), body, html_url: `https://github.com/owner/repo/issues/${number}` };
 }
 
-test("selects only explicitly ready issues with acceptance criteria", () => {
+function response(body, link = null) {
+  return {
+    ok: true,
+    status: 200,
+    headers: { get(name) { return name.toLowerCase() === "link" ? link : null; } },
+    async json() { return body; },
+  };
+}
+
+test("selects only explicitly ready issues with non-empty acceptance criteria", () => {
   const result = selectReadyTasks({
     repositories,
     issuesByRepository: {
@@ -20,12 +29,13 @@ test("selects only explicitly ready issues with acceptance criteria", () => {
         issue(1, "Ready", ["portfolio:ready", "priority:high"]),
         issue(2, "Not ready", ["priority:high"]),
         issue(3, "Missing criteria", ["portfolio:ready"], "Needs work"),
+        issue(4, "Empty criteria", ["portfolio:ready"], "## Acceptance criteria\n\n## Notes\nNothing yet"),
+        issue(5, "Prose criteria", ["portfolio:ready"], "## Acceptance criteria\nThe endpoint must reject unauthenticated requests before parsing input."),
       ],
     },
   });
-  assert.equal(result.tasks.length, 1);
-  assert.equal(result.tasks[0].issueNumber, 1);
-  assert.equal(result.tasks[0].project, "Resonance");
+  assert.deepEqual(result.tasks.map((task) => task.issueNumber), [1, 5]);
+  assert.equal(result.tasks[1].project, "Resonance");
 });
 
 test("orders security and release blockers before ordinary work", () => {
@@ -65,6 +75,52 @@ test("does not leak tasks across repositories and reports inaccessible repositor
   assert.equal(result.tasks.length, 1);
   assert.equal(result.tasks[0].repository, "cknowlesbadluck/Resonance");
   assert.deepEqual(result.unavailableRepositories, ["Quicksilver"]);
+});
+
+test("fetches a second bounded page rather than silently omitting ready issues", async () => {
+  const calls = [];
+  const fetchImpl = async (url) => {
+    const parsed = new URL(url);
+    calls.push(parsed.searchParams.get("page"));
+    if (parsed.searchParams.get("page") === "1") {
+      return response([issue(1, "First page", ["not-ready"])], `<${parsed.origin}${parsed.pathname}?state=open&labels=portfolio%3Aready&per_page=100&page=2>; rel="next"`);
+    }
+    return response([issue(2, "Second page", ["portfolio:ready"])]);
+  };
+  const result = await collectReadyTasks({ repositories: [repositories[0]], fetchImpl });
+  assert.deepEqual(calls, ["1", "2"]);
+  assert.deepEqual(result.tasks.map((task) => task.issueNumber), [2]);
+  assert.deepEqual(result.unavailableRepositories, []);
+});
+
+test("marks a repository unavailable when the bounded pagination limit is exceeded", async () => {
+  const fetchImpl = async (url) => {
+    const parsed = new URL(url);
+    const page = Number(parsed.searchParams.get("page"));
+    const next = `<${parsed.origin}${parsed.pathname}?state=open&labels=portfolio%3Aready&per_page=100&page=${page + 1}>; rel="next"`;
+    return response([], next);
+  };
+  const result = await collectReadyTasks({ repositories: [repositories[0]], fetchImpl });
+  assert.deepEqual(result.tasks, []);
+  assert.deepEqual(result.unavailableRepositories, ["Resonance"]);
+});
+
+test("escapes issue titles so Markdown link text cannot inject a second link", () => {
+  const report = {
+    checkedAt: "2026-11-12T12:00:00.000Z",
+    tasks: [{
+      project: "Conduit",
+      repository: "cknowlesbadluck/Conduit",
+      issueNumber: 9,
+      title: "Fix](https://evil.example) [details",
+      priority: "security",
+      url: "https://github.com/cknowlesbadluck/Conduit/issues/9",
+    }],
+    unavailableRepositories: [],
+  };
+  const markdown = formatCoordinatorMarkdown(report);
+  assert.match(markdown, /Fix\\\]\\\(https:\/\/evil\.example\) \\\[details/);
+  assert.equal((markdown.match(/\]\(https:\/\/evil\.example/g) ?? []).length, 0);
 });
 
 test("formats coordinator output with an explicit human execution gate", () => {
