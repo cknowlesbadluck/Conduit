@@ -1,11 +1,11 @@
-> Mirror of canonical Resonance docs/PORTFOLIO-ROADMAP-10-PHASE.md (refreshed 2026-11-07 05Z).
+> Mirror of canonical Resonance docs/PORTFOLIO-ROADMAP-10-PHASE.md (refreshed 2026-11-13 07:01Z).
 > See https://github.com/cknowlesbadluck/Resonance/blob/main/docs/PORTFOLIO-ROADMAP-10-PHASE.md for full living document.
-> Companion audit: https://github.com/cknowlesbadluck/Resonance/blob/main/docs/AUDIT-2026-11-07-05Z.md
+> Companion audit: https://github.com/cknowlesbadluck/Resonance/blob/main/docs/AUDIT-2026-11-13-0701Z.md
 
-**Live probe evidence (2026-11-07 ~05:01Z):**
-- Conduit ready when warm (200, 0.8.0, postgres). Resonance ready OK.
-- Open PRs: QS ~17 / Conduit ~19 / Resonance ~24. Target <10. Entropy is the current killer.
-- CHR-55 sole critical path for QS. deviceAcceptance=not_recorded.
-- Portfolio maturity ~7.5/10. 
+**Live probe evidence (2026-11-13 ~07:01Z):**
+- Conduit ready when warm (200, 0.8.0, postgres, production true). Resonance /api/ready 200 contract_passed, githubAdapterConfigured=false.
+- Open PRs: QS 1 / Conduit 2 / Resonance 4. Total 7. Target <10. Entropy held low.
+- CHR-55 In Progress. deviceAcceptance=not_recorded.
+- Portfolio maturity ~8.6/10.
 
-Phases 1-10 as in canonical. Highest-value next: prune entropy (close noise PRs on confirmation), merge green hardens, record CHR-55 on real device.
+Phases 1-10 as in canonical. Highest-value next: owner review/apply #265 RLS + #208 indexes, review #416 Spotlight, then record CHR-55 on real iPhone 16e. Stabilization holds.
