@@ -17,7 +17,8 @@
     "merge-train": "node scripts/merge-train.mjs",
     "portfolio:report": "node scripts/portfolio-report.mjs",
     "lint": "eslint . --max-warnings=0",
-    "audit:deps": "node scripts/dep-audit.mjs --level high"
+    "audit:deps": "node scripts/dep-audit.mjs --level high",
+    "portfolio:queue": "node scripts/portfolio-coordinator.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/express": "^2.0.0",
