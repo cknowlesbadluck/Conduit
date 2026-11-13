@@ -1,12 +1,12 @@
-# Portfolio 10-Phase Roadmap — Refreshed 2026-11-13
+# Portfolio 10-Phase Roadmap — Refreshed 2026-11-13 11:01 UTC
 
-Canonical cross-plane roadmap for QuicksilverV1 + Resonance + Conduit. Living document. Update with evidence.
+Canonical cross-plane roadmap for QuicksilverV1 + Resonance + Conduit. Living document. Update with evidence. Direct main commit for hygiene.
 
-**Current posture (2026-11-13 00:02Z):** Both backends warm/ready. Entropy 13 open PRs (target <10). Device acceptance not_recorded. Scores ~8.4. Hygiene holds. Innovation: continuous audit + probe.
+**Current posture (2026-11-13 11:01Z):** Both backends warm/ready. Entropy 7 open PRs (target <10). Device acceptance not_recorded. Scores ~8.7. Hygiene holds. Innovation: continuous audit + probe + direct docs.
 
 | # | Phase | Goal | Concrete Tasks | Exit Criteria | Status |
 |---|---|---|---|---|---|
-| 1 | Entropy control | Open PRs <10 total, none stale >14d | Merge green non-overlapping hardens (auth matrix, RLS, a11y, release gate). Close pure noise drafts. | ≤10 open across portfolio; weekly entropy report green | [in progress] |
+| 1 | Entropy control | Open PRs <10 total, none stale >14d | Merge green non-overlapping hardens (auth matrix, RLS, a11y, release gate). Close pure noise drafts. | ≤10 open across portfolio; weekly entropy report green | [in progress] held at 7 |
 | 2 | Device evidence | CHR-55 recorded on real iPhone 16e / iOS 27 | Owner records IPA install + basic surface validation via Diagnostics export (content-free). | deviceAcceptance=recorded; SideStore path verified | [blocked] owner |
 | 3 | Auth hardening complete | Fail-closed everywhere in prod | Merge remaining auth PRs; confirm production authMode=required with no bypass. | Auth matrix tests on main; no raw error leaks | [in progress] |
 | 4 | Contract stability | Versioned MCP + /ready surfaces | Land contract discovery + changelog gate. Pin SHAs on remaining Actions. | CI fails on undocumented tool/field change | [in progress] |
@@ -18,14 +18,15 @@ Canonical cross-plane roadmap for QuicksilverV1 + Resonance + Conduit. Living do
 | 10 | Production claim | Honest ship | Device evidence + all phases 1-7 green. | Owner declares production-ready; free-tier constraints documented | not started |
 
 ## High-leverage innovations
-- Dated audit automation on main (this pass).
+- Dated audit automation on main (this pass at 11:01Z).
 - Entropy auto-rank close candidates (existing scripts; schedule next).
 - Cold-start classifier already partially present; complete timing capture.
 - Portfolio probe already in CI; extend for continuous dashboard.
+- Direct main docs commits to prune PR noise.
 
 ## Top risks
 1. Device evidence remains the only path to honest Quicksilver production claim.
 2. Residual entropy distracts from device gate.
 3. Free-tier cold starts require probe retry discipline.
 
-Highest-value next action: Prune residual entropy (review/merge green non-overlapping after CI), then Owner records CHR-55. Entropy reduction continues.
+Highest-value next action: Prune residual entropy (review/merge green non-overlapping after CI), then Owner records CHR-55. Entropy reduction continues. Owner must apply #265 RLS and #208 indexes after review.
