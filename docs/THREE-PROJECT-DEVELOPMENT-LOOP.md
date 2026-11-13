@@ -161,3 +161,18 @@ The Conduit branch also adds a read-only issue queue:
 - The queue reads each canonical public repository independently, rejects pull requests and unsafe issue URLs, and reports unavailable repositories rather than treating missing data as an empty queue.
 - The workflow publishes an Actions summary and a 14-day artifact. It is read-only and does not assign, edit, branch, commit, approve, merge, or deploy.
 - The queue is a deterministic handoff mechanism, not an autonomous coding agent. A human engineering session or a separately configured authenticated provider runner must implement each selected task and return verification evidence.
+
+
+## Oracle Always Free feasibility
+
+Oracle's current Always Free Ampere A1 allowance is **2 OCPUs and 12 GB RAM total**, with **200 GB combined boot/block-volume storage** in the home region. The Agent Swarm self-hosting guide currently specifies **at least 4 vCPU, 8 GB RAM, and 40 GB free disk**. Therefore, Oracle Always Free does not meet the documented CPU minimum for a full Agent Swarm host, even though its memory and storage allowances are sufficient on paper. Oracle also documents reclamation of idle Always Free compute instances when CPU, network, and (for A1) memory utilization remain below 20% at the 95th percentile over seven days.
+
+Decision: do not provision Oracle resources for the full Agent Swarm. Keep the option open for a deliberately reduced, lightweight coordinator/worker experiment only if the workload is proven stable and remains within Always Free quotas. Do not assume such an experiment is equivalent to Agent Swarm or production-grade persistent execution.
+
+Sources:
+- [Oracle Always Free resources and compute limits](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm)
+- [Agent Swarm host requirements](https://docs.agent-swarm.dev/docs/guides/host-requirements)
+
+## GitHub Actions cost fit
+
+All three canonical repositories are public. GitHub documents standard GitHub-hosted Actions runners as free for public repositories, so the read-only scheduled health and task-queue workflows fit the free-only constraint when kept on standard runners. Keep jobs short, retain artifacts briefly, and do not switch to larger runners or paid services.
