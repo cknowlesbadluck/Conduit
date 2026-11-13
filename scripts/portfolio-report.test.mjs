@@ -10,13 +10,11 @@ function response(body, status = 200) {
   return {
     ok: status >= 200 && status < 300,
     status,
-    async json() {
-      return body;
-    },
+    async json() { return body; },
   };
 }
 
-test("portfolio scan reports the latest CI workflow and open PR counts", async () => {
+test("portfolio scan reports push CI on main and open PR counts", async () => {
   const fetchImpl = async (url) => {
     if (url.endsWith("/actions/workflows?per_page=100")) {
       return response({ workflows: [
@@ -25,6 +23,8 @@ test("portfolio scan reports the latest CI workflow and open PR counts", async (
       ] });
     }
     if (url.includes("/actions/workflows/42/runs?")) {
+      assert.match(url, /branch=main/);
+      assert.match(url, /event=push/);
       return response({
         workflow_runs: [{
           name: "CI",
@@ -45,6 +45,20 @@ test("portfolio scan reports the latest CI workflow and open PR counts", async (
   assert.ok(report.projects.every((project) => project.openPullRequests === 2));
   assert.ok(report.projects.every((project) => project.status === "healthy"));
   assert.ok(report.projects.every((project) => project.workflowName === "CI"));
+});
+
+test("reports a full open-PR page as 100+ rather than an exact count", async () => {
+  const fetchImpl = async (url) => {
+    if (url.endsWith("/actions/workflows?per_page=100")) {
+      return response({ workflows: [{ id: 42, name: "CI", path: ".github/workflows/ci.yml" }] });
+    }
+    if (url.includes("/actions/workflows/42/runs?")) {
+      return response({ workflow_runs: [{ status: "completed", conclusion: "success" }] });
+    }
+    return response(Array.from({ length: 100 }, (_, index) => ({ number: index + 1 })));
+  };
+  const report = await collectPortfolio({ fetchImpl });
+  assert.ok(report.projects.every((project) => project.openPullRequests === "100+"));
 });
 
 test("portfolio scan isolates an unavailable repository instead of hiding other results", async () => {
@@ -100,7 +114,6 @@ test("portfolio markdown identifies blocked evidence and links known workflow ru
   assert.match(markdown, /\[CI\]\(https:\/\/github\.com\/cknowlesbadluck\/Conduit\/actions\/runs\/2\)/);
   assert.match(markdown, /3/);
 });
-
 
 test("portfolio scan treats malformed PR payloads as unknown, not zero open PRs", async () => {
   const fetchImpl = async (url) => {
