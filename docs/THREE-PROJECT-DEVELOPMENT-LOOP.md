@@ -150,3 +150,14 @@ This loop deliberately reuses existing project automation rather than adding a s
 - Conduit already has CI, production verification, portfolio probing, and a read-only entropy-trend workflow.
 
 The next implementation work should close the existing gaps found by the portfolio scan, not duplicate those workflows. In particular, owner-only security and release decisions remain owner gates; Quicksilver device acceptance cannot be inferred from simulator CI.
+
+
+## Free-tier coordinator implementation
+
+The Conduit branch also adds a read-only issue queue:
+- Run `npm run portfolio:queue` locally or use the scheduled/manual [Portfolio development queue](../.github/workflows/portfolio-coordinator.yml) workflow.
+- An issue is eligible only when it is open, labeled `portfolio:ready`, and contains a non-empty `## Acceptance criteria` section.
+- Optional priority labels are `priority:security`, `priority:release-blocker`, `priority:blocker`, and `priority:high`; untagged eligible issues are normal priority.
+- The queue reads each canonical public repository independently, rejects pull requests and unsafe issue URLs, and reports unavailable repositories rather than treating missing data as an empty queue.
+- The workflow publishes an Actions summary and a 14-day artifact. It is read-only and does not assign, edit, branch, commit, approve, merge, or deploy.
+- The queue is a deterministic handoff mechanism, not an autonomous coding agent. A human engineering session or a separately configured authenticated provider runner must implement each selected task and return verification evidence.
