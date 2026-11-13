@@ -136,7 +136,7 @@ export async function collectReadyTasks({
 export function formatCoordinatorMarkdown(report) {
   const rows = report.tasks.length
     ? report.tasks.map((task, index) =>
-        `| ${index + 1} | ${task.project} | [#${task.issueNumber} — ${task.title.replaceAll("|", "\\|").replaceAll("\\n", " ")}](${task.url}) | ${task.priority} |`)
+        `| ${index + 1} | ${task.project} | [#${task.issueNumber} — ${task.title.replaceAll("|", "\\|").replaceAll("\n", " ")}](${task.url}) | ${task.priority} |`)
     : ["| — | — | No eligible tasks | — |"];
   const unavailable = report.unavailableRepositories.length
     ? report.unavailableRepositories.join(", ")
