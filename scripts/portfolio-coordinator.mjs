@@ -158,17 +158,17 @@ export function formatCoordinatorMarkdown(report) {
     "",
     "To queue work, add the `portfolio:ready` label and an `## Acceptance criteria` section to the issue in its own repository.",
     "Missing or inaccessible data is not treated as an empty queue.",
-  ].join("\\n");
+  ].join("\n");
 }
 
 if (process.argv[1] && new URL(`file://${process.argv[1]}`).href === import.meta.url) {
   try {
     const report = await collectReadyTasks();
     const markdown = formatCoordinatorMarkdown(report);
-    process.stdout.write(`${markdown}\\n`);
+    process.stdout.write(`${markdown}\n`);
     if (report.unavailableRepositories.length) process.exitCode = 1;
   } catch (error) {
-    process.stderr.write(`Portfolio coordinator failed: ${error.message}\\n`);
+    process.stderr.write(`Portfolio coordinator failed: ${error.message}\n`);
     process.exitCode = 1;
   }
 }
