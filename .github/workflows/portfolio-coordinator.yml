@@ -1,0 +1,53 @@
+name: Portfolio development queue
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 9 * * *"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/portfolio-coordinator.mjs"
+      - "scripts/portfolio-coordinator.test.mjs"
+      - ".github/workflows/portfolio-coordinator.yml"
+  pull_request:
+    paths:
+      - "scripts/portfolio-coordinator.mjs"
+      - "scripts/portfolio-coordinator.test.mjs"
+      - ".github/workflows/portfolio-coordinator.yml"
+
+# Read-only issue metadata is required to build the bounded queue; no write scopes.
+permissions:
+  contents: read
+  issues: read
+
+concurrency:
+  group: portfolio-development-queue-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  queue:
+    name: Build read-only portfolio task queue
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Generate bounded portfolio task queue
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node scripts/portfolio-coordinator.mjs | tee portfolio-development-queue.md | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Upload queue report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: portfolio-development-queue-${{ github.sha }}
+          path: portfolio-development-queue.md
+          retention-days: 14
+          if-no-files-found: ignore

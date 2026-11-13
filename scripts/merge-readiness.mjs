@@ -84,7 +84,7 @@ export function fetchPr(repo, number, run = gh) {
       unresolvedThreads += rt.nodes.filter((x) => !x.isResolved).length;
       if (!rt.pageInfo.hasNextPage) { cursor = null; break; }
       const next = rt.pageInfo.endCursor;
-      if (!next || next === cursor) throw new Error("invalid review thread pagination cursor");
+      if (!next || next === cursor) throw new Error("invalid review thread pagination endCursor (missing or repeated)");
       cursor = next;
     }
     if (cursor) throw new Error("too many review thread pages");
